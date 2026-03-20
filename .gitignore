@@ -1,0 +1,14 @@
+# 虚拟环境
+.venv/
+
+# 敏感配置
+.env
+
+# Python 缓存
+__pycache__/
+*.pyc
+*.pyo
+
+# 编辑器
+.DS_Store
+.vscode/
