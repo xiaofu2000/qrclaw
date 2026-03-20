@@ -55,7 +55,8 @@ def run(user_input: str, session: Session, console: Console):
             console.print("[bold red]警告：回复被截断，请尝试简化任务[/bold red]\n")
             return
 
-        session.add(message.model_dump())
+        # assistant 消息只存一次，在工具循环之前
+        assistant_msg_saved = False
 
         for tc in message.tool_calls:
             name = tc.function.name
@@ -80,10 +81,17 @@ def run(user_input: str, session: Session, console: Console):
                 console.print(f"[bold red]⚠ 需要确认[/bold red] 是否允许执行？(y/n) ", end="")
                 choice = input().strip().lower()
                 if choice != "y":
-                    result = "用户拒绝执行"
+                    result = "用户拒绝执行此操作"
                     console.print(Panel(result, title="[bold red]已拒绝[/bold red]", border_style="red", expand=False))
+                    if not assistant_msg_saved:
+                        session.add(message.model_dump())
+                        assistant_msg_saved = True
                     session.add({"role": "tool", "tool_call_id": tc.id, "content": result})
-                    continue
+                    break  # 退出工具循环，回到外层让LLM重新推理
+
+            if not assistant_msg_saved:
+                session.add(message.model_dump())
+                assistant_msg_saved = True
 
             result = execute(name, arguments)
 
