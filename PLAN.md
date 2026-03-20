@@ -75,7 +75,7 @@
 
 ## 当前进度
 
-> 正在进行：**第二阶段 - 工具系统**
+> 正在进行：**第五阶段 - 扩展**
 
 ### 第一阶段 ✅
 - [x] 创建项目目录结构
@@ -83,3 +83,25 @@
 - [x] 创建并激活虚拟环境
 - [x] 安装依赖
 - [x] 调通 LLM API，能正常对话
+
+### 第二阶段 ✅
+- [x] 理解 Tool Calling 数据结构
+- [x] 实现工具注册系统（@register 装饰器）
+- [x] 实现工具执行（execute）
+- [x] 内置工具：read_file / write_file / run_shell
+
+### 第三阶段 ✅
+- [x] 实现 ReAct 循环
+- [x] finish_reason 标志位判断
+- [x] MAX_ITERATIONS 兜底保护
+
+### 第四阶段 ✅
+- [x] 会话历史持久化（Session）
+- [x] 上下文压缩（摘要策略，target token 10%）
+- [x] 压缩阈值可配置（MODEL_MAX_TOKENS）
+
+### 第五阶段（进行中）
+- [x] CLI 入口（javaclaw 命令）
+- [x] 工具跨平台适配（pathlib + Windows编码）
+- [ ] 安全防护（Policy-as-Prompt / 参数校验）
+- [ ] Telegram Bot 渠道接入
