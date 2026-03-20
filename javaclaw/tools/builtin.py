@@ -33,7 +33,7 @@ def read_file(path: str) -> str:
         return f"错误：{e}"
 
 
-@register(description="把内容写入本地文件，文件不存在会自动创建，已存在则覆盖", args_model=WriteFileArgs)
+@register(description="把内容写入本地文件，文件不存在会自动创建，已存在则覆盖", args_model=WriteFileArgs, confirm=True)
 def write_file(path: str, content: str) -> str:
     try:
         p = Path(path).expanduser().resolve()
@@ -44,7 +44,7 @@ def write_file(path: str, content: str) -> str:
         return f"错误：写入失败 {e}"
 
 
-@register(description="在本地执行 shell 命令，返回输出结果，超时 30 秒", args_model=RunShellArgs)
+@register(description="在本地执行 shell 命令，返回输出结果，超时 30 秒", args_model=RunShellArgs, confirm=True)
 def run_shell(command: str) -> str:
     try:
         result = subprocess.run(

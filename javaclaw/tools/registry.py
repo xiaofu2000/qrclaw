@@ -7,17 +7,11 @@ from pydantic import BaseModel
 _tools: dict = {}
 
 
-def register(description: str, args_model: Type[BaseModel]):
+def register(description: str, args_model: Type[BaseModel], confirm: bool = False):
     """
     装饰器：把函数注册成一个工具。
 
-    用法：
-        class ReadFileArgs(BaseModel):
-            path: str
-
-        @register(description="读取文件", args_model=ReadFileArgs)
-        def read_file(path: str) -> str:
-            ...
+    confirm=True 表示执行前需要用户确认（高风险工具）
     """
     def decorator(fn):
         schema = _build_schema(fn.__name__, description, args_model)
@@ -25,9 +19,15 @@ def register(description: str, args_model: Type[BaseModel]):
             "fn": fn,
             "model": args_model,
             "schema": schema,
+            "confirm": confirm,
         }
         return fn
     return decorator
+
+
+def need_confirm(name: str) -> bool:
+    """判断工具是否需要用户确认"""
+    return _tools.get(name, {}).get("confirm", False)
 
 
 def _build_schema(name: str, description: str, args_model: Type[BaseModel]) -> dict:
