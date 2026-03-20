@@ -7,12 +7,17 @@ from javaclaw.config import OPENAI_API_KEY, OPENAI_MODEL, OPENAI_BASE_URL, MAX_I
 from javaclaw.tools.registry import get_schemas, execute
 from javaclaw.memory.session import Session
 from javaclaw.memory import compressor
+from javaclaw.prompt import build_system_prompt
 
 client = OpenAI(api_key=OPENAI_API_KEY, base_url=OPENAI_BASE_URL or None)
 
 
 def run(user_input: str, session: Session, console: Console):
-    # 不在这里打印用户消息，cli.py 的 Prompt.ask 已经回显了
+    # 第一次对话时注入 system prompt
+    if not session.messages:
+        tool_names = [s["function"]["name"] for s in get_schemas()]
+        session.add({"role": "system", "content": build_system_prompt(tool_names)})
+
     session.add({"role": "user", "content": user_input})
 
     for i in range(MAX_ITERATIONS):
