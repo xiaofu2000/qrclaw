@@ -13,20 +13,23 @@ client = OpenAI(api_key=OPENAI_API_KEY, base_url=OPENAI_BASE_URL or None)
 
 
 def run(user_input: str, session: Session, console: Console):
-    # 第一次对话时注入 system prompt
-    if not session.messages:
-        tool_names = [s["function"]["name"] for s in get_schemas()]
-        session.add({"role": "system", "content": build_system_prompt(tool_names)})
-
     session.add({"role": "user", "content": user_input})
 
+    # system prompt 每次实时构建，不存进 session
+    # 这样工作目录、工具列表永远是最新的
+    tool_names = [s["function"]["name"] for s in get_schemas()]
+    system_prompt = {"role": "system", "content": build_system_prompt(tool_names)}
+
     for i in range(MAX_ITERATIONS):
+
+        # 每次调 LLM 时把 system prompt 拼到最前面
+        messages = [system_prompt, *session.messages]
 
         # spinner 只包住 LLM 请求这一步，拿到响应立即退出
         with console.status("[bold yellow]思考中...[/bold yellow]", spinner="dots"):
             response = client.chat.completions.create(
                 model=OPENAI_MODEL,
-                messages=session.messages,
+                messages=messages,
                 tools=get_schemas(),
             )
 

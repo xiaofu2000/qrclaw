@@ -35,4 +35,6 @@ class Session:
     def _load(self):
         if os.path.exists(self._path):
             with open(self._path, "r", encoding="utf-8") as f:
-                self.messages = json.load(f)
+                data = json.load(f)
+            # 过滤掉旧历史里的 system 消息，system prompt 由 agent 实时生成
+            self.messages = [m for m in data if m.get("role") != "system"]
