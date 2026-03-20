@@ -15,7 +15,7 @@ def main():
         console.print(f"[dim]已加载历史会话，共 {len(session.messages)} 条消息[/dim]\n")
 
     while True:
-        user_input = Prompt.ask("[bold magenta]你[/bold magenta]")
+        user_input = Prompt.ask("[bold magenta]>[/bold magenta]")
 
         if user_input.strip() == "exit":
             console.print("[dim]再见！[/dim]")
@@ -29,7 +29,7 @@ def main():
         if not user_input.strip():
             continue
 
-        run(user_input.strip(), session)
+        run(user_input.strip(), session, console)
 
 
 if __name__ == "__main__":
