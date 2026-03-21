@@ -75,22 +75,8 @@ def use_skill(skill_name: str, args: dict = None) -> str:
         "- 按照步骤顺序执行",
         "- 根据实际情况灵活调整",
         "",
-        f"**用户提供的参数**：{json.dumps(args, ensure_ascii=False, indent=2)}",
+        f"**用户提供的参数**：{json.dumps(args, ensure_ascii=False, indent=2) if args else '无'}",
     ]
-    
-    # 如果有输入参数，提示 LLM 填充默认值
-    if skill.inputs:
-        lines.extend([
-            "",
-            "**参数提示**：",
-        ])
-        for param_name, param_info in skill.inputs.items():
-            if param_name in args:
-                lines.append(f"- {param_name}: 已提供值 '{args[param_name]}'")
-            elif "default" in param_info:
-                lines.append(f"- {param_name}: 使用默认值 '{param_info['default']}'")
-            elif param_info.get("required", False):
-                lines.append(f"- {param_name}: ⚠️ 必需参数，请向用户询问")
     
     result = "\n".join(lines)
     logger.info(f"注入技能完整信息: {skill_name}")
