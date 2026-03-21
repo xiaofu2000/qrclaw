@@ -2,23 +2,13 @@ import qrclaw.tools.builtin  # 触发工具注册
 from qrclaw.agent import run
 from qrclaw.memory.session import Session
 from qrclaw.logger import setup_logger
-from qrclaw.config import LOG_LEVEL, LOG_DIR, LOG_MAX_DAYS, LOG_TO_FILE, LOG_TO_CONSOLE, LOG_CONSOLE_LEVEL, _MODEL_MAX_TOKENS
+from qrclaw.config import LOG_LEVEL, LOG_MAX_DAYS, LOG_TO_FILE, LOG_TO_CONSOLE, LOG_CONSOLE_LEVEL, _MODEL_MAX_TOKENS
 from rich.console import Console
 from rich.panel import Panel
 from rich.text import Text
 from prompt_toolkit import PromptSession
 from prompt_toolkit.key_binding import KeyBindings
 from prompt_toolkit.filters import is_done
-
-# 初始化日志系统
-setup_logger(
-    log_dir=LOG_DIR,
-    log_level=LOG_LEVEL,
-    log_to_file=LOG_TO_FILE,
-    log_to_console=LOG_TO_CONSOLE,
-    log_max_days=LOG_MAX_DAYS,
-    console_level=LOG_CONSOLE_LEVEL
-)
 
 console = Console()
 
@@ -66,12 +56,24 @@ def show_context_usage(session: Session):
 
 
 def main():
+    # 创建会话（默认 session_id = "default"）
+    session = Session()
+    
+    # 初始化日志系统（按会话 ID）
+    setup_logger(
+        session_id=session.session_id,
+        log_level=LOG_LEVEL,
+        log_to_file=LOG_TO_FILE,
+        log_to_console=LOG_TO_CONSOLE,
+        log_max_days=LOG_MAX_DAYS,
+        console_level=LOG_CONSOLE_LEVEL
+    )
+
     console.print(
         "[bold cyan]JavaClaw Agent[/bold cyan] 启动\n"
         "[dim]Enter 发送 · Alt+Enter 换行 · exit 退出 · clear 清除会话[/dim]\n"
     )
 
-    session = Session()
     if session.messages:
         console.print(f"[dim]已加载历史会话，共 {len(session.messages)} 条消息[/dim]\n")
 

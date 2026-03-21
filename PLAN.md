@@ -113,6 +113,7 @@
 - [x] 日志系统（文件 + 控制台）
 - [x] 上下文使用百分比显示
 - [x] 配置管理统一（~/.qrclaw/ 目录）
+- [x] 日志按会话 ID 分文件存储
 - [ ] Telegram Bot 渠道接入
 
 ---
@@ -146,6 +147,6 @@ qrclaw/
 ├── MEMORY.md          # 中期记忆
 ├── sessions/          # 会话历史
 │   └── default.json
-└── logs/              # 日志文件（可选）
-    └── qrclaw.log
+└── logs/              # 日志文件（按会话 ID 分文件）
+    └── qrclaw-default.log
 ```

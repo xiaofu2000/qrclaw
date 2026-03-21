@@ -5,6 +5,7 @@
 - ~/.qrclaw/config        用户配置（API Key 等）
 - ~/.qrclaw/MEMORY.md     中期记忆
 - ~/.qrclaw/sessions/     会话历史
+- ~/.qrclaw/logs/         日志文件
 """
 
 import os
@@ -35,7 +36,6 @@ TAVILY_API_KEY=
 
 # 日志配置
 LOG_LEVEL=INFO
-LOG_DIR=logs
 LOG_MAX_DAYS=30
 LOG_TO_FILE=true
 LOG_TO_CONSOLE=true

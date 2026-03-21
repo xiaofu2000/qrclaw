@@ -24,7 +24,6 @@ TAVILY_API_KEY = os.getenv("TAVILY_API_KEY", "")
 
 # 日志配置
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
-LOG_DIR = os.getenv("LOG_DIR", "logs")
 LOG_MAX_DAYS = int(os.getenv("LOG_MAX_DAYS", "30"))
 LOG_TO_FILE = os.getenv("LOG_TO_FILE", "true").lower() == "true"
 LOG_TO_CONSOLE = os.getenv("LOG_TO_CONSOLE", "true").lower() == "true"

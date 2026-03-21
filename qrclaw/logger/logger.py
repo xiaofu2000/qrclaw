@@ -2,10 +2,11 @@
 日志系统模块
 
 特性：
-- 文件日志：按天轮转，保留指定天数
+- 文件日志：按会话 ID 分文件存储，按天轮转，保留指定天数
 - 控制台日志：带颜色的 Rich 格式输出
 - 敏感信息过滤：自动脱敏 API Key 等
 - 灵活配置：通过环境变量控制日志级别和输出方式
+- 统一日志目录：~/.qrclaw/logs/
 """
 
 import logging
@@ -20,7 +21,7 @@ from rich.logging import RichHandler
 
 class SensitiveInfoFilter(logging.Filter):
     """敏感信息过滤器，自动脱敏 API Key 等"""
-
+    
     # 需要过滤的敏感信息模式
     SENSITIVE_PATTERNS = [
         # OpenAI API Key
@@ -34,13 +35,13 @@ class SensitiveInfoFilter(logging.Filter):
         # Secrets
         (r'(secret\s*=\s*)\S+', r'\1***REDACTED***'),
     ]
-
+    
     def filter(self, record: logging.LogRecord) -> bool:
         """过滤日志记录中的敏感信息"""
         if hasattr(record, 'msg') and isinstance(record.msg, str):
             for pattern, replacement in self.SENSITIVE_PATTERNS:
                 record.msg = re.sub(pattern, replacement, record.msg, flags=re.IGNORECASE)
-
+        
         # 同时检查 args 中的字符串参数
         if hasattr(record, 'args') and record.args:
             if isinstance(record.args, dict):
@@ -53,9 +54,9 @@ class SensitiveInfoFilter(logging.Filter):
                     self._filter_value(arg) if isinstance(arg, str) else arg
                     for arg in record.args
                 )
-
+        
         return True
-
+    
     def _filter_value(self, value: str) -> str:
         """过滤字符串值中的敏感信息"""
         for pattern, replacement in self.SENSITIVE_PATTERNS:
@@ -65,62 +66,65 @@ class SensitiveInfoFilter(logging.Filter):
 
 class QRClawLogger:
     """QRClaw 日志管理器"""
-
+    
     def __init__(self):
         self._initialized = False
         self._logger: Optional[logging.Logger] = None
         self._console: Optional[Console] = None
-
+        self._current_session_id: Optional[str] = None
+    
     def setup(
         self,
-        log_dir: str = "logs",
+        session_id: str = "default",
         log_level: str = "INFO",
         log_to_file: bool = True,
-        log_to_console: bool = False,
+        log_to_console: bool = True,
         log_max_days: int = 30,
         console_level: str = "WARNING"
     ):
         """
         设置日志系统
-
+        
         Args:
-            log_dir: 日志文件目录
+            session_id: 会话 ID，用于区分不同会话的日志文件
             log_level: 文件日志级别
             log_to_file: 是否输出到文件
             log_to_console: 是否输出到控制台
             log_max_days: 日志文件保留天数
             console_level: 控制台日志级别
         """
-        if self._initialized:
+        # 如果 session_id 改变，需要重新初始化
+        if self._initialized and self._current_session_id == session_id:
             return
-
-        # 创建日志目录
-        log_path = Path(log_dir)
-        log_path.mkdir(parents=True, exist_ok=True)
-
+        
+        # 创建日志目录：~/.qrclaw/logs/
+        log_dir = Path.home() / ".qrclaw" / "logs"
+        log_dir.mkdir(parents=True, exist_ok=True)
+        
         # 创建 root logger
         self._logger = logging.getLogger("qrclaw")
         self._logger.setLevel(logging.DEBUG)  # 设置为最低级别，由 handler 控制实际输出
-
+        
         # 清除现有 handlers
         self._logger.handlers.clear()
-
+        
         # 创建 Rich Console
         self._console = Console()
-
+        
         # 文件日志格式
         file_format = logging.Formatter(
             '%(asctime)s | %(levelname)-8s | %(name)s:%(lineno)d | %(message)s',
             datefmt='%Y-%m-%d %H:%M:%S'
         )
-
+        
         # 控制台日志格式（Rich 已经自带时间戳，这里只保留关键信息）
         console_format = logging.Formatter('%(message)s')
-
-        # 文件日志 handler
+        
+        # 文件日志 handler（按会话 ID 分文件）
         if log_to_file:
+            log_file = log_dir / f"qrclaw-{session_id}.log"
             file_handler = TimedRotatingFileHandler(
-                filename=log_path / "qrclaw.log",
+                filename=str(log_file),
                 when='midnight',
                 interval=1,
                 backupCount=log_max_days,
@@ -130,7 +134,7 @@ class QRClawLogger:
             file_handler.setFormatter(file_format)
             file_handler.addFilter(SensitiveInfoFilter())
             self._logger.addHandler(file_handler)
-
+        
         # 控制台日志 handler（使用 Rich）
         if log_to_console:
             console_handler = RichHandler(
@@ -144,35 +148,37 @@ class QRClawLogger:
             console_handler.setFormatter(console_format)
             console_handler.addFilter(SensitiveInfoFilter())
             self._logger.addHandler(console_handler)
-
+        
         self._initialized = True
-
+        self._current_session_id = session_id
+        
         # 记录初始化日志
         self._logger.info("=" * 60)
-        self._logger.info("QRClaw 日志系统初始化完成")
+        self._logger.info(f"QRClaw 日志系统初始化完成 (会话: {session_id})")
         self._logger.info(f"日志级别: {log_level} (文件) / {console_level} (控制台)")
-        self._logger.info(f"日志目录: {log_path.absolute()}")
+        self._logger.info(f"日志目录: {log_dir}")
+        self._logger.info(f"日志文件: qrclaw-{session_id}.log")
         self._logger.info(f"文件日志: {'启用' if log_to_file else '禁用'}")
         self._logger.info(f"控制台日志: {'启用' if log_to_console else '禁用'}")
         self._logger.info(f"日志保留: {log_max_days} 天")
         self._logger.info("=" * 60)
-
+    
     def get_logger(self, name: str = "qrclaw") -> logging.Logger:
         """
         获取 logger 实例
-
+        
         Args:
             name: logger 名称，默认为 'qrclaw'
-
+        
         Returns:
             logging.Logger: logger 实例
         """
         if not self._initialized:
             # 如果未初始化，使用默认配置
             self.setup()
-
+        
         return logging.getLogger(name)
-
+    
     @property
     def console(self) -> Console:
         """获取 Rich Console 实例"""
@@ -186,18 +192,18 @@ _logger_manager = QRClawLogger()
 
 
 def setup_logger(
-    log_dir: str = "logs",
+    session_id: str = "default",
     log_level: str = "INFO",
     log_to_file: bool = True,
-    log_to_console: bool = False,
+    log_to_console: bool = True,
     log_max_days: int = 30,
     console_level: str = "WARNING"
 ):
     """
     设置日志系统（全局函数）
-
+    
     Args:
-        log_dir: 日志文件目录
+        session_id: 会话 ID，用于区分不同会话的日志文件
         log_level: 文件日志级别
         log_to_file: 是否输出到文件
         log_to_console: 是否输出到控制台
@@ -205,7 +211,7 @@ def setup_logger(
         console_level: 控制台日志级别
     """
     _logger_manager.setup(
-        log_dir=log_dir,
+        session_id=session_id,
         log_level=log_level,
         log_to_file=log_to_file,
         log_to_console=log_to_console,
@@ -217,10 +223,10 @@ def setup_logger(
 def get_logger(name: str = "qrclaw") -> logging.Logger:
     """
     获取 logger 实例（全局函数）
-
+    
     Args:
         name: logger 名称，默认为 'qrclaw'
-
+    
     Returns:
         logging.Logger: logger 实例
     """

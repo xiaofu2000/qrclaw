@@ -1,11 +1,11 @@
 import json
-import os
+from pathlib import Path
 from qrclaw.logger import get_logger
 
 logger = get_logger("qrclaw.memory.session")
 
 # 会话文件统一存在这个目录下
-SESSIONS_DIR = os.path.expanduser("~/.qrclaw/sessions")
+SESSIONS_DIR = Path.home() / ".qrclaw" / "sessions"
 
 
 class Session:
@@ -19,8 +19,8 @@ class Session:
         self.total_tokens = 0
 
         # 确保目录存在
-        os.makedirs(SESSIONS_DIR, exist_ok=True)
-        self._path = os.path.join(SESSIONS_DIR, f"{session_id}.json")
+        SESSIONS_DIR.mkdir(parents=True, exist_ok=True)
+        self._path = SESSIONS_DIR / f"{session_id}.json"
         
         logger.debug(f"初始化会话: {session_id}, 路径: {self._path}")
 
@@ -47,24 +47,25 @@ class Session:
         self.prompt_tokens = 0
         self.completion_tokens = 0
         self.total_tokens = 0
-        if os.path.exists(self._path):
-            os.remove(self._path)
+        if self._path.exists():
+            self._path.unlink()
             logger.debug(f"删除会话文件: {self._path}")
 
     def _save(self):
         try:
-            with open(self._path, "w", encoding="utf-8") as f:
-                json.dump(self.messages, f, ensure_ascii=False, indent=2)
+            self._path.write_text(
+                json.dumps(self.messages, ensure_ascii=False, indent=2),
+                encoding="utf-8"
+            )
             logger.debug(f"会话保存成功: {self._path}")
         except Exception as e:
             logger.error(f"会话保存失败: {e}", exc_info=True)
             raise
 
     def _load(self):
-        if os.path.exists(self._path):
+        if self._path.exists():
             try:
-                with open(self._path, "r", encoding="utf-8") as f:
-                    data = json.load(f)
+                data = json.loads(self._path.read_text(encoding="utf-8"))
                 # 过滤掉旧历史里的 system 消息，system prompt 由 agent 实时生成
                 self.messages = [m for m in data if m.get("role") != "system"]
                 logger.info(f"加载历史会话: {len(self.messages)} 条消息")
