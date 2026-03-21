@@ -6,13 +6,23 @@ from rich.syntax import Syntax
 from qrclaw.config import OPENAI_API_KEY, OPENAI_MODEL, OPENAI_BASE_URL, MAX_ITERATIONS, COMPRESS_THRESHOLD, _MODEL_MAX_TOKENS
 from qrclaw.tools.registry import get_schemas, execute, need_confirm
 from qrclaw.memory.session import Session
-from qrclaw.memory import compressor
+from qrclaw.memory import compressor, LongTermMemory
 from qrclaw.prompt import build_system_prompt
 from qrclaw.logger import get_logger
 
 logger = get_logger("qrclaw.agent")
 
 client = OpenAI(api_key=OPENAI_API_KEY, base_url=OPENAI_BASE_URL or None)
+
+# 全局中期记忆实例
+_memory = None
+
+def get_memory() -> LongTermMemory:
+    """获取中期记忆实例（单例）"""
+    global _memory
+    if _memory is None:
+        _memory = LongTermMemory()
+    return _memory
 
 
 def run(user_input: str, session: Session, console: Console):
@@ -23,7 +33,8 @@ def run(user_input: str, session: Session, console: Console):
     # system prompt 每次实时构建，不存进 session
     # 这样工作目录、工具列表永远是最新的
     tool_names = [s["function"]["name"] for s in get_schemas()]
-    system_prompt = {"role": "system", "content": build_system_prompt(tool_names)}
+    memory = get_memory()
+    system_prompt = {"role": "system", "content": build_system_prompt(tool_names, memory)}
     logger.debug(f"System prompt 已构建，可用工具: {', '.join(tool_names)}")
 
     for iteration in range(MAX_ITERATIONS):

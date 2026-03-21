@@ -5,7 +5,10 @@ System Prompt 构建模块。
 import os
 import platform
 from qrclaw.config import AGENT_NAME
+from qrclaw.memory import LongTermMemory
+from qrclaw.logger import get_logger
 
+logger = get_logger("qrclaw.prompt")
 
 _TOOL_DESCRIPTIONS = {
     "read_file":       "读取本地文件内容，需要查看文件时使用",
@@ -13,6 +16,8 @@ _TOOL_DESCRIPTIONS = {
     "list_directory":  "列出目录下的文件和子目录，不知道目录结构时先用它探索",
     "web_search":      "联网搜索获取最新信息，查找文档、新闻、技术资料时使用",
     "run_shell":       "执行 shell 命令，需要运行程序、安装依赖、操作系统时使用",
+    "write_memory":    "写入中期记忆，记录重要信息供后续对话使用",
+    "read_memory":     "读取中期记忆，查看之前记录的重要信息",
 }
 
 def _build_tooling_section(tool_names: list[str]) -> str:
@@ -62,7 +67,27 @@ def _build_behavior_section() -> str:
     ])
 
 
-def build_system_prompt(tool_names: list[str] | None = None) -> str:
+def _build_memory_section(memory: LongTermMemory = None) -> str:
+    """构建中期记忆部分"""
+    if memory is None:
+        memory = LongTermMemory()
+    
+    content = memory.load()
+    
+    if not content or content.strip() == "# QRClaw 中期记忆":
+        # 记忆为空，不注入
+        return ""
+    
+    logger.info("注入中期记忆到 system prompt")
+    return "\n".join([
+        "## 中期记忆",
+        "以下是你之前记录的重要信息，请在回答时参考：",
+        "",
+        content,
+    ])
+
+
+def build_system_prompt(tool_names: list[str] | None = None, memory: LongTermMemory = None) -> str:
     """构建完整的 system prompt"""
     sections = [
         f"你是 {AGENT_NAME}，一个运行在用户本地的自主 AI Agent。",
@@ -74,5 +99,7 @@ def build_system_prompt(tool_names: list[str] | None = None) -> str:
         _build_safety_section(),
         "",
         _build_workspace_section(),
+        "",
+        _build_memory_section(memory),
     ]
     return "\n".join(sections)
