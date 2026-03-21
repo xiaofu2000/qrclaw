@@ -103,5 +103,5 @@
 ### 第五阶段（进行中）
 - [x] CLI 入口（javaclaw 命令）
 - [x] 工具跨平台适配（pathlib + Windows编码）
-- [ ] 安全防护（Policy-as-Prompt / 参数校验）
+- [x] 安全防护（Policy-as-Prompt / 参数校验）
 - [ ] Telegram Bot 渠道接入
