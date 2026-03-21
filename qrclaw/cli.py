@@ -1,4 +1,16 @@
 import qrclaw.tools.builtin  # 触发工具注册
+# 必须最先初始化日志，在其他模块 import 之前
+from qrclaw.logger import setup_logger
+from qrclaw.config import LOG_LEVEL, LOG_DIR, LOG_MAX_DAYS, LOG_TO_FILE, LOG_TO_CONSOLE, LOG_CONSOLE_LEVEL
+setup_logger(
+    log_dir=LOG_DIR,
+    log_level=LOG_LEVEL,
+    log_to_file=LOG_TO_FILE,
+    log_to_console=LOG_TO_CONSOLE,
+    log_max_days=LOG_MAX_DAYS,
+    console_level=LOG_CONSOLE_LEVEL
+)
+
 from qrclaw.agent import run
 from qrclaw.memory.session import Session
 from rich.console import Console
