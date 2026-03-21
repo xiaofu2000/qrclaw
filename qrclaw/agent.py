@@ -3,7 +3,7 @@ from openai import OpenAI
 from rich.console import Console
 from rich.panel import Panel
 from rich.syntax import Syntax
-from qrclaw.config import OPENAI_API_KEY, OPENAI_MODEL, OPENAI_BASE_URL, MAX_ITERATIONS, COMPRESS_THRESHOLD
+from qrclaw.config import OPENAI_API_KEY, OPENAI_MODEL, OPENAI_BASE_URL, MAX_ITERATIONS, COMPRESS_THRESHOLD, _MODEL_MAX_TOKENS
 from qrclaw.tools.registry import get_schemas, execute, need_confirm
 from qrclaw.memory.session import Session
 from qrclaw.memory import compressor
@@ -41,7 +41,16 @@ def run(user_input: str, session: Session, console: Console):
                     messages=messages,
                     tools=get_schemas(),
                 )
-                logger.info(f"LLM 响应成功，使用 {response.usage.total_tokens} tokens (prompt: {response.usage.prompt_tokens}, completion: {response.usage.completion_tokens})")
+                
+                # 更新 token 使用情况
+                usage = response.usage
+                session.update_tokens(
+                    prompt_tokens=usage.prompt_tokens,
+                    completion_tokens=usage.completion_tokens,
+                    total_tokens=usage.total_tokens
+                )
+                
+                logger.info(f"LLM 响应成功，使用 {usage.total_tokens} tokens (prompt: {usage.prompt_tokens}, completion: {usage.completion_tokens})")
             except Exception as e:
                 logger.error(f"LLM 调用失败: {e}", exc_info=True)
                 raise

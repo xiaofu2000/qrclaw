@@ -12,6 +12,11 @@ class Session:
     def __init__(self, session_id: str = "default"):
         self.session_id = session_id
         self.messages: list[dict] = []
+        
+        # 上下文使用情况
+        self.prompt_tokens = 0
+        self.completion_tokens = 0
+        self.total_tokens = 0
 
         # 确保目录存在
         os.makedirs(SESSIONS_DIR, exist_ok=True)
@@ -28,10 +33,20 @@ class Session:
         self._save()
         logger.debug(f"添加消息: {message.get('role', 'unknown')}, 当前会话消息数: {len(self.messages)}")
 
+    def update_tokens(self, prompt_tokens: int, completion_tokens: int, total_tokens: int):
+        """更新 token 使用情况"""
+        self.prompt_tokens = prompt_tokens
+        self.completion_tokens = completion_tokens
+        self.total_tokens = total_tokens
+        logger.debug(f"更新 token: prompt={prompt_tokens}, completion={completion_tokens}, total={total_tokens}")
+
     def clear(self):
         """清空当前会话"""
         logger.info(f"清除会话: {self.session_id}")
         self.messages = []
+        self.prompt_tokens = 0
+        self.completion_tokens = 0
+        self.total_tokens = 0
         if os.path.exists(self._path):
             os.remove(self._path)
             logger.debug(f"删除会话文件: {self._path}")

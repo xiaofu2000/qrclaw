@@ -1,7 +1,16 @@
 import qrclaw.tools.builtin  # 触发工具注册
-# 必须最先初始化日志，在其他模块 import 之前
+from qrclaw.agent import run
+from qrclaw.memory.session import Session
 from qrclaw.logger import setup_logger
-from qrclaw.config import LOG_LEVEL, LOG_DIR, LOG_MAX_DAYS, LOG_TO_FILE, LOG_TO_CONSOLE, LOG_CONSOLE_LEVEL
+from qrclaw.config import LOG_LEVEL, LOG_DIR, LOG_MAX_DAYS, LOG_TO_FILE, LOG_TO_CONSOLE, LOG_CONSOLE_LEVEL, _MODEL_MAX_TOKENS
+from rich.console import Console
+from rich.panel import Panel
+from rich.text import Text
+from prompt_toolkit import PromptSession
+from prompt_toolkit.key_binding import KeyBindings
+from prompt_toolkit.filters import is_done
+
+# 初始化日志系统
 setup_logger(
     log_dir=LOG_DIR,
     log_level=LOG_LEVEL,
@@ -10,14 +19,6 @@ setup_logger(
     log_max_days=LOG_MAX_DAYS,
     console_level=LOG_CONSOLE_LEVEL
 )
-
-from qrclaw.agent import run
-from qrclaw.memory.session import Session
-from rich.console import Console
-from rich.panel import Panel
-from prompt_toolkit import PromptSession
-from prompt_toolkit.key_binding import KeyBindings
-from prompt_toolkit.filters import is_done
 
 console = Console()
 
@@ -38,6 +39,34 @@ def get_input() -> str:
     )
 
 
+def show_context_usage(session: Session):
+    """显示上下文使用情况"""
+    if session.prompt_tokens == 0:
+        return  # 还没有调用过 LLM，不显示
+    
+    percentage = (session.prompt_tokens / _MODEL_MAX_TOKENS) * 100
+    
+    # 根据百分比选择颜色
+    if percentage < 50:
+        color = "green"
+    elif percentage < 70:
+        color = "yellow"
+    else:
+        color = "red"
+    
+    # 显示状态栏
+    usage_text = Text()
+    usage_text.append("📊 上下文: ", style="dim")
+    usage_text.append(f"{percentage:.1f}%", style=f"bold {color}")
+    usage_text.append(f" ({session.prompt_tokens:,}/{_MODEL_MAX_TOKENS:,} tokens)", style="dim")
+    
+    # 如果接近压缩阈值，显示警告
+    if percentage >= 60:
+        usage_text.append(" ⚠️  接近压缩阈值", style="bold red")
+    
+    console.print(usage_text)
+
+
 def main():
     console.print(
         "[bold cyan]JavaClaw Agent[/bold cyan] 启动\n"
@@ -50,6 +79,9 @@ def main():
 
     while True:
         try:
+            # 显示上下文使用情况
+            show_context_usage(session)
+            
             user_input = get_input()
         except (KeyboardInterrupt, EOFError):
             console.print("\n[dim]再见！[/dim]")
