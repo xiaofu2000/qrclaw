@@ -3,6 +3,7 @@ import subprocess
 from pathlib import Path
 from pydantic import BaseModel, Field
 from javaclaw.tools.registry import register
+from javaclaw.config import TAVILY_API_KEY
 
 
 # ── 参数模型 ──────────────────────────────────────────────
@@ -18,6 +19,14 @@ class WriteFileArgs(BaseModel):
 
 class RunShellArgs(BaseModel):
     command: str = Field(description="要执行的 shell 命令，例如 ls -la 或 python3 hello.py")
+
+
+class ListDirectoryArgs(BaseModel):
+    path: str = Field(description="要列出的目录路径，例如 /tmp 或 ~/Documents")
+
+
+class WebSearchArgs(BaseModel):
+    query: str = Field(description="搜索关键词，用自然语言描述想查找的内容")
 
 
 # ── 工具函数 ──────────────────────────────────────────────
@@ -42,6 +51,44 @@ def write_file(path: str, content: str) -> str:
         return f"已写入：{p}"
     except Exception as e:
         return f"错误：写入失败 {e}"
+
+
+@register(description="列出目录下的文件和子目录，LLM用此工具了解目录结构", args_model=ListDirectoryArgs)
+def list_directory(path: str) -> str:
+    try:
+        p = Path(path).expanduser().resolve()
+        if not p.is_dir():
+            return f"错误：{path} 不是一个目录"
+        entries = sorted(p.iterdir(), key=lambda e: (e.is_file(), e.name))
+        lines = []
+        for entry in entries:
+            tag = "[文件]" if entry.is_file() else "[目录]"
+            lines.append(f"{tag} {entry.name}")
+        return "\n".join(lines) if lines else "(空目录)"
+    except Exception as e:
+        return f"错误：{e}"
+
+
+@register(description="联网搜索，获取最新信息，适合查找新闻、文档、技术资料", args_model=WebSearchArgs)
+def web_search(query: str) -> str:
+    if not TAVILY_API_KEY:
+        return "错误：未配置 TAVILY_API_KEY"
+    try:
+        from tavily import TavilyClient
+        client = TavilyClient(api_key=TAVILY_API_KEY)
+        response = client.search(query=query, max_results=5)
+        results = response.get("results", [])
+        if not results:
+            return "未找到相关结果"
+        lines = []
+        for i, r in enumerate(results, 1):
+            lines.append(f"{i}. {r.get('title', '')}")
+            lines.append(f"   {r.get('url', '')}")
+            lines.append(f"   {r.get('content', '')[:200]}")
+            lines.append("")
+        return "\n".join(lines)
+    except Exception as e:
+        return f"错误：搜索失败 {e}"
 
 
 @register(description="在本地执行 shell 命令，返回输出结果，超时 30 秒", args_model=RunShellArgs, confirm=True)
