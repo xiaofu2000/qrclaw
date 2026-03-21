@@ -2,7 +2,7 @@ import json
 import os
 
 # 会话文件统一存在这个目录下
-SESSIONS_DIR = os.path.expanduser("~/.javaclaw/sessions")
+SESSIONS_DIR = os.path.expanduser("~/.qrclaw/sessions")
 
 
 class Session:

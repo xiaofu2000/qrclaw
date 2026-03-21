@@ -13,10 +13,10 @@ dependencies = [
 ]
 
 [project.scripts]
-qrclaw = "javaclaw.cli:main"
+qrclaw = "qrclaw.cli:main"
 
 [tool.hatch.build.targets.wheel]
-packages = ["javaclaw"]
+packages = ["qrclaw"]
 
 [build-system]
 requires = ["hatchling"]

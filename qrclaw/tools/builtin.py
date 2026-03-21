@@ -2,8 +2,8 @@ import os
 import subprocess
 from pathlib import Path
 from pydantic import BaseModel, Field
-from javaclaw.tools.registry import register
-from javaclaw.config import TAVILY_API_KEY
+from qrclaw.tools.registry import register
+from qrclaw.config import TAVILY_API_KEY
 
 
 # ── 参数模型 ──────────────────────────────────────────────

@@ -1,5 +1,5 @@
 from openai import OpenAI
-from javaclaw.config import OPENAI_API_KEY, OPENAI_MODEL, OPENAI_BASE_URL
+from qrclaw.config import OPENAI_API_KEY, OPENAI_MODEL, OPENAI_BASE_URL
 
 # base_url 不为空时传入，否则用 OpenAI 官方地址
 client = OpenAI(

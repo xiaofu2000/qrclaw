@@ -3,7 +3,7 @@
 后续可扩展更多压缩策略，比如滚动截断、RAG检索等。
 """
 from openai import OpenAI
-from javaclaw.config import OPENAI_API_KEY, OPENAI_MODEL, OPENAI_BASE_URL, COMPRESS_TARGET_TOKENS
+from qrclaw.config import OPENAI_API_KEY, OPENAI_MODEL, OPENAI_BASE_URL, COMPRESS_TARGET_TOKENS
 
 client = OpenAI(api_key=OPENAI_API_KEY, base_url=OPENAI_BASE_URL or None)
 

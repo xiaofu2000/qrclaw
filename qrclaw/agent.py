@@ -3,11 +3,11 @@ from openai import OpenAI
 from rich.console import Console
 from rich.panel import Panel
 from rich.syntax import Syntax
-from javaclaw.config import OPENAI_API_KEY, OPENAI_MODEL, OPENAI_BASE_URL, MAX_ITERATIONS, COMPRESS_THRESHOLD
-from javaclaw.tools.registry import get_schemas, execute, need_confirm
-from javaclaw.memory.session import Session
-from javaclaw.memory import compressor
-from javaclaw.prompt import build_system_prompt
+from qrclaw.config import OPENAI_API_KEY, OPENAI_MODEL, OPENAI_BASE_URL, MAX_ITERATIONS, COMPRESS_THRESHOLD
+from qrclaw.tools.registry import get_schemas, execute, need_confirm
+from qrclaw.memory.session import Session
+from qrclaw.memory import compressor
+from qrclaw.prompt import build_system_prompt
 
 client = OpenAI(api_key=OPENAI_API_KEY, base_url=OPENAI_BASE_URL or None)
 

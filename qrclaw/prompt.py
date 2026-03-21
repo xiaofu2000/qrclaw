@@ -4,7 +4,7 @@ System Prompt 构建模块。
 """
 import os
 import platform
-from javaclaw.config import AGENT_NAME
+from qrclaw.config import AGENT_NAME
 
 
 _TOOL_DESCRIPTIONS = {
