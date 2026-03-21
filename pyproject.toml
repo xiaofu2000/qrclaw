@@ -1,5 +1,5 @@
 [project]
-name = "javaclaw"
+name = "qrclaw"
 version = "0.1.0"
 requires-python = ">=3.11"
 dependencies = [
@@ -13,7 +13,10 @@ dependencies = [
 ]
 
 [project.scripts]
-javaclaw = "javaclaw.cli:main"
+qrclaw = "javaclaw.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["javaclaw"]
 
 [build-system]
 requires = ["hatchling"]
