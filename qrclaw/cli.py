@@ -41,10 +41,8 @@ def get_input() -> str:
 
 def show_context_usage(session: Session):
     """显示上下文使用情况"""
-    if session.prompt_tokens == 0:
-        return  # 还没有调用过 LLM，不显示
-    
-    percentage = (session.prompt_tokens / _MODEL_MAX_TOKENS) * 100
+    # 计算百分比
+    percentage = (session.prompt_tokens / _MODEL_MAX_TOKENS) * 100 if session.prompt_tokens > 0 else 0
     
     # 根据百分比选择颜色
     if percentage < 50:
