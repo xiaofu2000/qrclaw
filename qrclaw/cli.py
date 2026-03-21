@@ -1,4 +1,5 @@
 import qrclaw.tools.builtin  # 触发工具注册
+import qrclaw.tools.skills    # 触发 Skills 工具注册
 from qrclaw.agent import run
 from qrclaw.memory.session import Session
 from qrclaw.logger import setup_logger
@@ -64,9 +65,8 @@ def main():
         session_id=session.session_id,
         log_level=LOG_LEVEL,
         log_to_file=LOG_TO_FILE,
-        log_to_console=LOG_TO_CONSOLE,
+        log_to_console=LOG_CONSOLE_LEVEL,
         log_max_days=LOG_MAX_DAYS,
-        console_level=LOG_CONSOLE_LEVEL
     )
 
     console.print(

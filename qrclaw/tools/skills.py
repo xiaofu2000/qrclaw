@@ -1,0 +1,98 @@
+"""
+内置工具：Skills 相关工具
+"""
+
+import json
+from pydantic import BaseModel, Field
+from qrclaw.tools.registry import register
+from qrclaw.skills.registry import SkillRegistry
+from qrclaw.logger import get_logger
+
+logger = get_logger("qrclaw.tools.skills")
+
+
+# ── 参数模型 ──────────────────────────────────────────────
+
+class UseSkillArgs(BaseModel):
+    skill_name: str = Field(description="要使用的技能名称，例如 analyze-project")
+    args: dict = Field(default_factory=dict, description="技能参数，根据技能定义传入")
+
+
+# ── 全局 Skill Registry ─────────────────────────────────────
+
+_skill_registry = None
+
+def get_skill_registry() -> SkillRegistry:
+    """获取全局 Skill Registry（单例）"""
+    global _skill_registry
+    if _skill_registry is None:
+        _skill_registry = SkillRegistry()
+        _skill_registry.load_from_dir()
+    return _skill_registry
+
+
+# ── 工具函数 ──────────────────────────────────────────────
+
+@register(description="使用指定的技能（Skill）来完成复杂任务，技能是预定义的工作流", args_model=UseSkillArgs)
+def use_skill(skill_name: str, args: dict = None) -> str:
+    """
+    使用技能
+    
+    Args:
+        skill_name: 技能名称
+        args: 技能参数
+    
+    Returns:
+        str: 技能的完整信息和执行指导
+    """
+    if args is None:
+        args = {}
+    
+    logger.debug(f"使用技能: {skill_name}, 参数: {args}")
+    
+    # 获取技能注册表
+    registry = get_skill_registry()
+    
+    # 检查技能是否存在
+    if not registry.has_skill(skill_name):
+        available_skills = ", ".join(registry.get_skills_list())
+        error_msg = f"错误：找不到技能 '{skill_name}'\n\n可用技能：\n{available_skills}"
+        logger.warning(error_msg)
+        return error_msg
+    
+    # 获取技能完整信息
+    skill = registry.get_skill(skill_name)
+    
+    # 构建技能执行指导
+    lines = [
+        f"## 开始执行技能：{skill.name}",
+        "",
+        skill.get_full_info(),
+        "",
+        "## 执行指导",
+        "请按照上述步骤，逐步完成这个技能的任务。你可以：",
+        "- 使用 read_file、write_file、run_shell 等工具",
+        "- 按照步骤顺序执行",
+        "- 根据实际情况灵活调整",
+        "",
+        f"**用户提供的参数**：{json.dumps(args, ensure_ascii=False, indent=2)}",
+    ]
+    
+    # 如果有输入参数，提示 LLM 填充默认值
+    if skill.inputs:
+        lines.extend([
+            "",
+            "**参数提示**：",
+        ])
+        for param_name, param_info in skill.inputs.items():
+            if param_name in args:
+                lines.append(f"- {param_name}: 已提供值 '{args[param_name]}'")
+            elif "default" in param_info:
+                lines.append(f"- {param_name}: 使用默认值 '{param_info['default']}'")
+            elif param_info.get("required", False):
+                lines.append(f"- {param_name}: ⚠️ 必需参数，请向用户询问")
+    
+    result = "\n".join(lines)
+    logger.info(f"注入技能完整信息: {skill_name}")
+    
+    return result

@@ -6,6 +6,7 @@ import os
 import platform
 from qrclaw.config import AGENT_NAME
 from qrclaw.memory import LongTermMemory
+from qrclaw.skills.registry import SkillRegistry
 from qrclaw.logger import get_logger
 
 logger = get_logger("qrclaw.prompt")
@@ -18,7 +19,9 @@ _TOOL_DESCRIPTIONS = {
     "run_shell":       "执行 shell 命令，需要运行程序、安装依赖、操作系统时使用",
     "write_memory":    "写入中期记忆，记录重要信息供后续对话使用",
     "read_memory":     "读取中期记忆，查看之前记录的重要信息",
+    "use_skill":       "使用指定的技能（Skill）来完成复杂任务，技能是预定义的工作流",
 }
+
 
 def _build_tooling_section(tool_names: list[str]) -> str:
     if not tool_names:
@@ -87,12 +90,52 @@ def _build_memory_section(memory: LongTermMemory = None) -> str:
     ])
 
 
-def build_system_prompt(tool_names: list[str] | None = None, memory: LongTermMemory = None) -> str:
+def _build_skills_section(skill_registry: SkillRegistry = None) -> str:
+    """构建技能部分（轻量级描述）"""
+    if skill_registry is None:
+        skill_registry = SkillRegistry()
+        skill_registry.load_from_dir()
+    
+    skills_list = skill_registry.get_skills_list()
+    
+    if not skills_list:
+        # 没有技能，不注入
+        return ""
+    
+    logger.info(f"注入 {len(skills_list)} 个技能到 system prompt")
+    
+    lines = [
+        "## 可用技能",
+        "以下是你可用的技能（Skills），用于完成复杂任务：",
+        "",
+    ]
+    
+    for i, skill_info in enumerate(skills_list, 1):
+        lines.append(f"{i}. {skill_info}")
+    
+    lines.extend([
+        "",
+        "使用建议：",
+        "- 当用户要求完成某个任务时，检查是否有匹配的技能",
+        "- 如果有匹配的技能，调用 use_skill 工具来执行",
+        "- 例如：use_skill(skill_name='analyze-project', args={'project_path': '.'})",
+    ])
+    
+    return "\n".join(lines)
+
+
+def build_system_prompt(
+    tool_names: list[str] | None = None, 
+    memory: LongTermMemory = None,
+    skill_registry: SkillRegistry = None
+) -> str:
     """构建完整的 system prompt"""
     sections = [
         f"你是 {AGENT_NAME}，一个运行在用户本地的自主 AI Agent。",
         "",
         _build_tooling_section(tool_names or []),
+        "",
+        _build_skills_section(skill_registry),  # 新增：技能部分
         "",
         _build_behavior_section(),
         "",
