@@ -1,12 +1,16 @@
+import sys
 import qrclaw.tools.builtin  # 触发工具注册
 import qrclaw.tools.skills    # 触发 Skills 工具注册
 from qrclaw.agent import run
 from qrclaw.memory.session import Session
 from qrclaw.logger import setup_logger
 from qrclaw.config import LOG_LEVEL, LOG_MAX_DAYS, LOG_TO_FILE, LOG_TO_CONSOLE, LOG_CONSOLE_LEVEL, _MODEL_MAX_TOKENS
+from qrclaw.skills.installer import install_openclaw_skill, install_from_clawhub
+from qrclaw.skills.registry import SkillRegistry
 from rich.console import Console
 from rich.panel import Panel
 from rich.text import Text
+from rich.table import Table
 from prompt_toolkit import PromptSession
 from prompt_toolkit.key_binding import KeyBindings
 from prompt_toolkit.filters import is_done
@@ -56,6 +60,77 @@ def show_context_usage(session: Session):
     console.print(usage_text)
 
 
+def handle_skill_command(args: str):
+    """处理 /skill 命令"""
+    parts = args.strip().split(maxsplit=1)
+    
+    if not parts:
+        console.print("[red]用法: /skill <install|list|run> [参数][/red]")
+        return
+    
+    subcommand = parts[0]
+    
+    if subcommand == "install":
+        if len(parts) < 2:
+            console.print("[red]用法: /skill install <skill_name_or_url>[/red]")
+            console.print("[dim]示例:[/dim]")
+            console.print("[dim]  /skill install agent-self-reflection[/dim]")
+            console.print("[dim]  /skill install brennerspear/agent-self-reflection[/dim]")
+            console.print("[dim]  /skill install https://github.com/openclaw/skills/tree/main/skills/brennerspear/agent-self-reflection[/dim]")
+            return
+        
+        skill_identifier = parts[1]
+        console.print(f"[cyan]正在安装 skill: {skill_identifier}...[/cyan]")
+        
+        # 判断是 URL 还是名称
+        if skill_identifier.startswith("http"):
+            success = install_openclaw_skill(skill_identifier)
+        else:
+            success = install_from_clawhub(skill_identifier)
+        
+        if success:
+            console.print("[green]✅ 安装成功！[/green]")
+            console.print("[dim]使用 /skill list 查看已安装的技能[/dim]")
+        else:
+            console.print("[red]❌ 安装失败，请检查 skill 名称或 URL[/red]")
+    
+    elif subcommand == "list":
+        # 列出所有技能
+        registry = SkillRegistry()
+        registry.load_from_dir()
+        
+        if not registry.skills:
+            console.print("[yellow]没有安装任何技能[/yellow]")
+            console.print("[dim]使用 /skill install <skill_name> 安装技能[/dim]")
+            return
+        
+        table = Table(title="已安装的技能")
+        table.add_column("名称", style="cyan")
+        table.add_column("描述", style="green")
+        table.add_column("版本", style="yellow")
+        
+        for name, skill in registry.skills.items():
+            table.add_row(name, skill.description[:50] + "..." if len(skill.description) > 50 else skill.description, skill.version)
+        
+        console.print(table)
+    
+    elif subcommand == "run":
+        if len(parts) < 2:
+            console.print("[red]用法: /skill run <skill_name> [参数][/red]")
+            return
+        
+        # 运行技能（通过对话触发）
+        skill_name = parts[1]
+        console.print(f"[cyan]使用技能: {skill_name}[/cyan]")
+        console.print("[dim]请在对话中描述你的需求[/dim]\n")
+        
+        # 这个会通过正常的对话流程触发 use_skill
+    
+    else:
+        console.print(f"[red]未知子命令: {subcommand}[/red]")
+        console.print("[dim]可用命令: install, list, run[/dim]")
+
+
 def main():
     # 创建会话（默认 session_id = "default"）
     session = Session()
@@ -70,8 +145,8 @@ def main():
     )
 
     console.print(
-        "[bold cyan]JavaClaw Agent[/bold cyan] 启动\n"
-        "[dim]Enter 发送 · Alt+Enter 换行 · exit 退出 · clear 清除会话[/dim]\n"
+        "[bold cyan]QRClaw Agent[/bold cyan] 启动\n"
+        "[dim]Enter 发送 · Alt+Enter 换行 · exit 退出 · clear 清除会话 · /skill 管理技能[/dim]\n"
     )
 
     if session.messages:
@@ -90,6 +165,18 @@ def main():
         user_input = user_input.strip()
 
         if not user_input:
+            continue
+
+        # 处理 /skill 命令
+        if user_input.startswith("/skill "):
+            handle_skill_command(user_input[7:])
+            continue
+        
+        if user_input == "/skill":
+            console.print("[dim]用法: /skill <install|list|run> [参数][/dim]")
+            console.print("[dim]  install <skill_name> - 安装 OpenClaw skill[/dim]")
+            console.print("[dim]  list - 列出所有技能[/dim]")
+            console.print("[dim]  run <skill_name> - 运行技能[/dim]")
             continue
 
         if user_input == "exit":

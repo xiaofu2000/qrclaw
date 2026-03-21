@@ -5,6 +5,7 @@ Skills 注册表
 - 自动发现和加载
 - 轻量级描述注入（System Prompt）
 - 完整信息按需加载
+- 完全兼容 OpenClaw 的 SKILL.md 格式
 """
 
 import yaml
@@ -19,36 +20,50 @@ SKILLS_DIR = Path.home() / ".qrclaw" / "skills"
 
 
 class Skill:
-    """技能定义"""
+    """技能定义（OpenClaw SKILL.md 格式）"""
     
-    def __init__(self, name: str, description: str, version: str = "1.0.0", 
-                 author: str = "", inputs: Dict = None, steps: List = None):
+    def __init__(self, name: str, description: str, version: str = "1.0.0",
+                 metadata: Dict = None, content: str = "", path: Path = None):
         self.name = name
         self.description = description
         self.version = version
-        self.author = author
-        self.inputs = inputs or {}
-        self.steps = steps or []
-        self.path: Optional[Path] = None
+        self.metadata = metadata or {}
+        self.content = content
+        self.path = path
     
     @classmethod
-    def from_yaml(cls, yaml_path: Path) -> "Skill":
-        """从 YAML 文件加载技能"""
-        with open(yaml_path, encoding="utf-8") as f:
-            data = yaml.safe_load(f)
+    def from_skill_md(cls, skill_md_path: Path) -> "Skill":
+        """从 SKILL.md 文件加载技能"""
+        try:
+            content = skill_md_path.read_text(encoding="utf-8")
+            
+            # 解析 YAML frontmatter
+            metadata = {}
+            if content.startswith("---"):
+                parts = content.split("---", 2)
+                if len(parts) >= 3:
+                    metadata = yaml.safe_load(parts[1]) or {}
+                    markdown_content = parts[2].strip()
+                else:
+                    markdown_content = content
+            else:
+                markdown_content = content
+            
+            skill = cls(
+                name=metadata.get("name", skill_md_path.parent.name),
+                description=metadata.get("description", ""),
+                version=metadata.get("version", "1.0.0"),
+                metadata=metadata,
+                content=markdown_content,
+                path=skill_md_path.parent
+            )
+            
+            logger.info(f"加载技能: {skill.name} - {skill.description}")
+            return skill
         
-        skill = cls(
-            name=data.get("name", yaml_path.parent.name),
-            description=data.get("description", ""),
-            version=data.get("version", "1.0.0"),
-            author=data.get("author", ""),
-            inputs=data.get("inputs", {}),
-            steps=data.get("steps", [])
-        )
-        skill.path = yaml_path.parent
-        
-        logger.info(f"加载技能: {skill.name} - {skill.description}")
-        return skill
+        except Exception as e:
+            logger.error(f"加载技能失败: {skill_md_path}, 错误: {e}", exc_info=True)
+            raise
     
     def get_lightweight_info(self) -> str:
         """获取轻量级信息（用于 System Prompt）"""
@@ -60,26 +75,11 @@ class Skill:
             f"## 技能：{self.name}",
             f"**描述**：{self.description}",
             f"**版本**：{self.version}",
+            "",
+            "---",
+            "",
+            self.content
         ]
-        
-        if self.author:
-            lines.append(f"**作者**：{self.author}")
-        
-        if self.inputs:
-            lines.append("\n**输入参数**：")
-            for param, info in self.inputs.items():
-                required = "必需" if info.get("required", False) else "可选"
-                default = f"（默认：{info.get('default')}）" if "default" in info else ""
-                lines.append(f"- {param} ({info.get('type', 'string')}, {required}){default}：{info.get('description', '')}")
-        
-        if self.steps:
-            lines.append("\n**执行步骤**：")
-            for i, step in enumerate(self.steps, 1):
-                if "tool" in step:
-                    lines.append(f"{i}. 调用工具：{step['tool']}")
-                elif "prompt" in step:
-                    lines.append(f"{i}. 执行推理：{step['prompt'][:50]}...")
-        
         return "\n".join(lines)
 
 
@@ -104,13 +104,17 @@ class SkillRegistry:
             if not skill_dir.is_dir():
                 continue
             
-            yaml_path = skill_dir / "skill.yaml"
-            if not yaml_path.exists():
-                logger.warning(f"技能目录缺少 skill.yaml：{skill_dir}")
+            # 查找 SKILL.md 或 skill.md
+            skill_md = skill_dir / "SKILL.md"
+            if not skill_md.exists():
+                skill_md = skill_dir / "skill.md"
+            
+            if not skill_md.exists():
+                logger.debug(f"跳过目录（缺少 SKILL.md）：{skill_dir.name}")
                 continue
             
             try:
-                skill = Skill.from_yaml(yaml_path)
+                skill = Skill.from_skill_md(skill_md)
                 self.skills[skill.name] = skill
                 logger.debug(f"注册技能：{skill.name}")
             except Exception as e:
