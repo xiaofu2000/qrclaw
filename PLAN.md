@@ -1,4 +1,4 @@
-# JavaClaw 开发计划
+# QRClaw 开发计划
 
 > 目标：从零手写一个类 OpenClaw 的自主 AI Agent，边写边学。
 > 原则：每次只做一件事，看懂了再做下一步。
@@ -26,6 +26,8 @@
 第四阶段：记忆系统
   → 会话历史持久化
   → 重启不丢上下文
+  → 中期记忆（Markdown 文件）
+  → 长期记忆（向量数据库，可选）
 
 第五阶段：扩展（选做）
   → CLI 美化
@@ -63,10 +65,12 @@
 - [ ] 会话历史存到本地 JSON 文件
 - [ ] 启动时加载历史，保持上下文连续
 - [ ] 支持清除会话
+- [ ] 中期记忆（Markdown 文件）
+- [ ] 长期记忆（向量数据库，可选）
 
 ### 第五阶段：扩展（选做）
 
-- [ ] CLI 入口（`javaclaw` 命令启动）
+- [ ] CLI 入口（`qrclaw` 命令启动）
 - [ ] 用 `rich` 美化终端输出
 - [ ] Telegram Bot 渠道接入
 - [ ] 内置工具：写文件、执行 Shell 命令、抓取网页
@@ -75,7 +79,7 @@
 
 ## 当前进度
 
-> 正在进行：**第五阶段 - 扩展**
+> 正在进行：**第四阶段 - 记忆系统**
 
 ### 第一阶段 ✅
 - [x] 创建项目目录结构
@@ -95,13 +99,53 @@
 - [x] finish_reason 标志位判断
 - [x] MAX_ITERATIONS 兜底保护
 
-### 第四阶段 ✅
+### 第四阶段（进行中）
 - [x] 会话历史持久化（Session）
 - [x] 上下文压缩（摘要策略，target token 10%）
 - [x] 压缩阈值可配置（MODEL_MAX_TOKENS）
+- [x] 中期记忆（Markdown 文件）
+- [ ] 长期记忆（向量数据库，可选）
 
 ### 第五阶段（进行中）
-- [x] CLI 入口（javaclaw 命令）
+- [x] CLI 入口（qrclaw 命令）
 - [x] 工具跨平台适配（pathlib + Windows编码）
 - [x] 安全防护（Policy-as-Prompt / 参数校验）
+- [x] 日志系统（文件 + 控制台）
+- [x] 上下文使用百分比显示
+- [x] 配置管理统一（~/.qrclaw/ 目录）
 - [ ] Telegram Bot 渠道接入
+
+---
+
+## 项目结构
+
+```
+qrclaw/
+├── __init__.py
+├── agent.py           # Agent 主循环
+├── cli.py             # CLI 入口
+├── config.py          # 配置加载
+├── config_manager.py  # 配置管理
+├── llm.py             # LLM 调用
+├── prompt.py          # System Prompt 构建
+├── logger/            # 日志系统
+│   ├── __init__.py
+│   └── logger.py
+├── memory/            # 记忆系统
+│   ├── __init__.py
+│   ├── session.py     # 短期记忆（会话）
+│   ├── compressor.py  # 上下文压缩
+│   └── long_term.py   # 中期记忆
+└── tools/             # 工具系统
+    ├── __init__.py
+    ├── registry.py    # 工具注册
+    └── builtin.py     # 内置工具
+
+~/.qrclaw/             # 用户数据目录
+├── config             # 配置文件
+├── MEMORY.md          # 中期记忆
+├── sessions/          # 会话历史
+│   └── default.json
+└── logs/              # 日志文件（可选）
+    └── qrclaw.log
+```

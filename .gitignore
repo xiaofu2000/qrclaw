@@ -1,10 +1,7 @@
 # 虚拟环境
 .venv/
 
-# 日志
-logs/
-
-# 敏感配置
+# 敏感配置（项目目录下的 .env）
 .env
 
 # Python 缓存
@@ -15,3 +12,10 @@ __pycache__/
 # 编辑器
 .DS_Store
 .vscode/
+
+# 日志文件
+logs/
+*.log
+
+# 用户配置（统一在 ~/.qrclaw/ 目录）
+# 注意：项目目录下不再需要 .env，配置在 ~/.qrclaw/config

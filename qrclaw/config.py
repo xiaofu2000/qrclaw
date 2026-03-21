@@ -1,7 +1,9 @@
 import os
-from dotenv import load_dotenv
+from qrclaw.config_manager import init_config, load_config
 
-load_dotenv()
+# 初始化并加载配置
+init_config()
+load_config()
 
 # Agent 配置
 AGENT_NAME = os.getenv("AGENT_NAME", "QRClaw")
