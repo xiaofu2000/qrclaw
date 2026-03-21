@@ -130,7 +130,7 @@ def web_search(query: str) -> str:
         return error_msg
 
 
-@register(description="在本地执行 shell 命令，返回输出结果，超时 30 秒", args_model=RunShellArgs, confirm=True)
+@register(description="在本地执行 shell 命令，返回输出结果，超时 30 分钟", args_model=RunShellArgs, confirm=True)
 def run_shell(command: str) -> str:
     logger.debug(f"执行 shell 命令: {command}")
     try:
@@ -138,7 +138,7 @@ def run_shell(command: str) -> str:
             command,
             shell=True,
             capture_output=True,
-            timeout=30,
+            timeout=1800,  # 30 分钟 = 1800 秒
         )
         encoding = "gbk" if os.name == "nt" else "utf-8"
         stdout = result.stdout.decode(encoding, errors="replace").strip()
@@ -154,7 +154,7 @@ def run_shell(command: str) -> str:
         
         return output or "(无输出)"
     except subprocess.TimeoutExpired:
-        error_msg = "错误：命令执行超时（30秒）"
+        error_msg = "错误：命令执行超时（30分钟）"
         logger.warning(f"命令超时: {command}")
         return error_msg
     except Exception as e:
