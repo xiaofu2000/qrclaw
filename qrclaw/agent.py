@@ -27,7 +27,7 @@ def get_memory() -> LongTermMemory:
 
 def run(user_input: str, session: Session, console: Console):
     logger.info(f"收到用户输入: {user_input[:100]}...")
-    
+
     session.add({"role": "user", "content": user_input})
 
     # system prompt 每次实时构建，不存进 session
@@ -41,7 +41,12 @@ def run(user_input: str, session: Session, console: Console):
         logger.debug(f"开始第 {iteration + 1} 轮推理")
 
         # 每次调 LLM 时把 system prompt 拼到最前面
-        messages = [system_prompt, *session.messages]
+        # 过滤掉内部标记字段（如 _is_summary），避免发给 LLM 时报错
+        clean_messages = [
+            {k: v for k, v in m.items() if not k.startswith("_")}
+            for m in session.messages
+        ]
+        messages = [system_prompt, *clean_messages]
 
         # spinner 只包住 LLM 请求这一步，拿到响应立即退出
         with console.status("[bold yellow]思考中...[/bold yellow]", spinner="dots"):
@@ -52,7 +57,7 @@ def run(user_input: str, session: Session, console: Console):
                     messages=messages,
                     tools=get_schemas(),
                 )
-                
+
                 # 更新 token 使用情况
                 usage = response.usage
                 session.update_tokens(
@@ -60,7 +65,7 @@ def run(user_input: str, session: Session, console: Console):
                     completion_tokens=usage.completion_tokens,
                     total_tokens=usage.total_tokens
                 )
-                
+
                 logger.info(f"LLM 响应成功，使用 {usage.total_tokens} tokens (prompt: {usage.prompt_tokens}, completion: {usage.completion_tokens})")
             except Exception as e:
                 logger.error(f"LLM 调用失败: {e}", exc_info=True)

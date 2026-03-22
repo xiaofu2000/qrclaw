@@ -33,10 +33,10 @@ def summarize(session) -> None:
     通过 max_tokens 控制摘要长度，压缩后控制在目标 token 数以内。
     """
     logger.info("开始压缩历史消息")
-    
+
     recent = session.messages[-10:]
     old = session.messages[:-10]
-    
+
     logger.debug(f"最近消息数: {len(recent)}, 旧消息数: {len(old)}")
 
     if not old:
@@ -53,19 +53,19 @@ def summarize(session) -> None:
             ],
         )
         summary = response.choices[0].message.content
-        
+
         logger.info(f"摘要生成成功，长度: {len(summary)} 字符, 使用 {response.usage.total_tokens} tokens")
         logger.debug(f"摘要内容预览: {summary[:200]}...")
 
         session.messages = [
-            {"role": "system", "content": f"以下是之前对话的结构化摘要：\n{summary}"},
+            {"role": "assistant", "content": f"[SUMMARY] 以下是之前对话的结构化摘要：\n{summary}", "_is_summary": True},
             *recent,
         ]
         session._save()
-        
+
         logger.info(f"压缩完成，消息数: {len(session.messages)} (摘要 + 最近{len(recent)}条)")
         print("  [系统] 压缩完成")
-        
+
     except Exception as e:
         logger.error(f"压缩失败: {e}", exc_info=True)
         raise
