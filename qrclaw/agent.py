@@ -41,12 +41,7 @@ def run(user_input: str, session: Session, console: Console):
         logger.debug(f"开始第 {iteration + 1} 轮推理")
 
         # 每次调 LLM 时把 system prompt 拼到最前面
-        # 过滤掉内部标记字段（如 _is_summary），避免发给 LLM 时报错
-        clean_messages = [
-            {k: v for k, v in m.items() if not k.startswith("_")}
-            for m in session.messages
-        ]
-        messages = [system_prompt, *clean_messages]
+        messages = [system_prompt, *session.messages]
 
         # spinner 只包住 LLM 请求这一步，拿到响应立即退出
         with console.status("[bold yellow]思考中...[/bold yellow]", spinner="dots"):

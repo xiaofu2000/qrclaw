@@ -58,7 +58,7 @@ def summarize(session) -> None:
         logger.debug(f"摘要内容预览: {summary[:200]}...")
 
         session.messages = [
-            {"role": "assistant", "content": f"[SUMMARY] 以下是之前对话的结构化摘要：\n{summary}", "_is_summary": True},
+            {"role": "assistant", "content": f"[SUMMARY] 以下是之前对话的结构化摘要：\n{summary}"},
             *recent,
         ]
         session._save()
