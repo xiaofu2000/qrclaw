@@ -3,14 +3,17 @@
 
 压缩策略：递归摘要 + 目标范围控制
 - 目标范围：压缩后（摘要 + 短期记忆）占上下文窗口的 20%~25%
-- 保留窗口：从最新消息往前选，同时满足 token 限制和条数限制
+- 保留窗口：从最新消息往前选，只限制 tokens（不限制条数）
 - 递归摘要：检测旧摘要，有则合并一起压缩，保证信息不丢失
+
+Token 计算：使用 tiktoken 精确计算，支持 GPT-4o 等模型
 """
+import tiktoken
 from openai import OpenAI
 from qrclaw.config import (
     OPENAI_API_KEY, OPENAI_MODEL, OPENAI_BASE_URL,
     COMPRESS_SUMMARY_MAX_TOKENS, COMPRESS_SUMMARY_TARGET_TOKENS,
-    COMPRESS_RECENT_MAX_TOKENS, COMPRESS_RECENT_MAX_MSGS,
+    COMPRESS_RECENT_MAX_TOKENS,
     COMPRESS_TARGET_MIN_RATIO, COMPRESS_TARGET_MAX_RATIO,
     _MODEL_MAX_TOKENS,
 )
@@ -19,6 +22,49 @@ from qrclaw.logger import get_logger
 logger = get_logger("qrclaw.memory.compressor")
 
 client = OpenAI(api_key=OPENAI_API_KEY, base_url=OPENAI_BASE_URL or None)
+
+# 初始化 tiktoken encoder
+# 对于未知模型，fallback 到 cl100k_base（GPT-4/4o 使用）
+try:
+    _encoding = tiktoken.encoding_for_model(OPENAI_MODEL)
+except KeyError:
+    _encoding = tiktoken.get_encoding("cl100k_base")
+    logger.debug(f"模型 {OPENAI_MODEL} 无对应 encoder，使用 cl100k_base")
+
+
+def count_tokens(messages: list[dict]) -> int:
+    """
+    精确计算消息列表的 token 数。
+    
+    Args:
+        messages: OpenAI 格式的消息列表
+        
+    Returns:
+        int: token 总数
+    """
+    tokens = 0
+    for msg in messages:
+        # 每条消息有固定开销
+        tokens += 4  # {"role": "...", "content": "..."} 格式开销
+        for key, value in msg.items():
+            if value is not None:
+                tokens += len(_encoding.encode(str(value)))
+    tokens += 2  # 对话开销
+    return tokens
+
+
+def count_text_tokens(text: str) -> int:
+    """
+    精确计算文本的 token 数。
+    
+    Args:
+        text: 文本内容
+        
+    Returns:
+        int: token 数
+    """
+    return len(_encoding.encode(text))
+
 
 SUMMARIZE_PROMPT = """请把下面的对话内容整理成结构化摘要，要求：
 1. 按以下分类输出，没有内容的分类可以省略
@@ -37,27 +83,9 @@ SUMMARIZE_PROMPT = """请把下面的对话内容整理成结构化摘要，要�
 """
 
 
-def _estimate_tokens(message: dict) -> int:
-    """
-    估算单条消息的 token 数。
-    粗略公式：中文 1字≈1token，英文 4字≈1token，统一用字符数/2 保守估算。
-    """
-    content = message.get("content") or ""
-    if not isinstance(content, str):
-        content = str(content)
-    return max(1, len(content) // 2)
-
-
-def _estimate_text_tokens(text: str) -> int:
-    """估算文本的 token 数"""
-    return max(1, len(text) // 2)
-
-
 def _pick_recent(messages: list[dict], max_tokens: int = None) -> tuple[list[dict], list[dict]]:
     """
-    从最新消息往前选，同时满足：
-      1. 累计 token 不超过 max_tokens（默认 COMPRESS_RECENT_MAX_TOKENS）
-      2. 条数不超过 COMPRESS_RECENT_MAX_MSGS
+    从最新消息往前选，只限制 tokens（不限制条数）。
 
     返回 (recent, old)：recent 是保留的，old 是要压缩的。
     """
@@ -68,23 +96,21 @@ def _pick_recent(messages: list[dict], max_tokens: int = None) -> tuple[list[dic
     token_count = 0
 
     for msg in reversed(messages):
-        if len(recent) >= COMPRESS_RECENT_MAX_MSGS:
-            break
-        t = _estimate_tokens(msg)
+        t = count_tokens([msg])
         if token_count + t > max_tokens:
             break
         recent.insert(0, msg)
         token_count += t
 
     old = messages[:len(messages) - len(recent)]
-    logger.debug(f"保留窗口: {len(recent)} 条, 约 {token_count} tokens; 待压缩: {len(old)} 条")
+    logger.debug(f"保留窗口: {len(recent)} 条, {token_count} tokens; 待压缩: {len(old)} 条")
     return recent, old
 
 
 def summarize(session) -> None:
     """
     递归摘要压缩：
-    1. 按双重限制（token数+条数）选出保留的短期记忆
+    1. 从最新消息往前选，只限制 tokens
     2. 检测是否有旧摘要，有则合并进待压缩内容（递归摘要）
     3. 调用 LLM 生成新摘要
     4. 检查总长度是否在 20%~25% 范围内，必要时调整
@@ -129,13 +155,13 @@ def summarize(session) -> None:
             ],
         )
         summary = response.choices[0].message.content
-        summary_tokens = _estimate_text_tokens(summary)
+        summary_tokens = count_text_tokens(summary)
 
-        logger.info(f"摘要生成成功，长度: {len(summary)} 字符，约 {summary_tokens} tokens")
+        logger.info(f"摘要生成成功，长度: {len(summary)} 字符，{summary_tokens} tokens")
         logger.debug(f"摘要内容预览: {summary[:200]}...")
 
         # 计算短期记忆的 token 数
-        recent_tokens = sum(_estimate_tokens(msg) for msg in recent)
+        recent_tokens = count_tokens(recent)
         total_tokens = summary_tokens + recent_tokens
 
         logger.info(f"压缩后总长度: {total_tokens} tokens (摘要 {summary_tokens} + 短期记忆 {recent_tokens})")
@@ -147,7 +173,7 @@ def summarize(session) -> None:
             available_for_recent = target_max - summary_tokens
             if available_for_recent > 0:
                 recent, old = _pick_recent(session.messages, max_tokens=available_for_recent)
-                recent_tokens = sum(_estimate_tokens(msg) for msg in recent)
+                recent_tokens = count_tokens(recent)
                 total_tokens = summary_tokens + recent_tokens
                 logger.info(f"调整后: {total_tokens} tokens (摘要 {summary_tokens} + 短期记忆 {recent_tokens})")
             else:
