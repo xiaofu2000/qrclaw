@@ -3,8 +3,17 @@ import uuid
 from datetime import datetime
 from pathlib import Path
 from qrclaw.logger import get_logger
+from qrclaw.config import OPENAI_MODEL
 
 logger = get_logger("qrclaw.memory.session")
+
+# 初始化 tiktoken encoder
+import tiktoken
+try:
+    _encoding = tiktoken.encoding_for_model(OPENAI_MODEL)
+except KeyError:
+    _encoding = tiktoken.get_encoding("cl100k_base")
+    logger.debug(f"模型 {OPENAI_MODEL} 无对应 encoder，使用 cl100k_base")
 
 
 def list_sessions(sessions_dir: Path) -> list[dict]:
@@ -59,32 +68,24 @@ def delete_session(session_id: str, sessions_dir: Path) -> bool:
     return False
 
 
-def estimate_tokens(messages: list[dict]) -> int:
+def count_tokens(messages: list[dict]) -> int:
     """
-    估算消息列表的 token 数。
-
-    使用简单的字符计数估算：
-    - 英文约 4 字符 = 1 token
-    - 中文约 1.5 字符 = 1 token
-    - 综合估算：约 3 字符 = 1 token
+    精确计算消息列表的 token 数（使用 tiktoken）。
 
     Args:
-        messages: 消息列表
+        messages: OpenAI 格式的消息列表
     Returns:
-        int: 估算的 token 数
+        int: token 总数
     """
-    total_chars = 0
+    tokens = 0
     for msg in messages:
-        content = msg.get("content", "")
-        if isinstance(content, str):
-            total_chars += len(content)
-        elif isinstance(content, list):
-            # 处理多模态消息
-            for part in content:
-                if isinstance(part, dict) and part.get("type") == "text":
-                    total_chars += len(part.get("text", ""))
-    # 估算：约 3 字符 = 1 token
-    return total_chars // 3
+        # 每条消息有固定开销
+        tokens += 4  # {"role": "...", "content": "..."} 格式开销
+        for key, value in msg.items():
+            if value is not None:
+                tokens += len(_encoding.encode(str(value)))
+    tokens += 2  # 对话开销
+    return tokens
 
 
 class Session:
@@ -206,9 +207,9 @@ class Session:
                 data = json.loads(self._path.read_text(encoding="utf-8"))
                 # 过滤掉旧历史里的 system 消息，system prompt 由 agent 实时生成
                 self.messages = [m for m in data if m.get("role") != "system"]
-                # 估算已加载消息的 token 数
-                self.prompt_tokens = estimate_tokens(self.messages)
-                logger.info(f"加载历史会话: {len(self.messages)} 条消息, 估算 {self.prompt_tokens} tokens")
+                # 精确计算已加载消息的 token 数
+                self.prompt_tokens = count_tokens(self.messages)
+                logger.info(f"加载历史会话: {len(self.messages)} 条消息, {self.prompt_tokens} tokens")
             except Exception as e:
                 logger.error(f"加载会话失败: {e}", exc_info=True)
                 self.messages = []
