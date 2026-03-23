@@ -2,6 +2,7 @@ import json
 from openai import OpenAI
 from rich.console import Console
 from rich.panel import Panel
+from rich.markdown import Markdown
 from qrclaw.config import OPENAI_API_KEY, OPENAI_MODEL, OPENAI_BASE_URL, MAX_ITERATIONS, COMPRESS_THRESHOLD
 from qrclaw.tools.registry import get_schemas, execute, need_confirm
 from qrclaw.memory.session import Session
@@ -99,10 +100,10 @@ def run(user_input: str, session: Session, console: Console, workspace: Workspac
             session.add({"role": "assistant", "content": message.content})
             console.print()  # 添加空行
             console.print(Panel(
-                message.content,
+                Markdown(message.content),
                 title="[bold green]Agent[/bold green]",
                 border_style="green",
-                expand=False,  # 不撑满整行，按内容宽度显示
+                expand=True,
             ))
             console.print()  # 添加空行
             return message.content
