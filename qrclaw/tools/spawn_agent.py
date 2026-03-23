@@ -43,7 +43,7 @@ class SpawnAgentArgs(BaseModel):
 
 
 @register(
-    description="在后台启动子 agent 执行任务，立即返回不阻塞，可同时启动多个。用 wait_agents 工具等待结果。",
+    description="在后台启动子 agent 并行执行任务，立即返回不阻塞。任务可拆分时批量调用此工具启动多个子 agent，再用 wait_agents 统一等待结果。子 agent 完成时结果自动打印。",
     args_model=SpawnAgentArgs,
 )
 def spawn_agent(agent_id: str, task: str) -> str:
