@@ -192,7 +192,10 @@ def write_memory(content: str, title: str = "") -> str:
     """
     logger.debug(f"写入中期记忆: {title or '无标题'}")
     try:
-        memory = LongTermMemory()
+        from qrclaw.agent import get_workspace
+        from qrclaw.workspace import Workspace
+        ws = get_workspace() or Workspace("default")
+        memory = LongTermMemory(ws.memory_file)
         success = memory.append(content, title if title else None)
 
         if success:
@@ -246,7 +249,10 @@ def read_memory() -> str:
     """
     logger.debug("读取中期记忆")
     try:
-        memory = LongTermMemory()
+        from qrclaw.agent import get_workspace
+        from qrclaw.workspace import Workspace
+        ws = get_workspace() or Workspace("default")
+        memory = LongTermMemory(ws.memory_file)
         content = memory.load()
 
         if not content or content.strip() == "# QRClaw 中期记忆":
