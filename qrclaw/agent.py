@@ -16,27 +16,26 @@ logger = get_logger("qrclaw.agent")
 client = OpenAI(api_key=OPENAI_API_KEY, base_url=OPENAI_BASE_URL or None)
 
 
-# 全局 session / workspace 实例（供工具函数访问）
-_session = None
-_workspace = None
+# 用 threading.local 隔离每个线程的 session/workspace
+# 多个子 agent 并行时，各自的上下文互不干扰
+import threading
+_thread_local = threading.local()
 
 def set_session(session: Session):
-    """注入当前 session"""
-    global _session
-    _session = session
+    """注入当前线程的 session"""
+    _thread_local.session = session
 
 def get_session() -> Session | None:
-    """获取当前 session"""
-    return _session
+    """获取当前线程的 session"""
+    return getattr(_thread_local, "session", None)
 
 def set_workspace(workspace: Workspace):
-    """注入当前 workspace"""
-    global _workspace
-    _workspace = workspace
+    """注入当前线程的 workspace"""
+    _thread_local.workspace = workspace
 
 def get_workspace() -> Workspace | None:
-    """获取当前 workspace"""
-    return _workspace
+    """获取当前线程的 workspace"""
+    return getattr(_thread_local, "workspace", None)
 
 
 def run(user_input: str, session: Session, console: Console, workspace: Workspace, auto_confirm: bool = False):
