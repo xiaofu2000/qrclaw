@@ -8,6 +8,7 @@ from qrclaw.tools.registry import get_schemas, execute, need_confirm
 from qrclaw.memory.session import Session
 from qrclaw.memory import compressor, LongTermMemory
 from qrclaw.prompt import build_system_prompt
+from qrclaw.cli.display import show_plan_progress
 from qrclaw.logger import get_logger
 
 logger = get_logger("qrclaw.agent")
@@ -25,16 +26,30 @@ def get_memory() -> LongTermMemory:
     return _memory
 
 
+# 全局 session 实例（供工具函数访问）
+_session = None
+
+def set_session(session: Session):
+    """注入当前 session"""
+    global _session
+    _session = session
+
+def get_session() -> Session | None:
+    """获取当前 session"""
+    return _session
+
+
 def run(user_input: str, session: Session, console: Console):
     logger.info(f"收到用户输入: {user_input[:100]}...")
 
+    set_session(session)
     session.add({"role": "user", "content": user_input})
 
     # system prompt 每次实时构建，不存进 session
     # 这样工作目录、工具列表永远是最新的
     tool_names = [s["function"]["name"] for s in get_schemas()]
     memory = get_memory()
-    system_prompt = {"role": "system", "content": build_system_prompt(tool_names, memory)}
+    system_prompt = {"role": "system", "content": build_system_prompt(tool_names, memory, active_plan=session.active_plan)}
     logger.debug(f"System prompt 已构建，可用工具: {', '.join(tool_names)}")
 
     for iteration in range(MAX_ITERATIONS):
@@ -156,3 +171,6 @@ def run(user_input: str, session: Session, console: Console):
                 "tool_call_id": tc.id,
                 "content": result,
             })
+
+            if name in ("create_plan", "complete_step"):
+                show_plan_progress(console, session)

@@ -13,7 +13,7 @@ from rich.panel import Panel
 from qrclaw.logger import setup_logger
 from qrclaw.config import LOG_LEVEL, LOG_MAX_DAYS, LOG_TO_FILE, LOG_TO_CONSOLE, LOG_CONSOLE_LEVEL
 from qrclaw.cli.input import get_input
-from qrclaw.cli.display import show_context_usage
+from qrclaw.cli.display import show_context_usage, show_plan_progress
 from qrclaw.cli.commands import session as session_cmd
 from qrclaw.cli.commands import skill as skill_cmd
 
@@ -60,6 +60,7 @@ def main() -> None:
 
     while True:
         try:
+            show_plan_progress(console, session)
             show_context_usage(console, session)
             user_input = get_input(session.session_id)
         except (KeyboardInterrupt, EOFError):

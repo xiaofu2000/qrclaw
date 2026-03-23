@@ -58,6 +58,9 @@ class Session:
         self.completion_tokens = 0
         self.total_tokens = 0
 
+        # 当前活跃计划
+        self.active_plan: dict | None = None
+
         # 确保目录存在
         SESSIONS_DIR.mkdir(parents=True, exist_ok=True)
         self._path = SESSIONS_DIR / f"{session_id}.json"
@@ -79,6 +82,34 @@ class Session:
         self.completion_tokens = completion_tokens
         self.total_tokens = total_tokens
         logger.debug(f"更新 token: prompt={prompt_tokens}, completion={completion_tokens}, total={total_tokens}")
+
+    def set_plan(self, goal: str, steps: list[dict]):
+        """设置当前活跃计划"""
+        self.active_plan = {
+            "goal": goal,
+            "steps": [{"id": s["id"], "description": s["description"], "done": False} for s in steps],
+        }
+        logger.info(f"设置执行计划: {goal}, 共 {len(steps)} 步")
+
+    def complete_step(self, step_id: int) -> bool:
+        """标记某步骤为已完成，返回是否全部完成"""
+        if not self.active_plan:
+            return False
+        for step in self.active_plan["steps"]:
+            if step["id"] == step_id:
+                step["done"] = True
+                logger.info(f"计划步骤 {step_id} 已完成")
+                break
+        all_done = all(s["done"] for s in self.active_plan["steps"])
+        if all_done:
+            logger.info("所有计划步骤已完成，清空计划")
+            self.active_plan = None
+        return all_done
+
+    def clear_plan(self):
+        """清空当前计划"""
+        self.active_plan = None
+        logger.info("计划已清空")
 
     def clear(self):
         """清空当前会话"""

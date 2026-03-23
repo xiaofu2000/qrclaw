@@ -42,6 +42,21 @@ class ReadMemoryArgs(BaseModel):
     pass  # 不需要参数，读取全部记忆
 
 
+class PlanStep(BaseModel):
+    id: int = Field(description="步骤编号，从 1 开始")
+    description: str = Field(description="这一步要做什么")
+    depends_on: list[int] = Field(default=[], description="依赖的前置步骤编号列表，没有依赖则为空")
+
+
+class CreatePlanArgs(BaseModel):
+    goal: str = Field(description="任务目标，简要描述要完成什么")
+    steps: list[PlanStep] = Field(description="执行步骤列表，按顺序排列")
+
+
+class CompleteStepArgs(BaseModel):
+    step_id: int = Field(description="已完成的步骤编号")
+
+
 # ── 工具函数 ──────────────────────────────────────────────
 
 @register(description="读取本地文件的内容", args_model=ReadFileArgs)
@@ -146,12 +161,12 @@ def run_shell(command: str) -> str:
         output = stdout
         if stderr:
             output += f"\n[stderr] {stderr}"
-        
+
         if result.returncode == 0:
             logger.info(f"命令执行成功: {command}")
         else:
             logger.warning(f"命令执行失败 (exit code {result.returncode}): {command}")
-        
+
         return output or "(无输出)"
     except subprocess.TimeoutExpired:
         error_msg = "错误：命令执行超时（30分钟）"
@@ -163,15 +178,15 @@ def run_shell(command: str) -> str:
         return error_msg
 
 
-@register(description="写入中期记忆，记录重要信息供后续对话使用", args_model=WriteMemoryArgs)
+@register(description="写入中期记忆，仅用于记录用户偏好、项目配置等需要跨会话复用的信息，任务结果、调研报告等不要写入", args_model=WriteMemoryArgs)
 def write_memory(content: str, title: str = "") -> str:
     """
     写入中期记忆
-    
+
     Args:
         content: 要记录的内容（Markdown 格式）
         title: 可选的标题
-    
+
     Returns:
         str: 操作结果
     """
@@ -179,7 +194,7 @@ def write_memory(content: str, title: str = "") -> str:
     try:
         memory = LongTermMemory()
         success = memory.append(content, title if title else None)
-        
+
         if success:
             result = f"已写入中期记忆: {title if title else '无标题'}"
             logger.info(result)
@@ -194,11 +209,38 @@ def write_memory(content: str, title: str = "") -> str:
         return error_msg
 
 
+@register(description="为复杂任务创建执行计划，拆解成有序步骤后逐步执行", args_model=CreatePlanArgs)
+def create_plan(goal: str, steps: list[dict]) -> str:
+    from qrclaw.agent import get_session
+    logger.info(f"创建执行计划: {goal}, 共 {len(steps)} 步")
+    session = get_session()
+    if session:
+        session.set_plan(goal, steps)
+    return f"计划已创建，目标：{goal}，共 {len(steps)} 步。计划已注入上下文，请从 Step 1 开始执行，每完成一步调用 complete_step 标记完成后再继续下一步。"
+
+
+@register(description="标记某个计划步骤为已完成，完成后继续执行下一步", args_model=CompleteStepArgs)
+def complete_step(step_id: int) -> str:
+    from qrclaw.agent import get_session
+    session = get_session()
+    if not session or not session.active_plan:
+        return "当前没有活跃的执行计划"
+    all_done = session.complete_step(step_id)
+    if all_done:
+        logger.info(f"步骤 {step_id} 完成，所有步骤已全部完成")
+        return f"Step {step_id} 已完成。所有步骤全部完成，计划结束。"
+    # 找下一个未完成的步骤
+    remaining = [s for s in session.active_plan["steps"] if not s["done"]]
+    next_step = remaining[0]
+    logger.info(f"步骤 {step_id} 完成，下一步: Step {next_step['id']}")
+    return f"Step {step_id} 已完成。请继续执行 Step {next_step['id']}: {next_step['description']}"
+
+
 @register(description="读取中期记忆，查看之前记录的重要信息", args_model=ReadMemoryArgs)
 def read_memory() -> str:
     """
     读取中期记忆
-    
+
     Returns:
         str: 记忆内容（Markdown 格式）
     """
@@ -206,11 +248,11 @@ def read_memory() -> str:
     try:
         memory = LongTermMemory()
         content = memory.load()
-        
+
         if not content or content.strip() == "# QRClaw 中期记忆":
             logger.info("中期记忆为空")
             return "中期记忆为空，还没有记录任何信息"
-        
+
         logger.info(f"读取中期记忆成功: {len(content)} 字符")
         return content
     except Exception as e:

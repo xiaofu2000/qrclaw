@@ -5,6 +5,7 @@
 """
 from rich.console import Console
 from rich.text import Text
+from rich.panel import Panel
 from qrclaw.memory.session import Session
 from qrclaw.config import _MODEL_MAX_TOKENS, COMPRESS_THRESHOLD
 
@@ -34,3 +35,26 @@ def show_context_usage(console: Console, session: Session) -> None:
         text.append(" ⚠  接近压缩阈值", style="bold red")
 
     console.print(text)
+
+
+def show_plan_progress(console: Console, session: Session) -> None:
+    """打印当前执行计划进度，无计划时不显示。"""
+    if not session.active_plan:
+        return
+
+    plan = session.active_plan
+    lines = Text()
+    lines.append(f"目标：{plan['goal']}\n", style="bold")
+
+    for step in plan["steps"]:
+        if step["done"]:
+            lines.append(f"  ✅ Step {step['id']}: {step['description']}\n", style="dim green")
+        else:
+            lines.append(f"  ⬜ Step {step['id']}: {step['description']}\n", style="white")
+
+    console.print(Panel(
+        lines,
+        title="[bold yellow]执行计划[/bold yellow]",
+        border_style="yellow",
+        expand=False,
+    ))
