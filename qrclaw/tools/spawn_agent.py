@@ -6,16 +6,25 @@ spawn_agent 工具
 通过 wait_agents 工具等待并收集所有结果。
 """
 import threading
+from rich.console import Console
+from rich.panel import Panel
 from pydantic import BaseModel, Field
 from qrclaw.tools.registry import register
 from qrclaw.logger import get_logger
 
 logger = get_logger("qrclaw.tools.spawn_agent")
 
-# 全局任务池：记录所有子 agent 的状态和结果
-# 结构：{ agent_id: { "status": "running"|"done"|"error", "result": str, "thread": Thread } }
+# 全局任务池
 _task_pool: dict = {}
 _task_pool_lock = threading.Lock()
+
+# 全局 console，由 app.py 启动时注入
+_console: Console = None
+
+def set_console(console: Console):
+    """注入全局 console（由 app.py 调用）"""
+    global _console
+    _console = console
 
 
 def get_task_pool() -> dict:
@@ -68,11 +77,23 @@ def spawn_agent(agent_id: str, task: str) -> str:
                 _task_pool[agent_id]["status"] = "done"
                 _task_pool[agent_id]["result"] = result
             logger.info(f"子 agent {agent_id} 完成")
+            # 完成后直接打印到控制台，不需要主 agent 主动等待
+            if _console:
+                _console.print()
+                _console.print(Panel(
+                    result,
+                    title=f"[bold green]子 agent '{agent_id}' 完成[/bold green]",
+                    border_style="green",
+                    expand=False,
+                ))
+                _console.print()
         except Exception as e:
             logger.error(f"子 agent {agent_id} 出错: {e}", exc_info=True)
             with _task_pool_lock:
                 _task_pool[agent_id]["status"] = "error"
                 _task_pool[agent_id]["result"] = f"执行出错: {e}"
+            if _console:
+                _console.print(f"\n[bold red]子 agent '{agent_id}' 执行出错: {e}[/bold red]\n")
 
     thread = threading.Thread(target=_run, name=f"sub-agent-{agent_id}", daemon=True)
 

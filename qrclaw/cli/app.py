@@ -41,6 +41,8 @@ def main() -> None:
     import qrclaw.tools.skills        # noqa: E402  触发 Skills 工具注册
     import qrclaw.tools.spawn_agent   # noqa: E402  触发 spawn_agent 工具注册
     import qrclaw.tools.wait_agents   # noqa: E402  触发 wait_agents 工具注册
+    from qrclaw.tools.spawn_agent import set_console as set_spawn_console
+    set_spawn_console(console)  # 注入 console，子 agent 完成时直接打印
     from qrclaw.agent import run
     from qrclaw.memory.session import Session
 
