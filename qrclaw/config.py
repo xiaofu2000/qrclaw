@@ -16,8 +16,12 @@ MAX_ITERATIONS = int(os.getenv("MAX_ITERATIONS", "50"))
 _MODEL_MAX_TOKENS = int(os.getenv("MODEL_MAX_TOKENS", "128000"))
 # 超过 60% 触发压缩
 COMPRESS_THRESHOLD = int(_MODEL_MAX_TOKENS * 0.6)
-# 摘要目标：压缩后控制在 10% 以内
-COMPRESS_TARGET_TOKENS = int(_MODEL_MAX_TOKENS * 0.1)
+# 摘要最大输出 token 数（固定上限，给 LLM 的 max_tokens 参数）
+COMPRESS_SUMMARY_MAX_TOKENS = int(os.getenv("COMPRESS_SUMMARY_MAX_TOKENS", "8000"))
+# 压缩后短期记忆保留的 token 预算（估算值，用字符数换算）
+COMPRESS_RECENT_MAX_TOKENS = int(os.getenv("COMPRESS_RECENT_MAX_TOKENS", str(int(_MODEL_MAX_TOKENS * 0.25))))
+# 压缩后短期记忆最多保留条数
+COMPRESS_RECENT_MAX_MSGS = int(os.getenv("COMPRESS_RECENT_MAX_MSGS", "10"))
 
 # Tavily API（网页搜索）
 TAVILY_API_KEY = os.getenv("TAVILY_API_KEY", "")
