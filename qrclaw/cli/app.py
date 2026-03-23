@@ -50,7 +50,7 @@ def main() -> None:
     set_spawn_console(console)  # 注入 console，子 agent 完成时直接打印
     from qrclaw.agent import run
     from qrclaw.memory.session import Session
-    from qrclaw.heartbeat import get_default_heartbeat_content
+    from qrclaw.heartbeat import get_default_heartbeat_content, execute_heartbeat_tasks
 
     # 3. 创建 Session（路径由 workspace 决定）
     # resume=True 且不传 session_id 时，自动恢复最近的会话
@@ -82,8 +82,13 @@ def main() -> None:
         
         if HEARTBEAT_ENABLED:
             def on_heartbeat():
-                """心跳触发时的回调"""
-                console.print("\n[bold yellow]⏰ 心跳触发[/bold yellow] - 请检查 HEARTBEAT.md 中的任务\n")
+                """心跳触发时，后台执行维护任务"""
+                console.print("\n[bold yellow]⏰ 心跳触发[/bold yellow] - 后台执行维护任务...\n")
+                try:
+                    result = execute_heartbeat_tasks(workspace)
+                    console.print(f"\n[bold green]✅ 心跳任务完成[/bold green]\n[dim]{result[:200]}{'...' if len(result) > 200 else ''}[/dim]\n")
+                except Exception as e:
+                    console.print(f"\n[bold red]❌ 心跳任务失败[/bold red]: {e}\n")
             
             start_heartbeat(interval=HEARTBEAT_INTERVAL, on_trigger=on_heartbeat)
 

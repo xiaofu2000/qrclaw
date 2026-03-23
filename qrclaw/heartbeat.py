@@ -51,7 +51,7 @@ class Heartbeat:
         启动心跳线程。
         
         Args:
-            on_trigger: 触发时的回调函数，接收 heartbeat_file 路径作为参数
+            on_trigger: 触发时的回调函数
         """
         if self.running:
             logger.warning("Heartbeat 已在运行中")
@@ -144,6 +144,50 @@ def stop_heartbeat():
         _heartbeat = None
 
 
+def execute_heartbeat_tasks(workspace) -> str:
+    """
+    执行心跳任务（后台子 agent）。
+    
+    Args:
+        workspace: 当前工作空间
+    Returns:
+        str: 执行结果摘要
+    """
+    from qrclaw.agent import run_sub_agent
+    from qrclaw.workspace import Workspace
+    
+    heartbeat_file = workspace.heartbeat_file
+    if not heartbeat_file.exists():
+        logger.warning("HEARTBEAT.md 不存在，跳过心跳任务")
+        return "HEARTBEAT.md 不存在"
+    
+    # 读取心跳任务
+    heartbeat_content = heartbeat_file.read_text(encoding="utf-8")
+    
+    # 构造任务 prompt
+    task = f"""请执行以下心跳任务。静默执行，完成后简要汇报结果。
+
+{heartbeat_content}
+
+注意：
+1. 不要打扰用户，静默执行
+2. 如果使用 review_memory，先 analyze 再决定是否 cleanup
+3. 完成后简要汇报：做了什么、结果如何
+"""
+    
+    logger.info("心跳任务开始执行")
+    
+    try:
+        # 创建心跳专用子 agent
+        sub_workspace = workspace.sub_agent("heartbeat")
+        result = run_sub_agent(task, sub_workspace)
+        logger.info(f"心跳任务执行完成: {result[:100]}...")
+        return result
+    except Exception as e:
+        logger.error(f"心跳任务执行失败: {e}", exc_info=True)
+        return f"执行失败: {e}"
+
+
 def get_default_heartbeat_content() -> str:
     """生成默认的 HEARTBEAT.md 内容"""
     return """# Heartbeat 任务
@@ -154,31 +198,18 @@ def get_default_heartbeat_content() -> str:
 
 ## 记忆维护
 
-- 审查 `MEMORY.md`，清理过时条目
-- 合并重复信息
+- 审查 `MEMORY.md`，识别过时、重复内容
+- 如有过时内容，调用 `review_memory(action='cleanup')` 清理
 - 保留用户偏好和重要配置
 
-**建议工具**: `review_memory(action='analyze')` 先分析，再决定是否清理
+---
+
+## 自我反思（可选）
+
+- 回顾最近的对话，是否有值得记录的知识
+- 如有，调用 `write_memory()` 记录
 
 ---
 
-## 自我反思
-
-- 回顾最近的对话
-- 记录学到的新知识
-- 总结常见的错误和解决方案
-
-**建议工具**: `write_memory()` 记录重要发现
-
----
-
-## 使用说明
-
-1. 修改此文件定义你的心跳任务
-2. 心跳触发时，Agent 会读取此文件并执行任务
-3. 默认每小时触发一次，可在配置中修改
-
----
-
-**最后更新**: {time}
-""".format(time=datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+**注意**：静默执行，完成后简要汇报即可。
+"""
