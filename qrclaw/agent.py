@@ -95,12 +95,12 @@ def run(user_input: str, session: Session, console: Console, workspace: Workspac
                 expand=False,  # 不撑满整行，按内容宽度显示
             ))
             console.print()  # 添加空行
-            return
+            return message.content
 
         if finish_reason == "length":
             logger.warning("LLM 响应被截断 (finish_reason=length)")
             console.print("[bold red]警告：回复被截断，请尝试简化任务[/bold red]\n")
-            return
+            return "错误：回复被截断"
 
         # assistant 消息只存一次，在工具循环之前
         assistant_msg_saved = False
@@ -167,3 +167,35 @@ def run(user_input: str, session: Session, console: Console, workspace: Workspac
 
             if name in ("create_plan", "complete_step"):
                 show_plan_progress(console, session)
+
+    logger.warning("达到最大迭代次数，强制退出")
+    return "错误：达到最大迭代次数"
+
+
+def run_sub_agent(task: str, sub_workspace: Workspace) -> str:
+    """
+    以静默模式运行子 agent，返回结果字符串。
+    子 agent 不打印到用户终端，结果直接返回给调用方（主 agent）。
+
+    Args:
+        task: 子 agent 要执行的任务描述
+        sub_workspace: 子 agent 的工作空间
+    Returns:
+        str: 子 agent 的最终回复
+    """
+    from io import StringIO
+    from rich.console import Console as RichConsole
+
+    logger.info(f"启动子 agent: {sub_workspace.agent_id}, 任务: {task[:100]}...")
+
+    # 用 StringIO 捕获子 agent 的输出，不打印到用户终端
+    buffer = StringIO()
+    sub_console = RichConsole(file=buffer, highlight=False)
+
+    from qrclaw.memory.session import Session
+    sub_session = Session(sessions_dir=sub_workspace.sessions_dir)
+
+    result = run(task, sub_session, sub_console, sub_workspace)
+
+    logger.info(f"子 agent {sub_workspace.agent_id} 执行完毕，结果长度: {len(result or '')} 字符")
+    return result or "子 agent 未返回结果"
