@@ -1,59 +1,87 @@
 """
 spawn_agent 工具
 
-允许主 agent 创建子 agent 来执行特定任务。
-子 agent 在独立的工作空间中运行，结果返回给主 agent。
+允许主 agent 并行创建多个子 agent 执行任务。
+子 agent 在后台线程运行，立即返回，不阻塞主 agent。
+通过 wait_agents 工具等待并收集所有结果。
 """
+import threading
 from pydantic import BaseModel, Field
 from qrclaw.tools.registry import register
 from qrclaw.logger import get_logger
 
 logger = get_logger("qrclaw.tools.spawn_agent")
 
+# 全局任务池：记录所有子 agent 的状态和结果
+# 结构：{ agent_id: { "status": "running"|"done"|"error", "result": str, "thread": Thread } }
+_task_pool: dict = {}
+_task_pool_lock = threading.Lock()
+
+
+def get_task_pool() -> dict:
+    """获取任务池（供 wait_agents 使用）"""
+    return _task_pool
+
+
+def get_task_pool_lock() -> threading.Lock:
+    """获取任务池锁"""
+    return _task_pool_lock
+
 
 class SpawnAgentArgs(BaseModel):
-    agent_id: str = Field(description="子 agent 的 ID，用于标识和隔离工作空间，例如 'coder'、'reviewer'")
+    agent_id: str = Field(description="子 agent 的 ID，例如 'coder'、'reviewer'")
     task: str = Field(description="交给子 agent 的任务描述，要清晰具体")
 
 
 @register(
-    description="创建子 agent 执行特定任务，子 agent 有独立的工作空间，完成后返回结果",
+    description="在后台启动子 agent 执行任务，立即返回不阻塞，可同时启动多个。用 wait_agents 工具等待结果。",
     args_model=SpawnAgentArgs,
 )
 def spawn_agent(agent_id: str, task: str) -> str:
     """
-    创建并运行子 agent。
+    在后台线程启动子 agent，立即返回。
 
     Args:
-        agent_id: 子 agent ID（嵌套在当前 agent 工作空间下）
+        agent_id: 子 agent ID
         task: 子 agent 要执行的任务
-
     Returns:
-        str: 子 agent 的执行结果
+        str: 启动确认信息
     """
-    logger.info(f"主 agent 请求创建子 agent: {agent_id}")
-
-    # 通过当前 session 反推主 agent 的 workspace
-    from qrclaw.agent import get_session, run_sub_agent
+    from qrclaw.agent import get_workspace, run_sub_agent
     from qrclaw.workspace import Workspace
 
-    session = get_session()
-    if session is not None:
-        # session 文件路径：<agent_root>/sessions/<id>.json
-        # 向上两级拿到 agent_root
-        agent_root = session._path.parent.parent
-        main_workspace = Workspace(agent_id="current", _root=agent_root)
-    else:
-        main_workspace = Workspace("default")
+    # 如果该 agent_id 已在运行，拒绝重复启动
+    with _task_pool_lock:
+        if agent_id in _task_pool and _task_pool[agent_id]["status"] == "running":
+            return f"子 agent '{agent_id}' 已在运行中，请等待完成或使用不同的 agent_id"
 
-    # 子 agent 工作空间嵌套在主 agent 下
+    # 直接取当前 workspace，不再靠 session 路径反推
+    # 这样无论当前是顶层 agent 还是子 agent，新建的子 agent 都是同级的
+    main_workspace = get_workspace() or Workspace("default")
     sub_workspace = main_workspace.sub_agent(agent_id)
+    logger.info(f"启动子 agent: {agent_id}, 工作空间: {sub_workspace.root}")
 
-    logger.info(f"子 agent 工作空间: {sub_workspace.root}")
+    def _run():
+        try:
+            result = run_sub_agent(task, sub_workspace)
+            with _task_pool_lock:
+                _task_pool[agent_id]["status"] = "done"
+                _task_pool[agent_id]["result"] = result
+            logger.info(f"子 agent {agent_id} 完成")
+        except Exception as e:
+            logger.error(f"子 agent {agent_id} 出错: {e}", exc_info=True)
+            with _task_pool_lock:
+                _task_pool[agent_id]["status"] = "error"
+                _task_pool[agent_id]["result"] = f"执行出错: {e}"
 
-    try:
-        result = run_sub_agent(task, sub_workspace)
-        return f"[子 agent '{agent_id}' 执行结果]\n\n{result}"
-    except Exception as e:
-        logger.error(f"子 agent {agent_id} 执行失败: {e}", exc_info=True)
-        return f"子 agent '{agent_id}' 执行失败: {e}"
+    thread = threading.Thread(target=_run, name=f"sub-agent-{agent_id}", daemon=True)
+
+    with _task_pool_lock:
+        _task_pool[agent_id] = {
+            "status": "running",
+            "result": None,
+            "thread": thread,
+        }
+
+    thread.start()
+    return f"子 agent '{agent_id}' 已在后台启动，任务：{task[:50]}{'...' if len(task) > 50 else ''}"

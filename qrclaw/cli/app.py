@@ -17,6 +17,7 @@ from qrclaw.cli.input import get_input
 from qrclaw.cli.display import show_context_usage, show_plan_progress
 from qrclaw.cli.commands import session as session_cmd
 from qrclaw.cli.commands import skill as skill_cmd
+from qrclaw.cli.commands import agent as agent_cmd
 
 console = Console()
 
@@ -39,6 +40,7 @@ def main() -> None:
     import qrclaw.tools.builtin       # noqa: E402  触发工具注册
     import qrclaw.tools.skills        # noqa: E402  触发 Skills 工具注册
     import qrclaw.tools.spawn_agent   # noqa: E402  触发 spawn_agent 工具注册
+    import qrclaw.tools.wait_agents   # noqa: E402  触发 wait_agents 工具注册
     from qrclaw.agent import run
     from qrclaw.memory.session import Session
 
@@ -61,7 +63,7 @@ def main() -> None:
         f"[dim]agent: [/dim][bold cyan]{workspace.agent_id}[/bold cyan]  "
         f"[dim]会话: [/dim][bold cyan]{session.session_id}[/bold cyan]\n"
         "[dim]Enter 发送 · Alt+Enter 换行 · exit 退出 · clear 清除 · "
-        "/session 管理会话 · /skill 管理技能[/dim]\n"
+        "/agent 管理agent · /session 管理会话 · /skill 管理技能[/dim]\n"
     )
 
     if session.messages:
@@ -79,6 +81,13 @@ def main() -> None:
         user_input = user_input.strip()
 
         if not user_input:
+            continue
+
+        if user_input.startswith("/agent"):
+            sub = user_input[6:].strip()
+            workspace, new_session = agent_cmd.handle(sub, workspace, session, console)
+            if new_session is not None:
+                session = new_session
             continue
 
         if user_input.startswith("/session"):
@@ -127,6 +136,10 @@ def _print_help() -> None:
     console.print("  -a, --agent <ID>     指定 agent ID（默认: default）")
     console.print()
     console.print("运行时命令:")
+    console.print("  /agent list                列出所有 agent")
+    console.print("  /agent new <id>            新建 agent")
+    console.print("  /agent switch <id>         切换 agent")
+    console.print("  /agent delete <id>         删除 agent")
     console.print("  /session list              列出所有会话")
     console.print("  /session new [id]          新建会话")
     console.print("  /session switch <id>       切换会话")

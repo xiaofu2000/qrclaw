@@ -16,8 +16,9 @@ logger = get_logger("qrclaw.agent")
 client = OpenAI(api_key=OPENAI_API_KEY, base_url=OPENAI_BASE_URL or None)
 
 
-# 全局 session 实例（供工具函数访问）
+# 全局 session / workspace 实例（供工具函数访问）
 _session = None
+_workspace = None
 
 def set_session(session: Session):
     """注入当前 session"""
@@ -28,11 +29,21 @@ def get_session() -> Session | None:
     """获取当前 session"""
     return _session
 
+def set_workspace(workspace: Workspace):
+    """注入当前 workspace"""
+    global _workspace
+    _workspace = workspace
 
-def run(user_input: str, session: Session, console: Console, workspace: Workspace):
+def get_workspace() -> Workspace | None:
+    """获取当前 workspace"""
+    return _workspace
+
+
+def run(user_input: str, session: Session, console: Console, workspace: Workspace, auto_confirm: bool = False):
     logger.info(f"收到用户输入: {user_input[:100]}...")
 
     set_session(session)
+    set_workspace(workspace)
     session.add({"role": "user", "content": user_input})
 
     # system prompt 每次实时构建，不存进 session
@@ -124,8 +135,8 @@ def run(user_input: str, session: Session, console: Console, workspace: Workspac
             ))
             console.print()  # 添加空行
 
-            # 高风险工具执行前，询问用户确认
-            if need_confirm(name):
+            # 高风险工具执行前，询问用户确认（子 agent 自动跳过）
+            if need_confirm(name) and not auto_confirm:
                 logger.debug(f"工具 {name} 需要用户确认")
                 console.print(f"[bold red]⚠ 需要确认[/bold red] 是否允许执行？(y/n) ", end="")
                 choice = input().strip().lower()
@@ -176,6 +187,7 @@ def run_sub_agent(task: str, sub_workspace: Workspace) -> str:
     """
     以静默模式运行子 agent，返回结果字符串。
     子 agent 不打印到用户终端，结果直接返回给调用方（主 agent）。
+    任务完成后自动清理工作空间（保留 logs，删除 sessions/skills/MEMORY.md）。
 
     Args:
         task: 子 agent 要执行的任务描述
@@ -183,19 +195,31 @@ def run_sub_agent(task: str, sub_workspace: Workspace) -> str:
     Returns:
         str: 子 agent 的最终回复
     """
+    import shutil
     from io import StringIO
     from rich.console import Console as RichConsole
+    from qrclaw.memory.session import Session
 
     logger.info(f"启动子 agent: {sub_workspace.agent_id}, 任务: {task[:100]}...")
 
-    # 用 StringIO 捕获子 agent 的输出，不打印到用户终端
     buffer = StringIO()
     sub_console = RichConsole(file=buffer, highlight=False)
-
-    from qrclaw.memory.session import Session
     sub_session = Session(sessions_dir=sub_workspace.sessions_dir)
 
-    result = run(task, sub_session, sub_console, sub_workspace)
+    result = run(task, sub_session, sub_console, sub_workspace, auto_confirm=True)
 
     logger.info(f"子 agent {sub_workspace.agent_id} 执行完毕，结果长度: {len(result or '')} 字符")
+
+    # 清理工作空间：保留 logs，删除 sessions/skills/MEMORY.md
+    try:
+        if sub_workspace.sessions_dir.exists():
+            shutil.rmtree(sub_workspace.sessions_dir)
+        if sub_workspace.skills_dir.exists():
+            shutil.rmtree(sub_workspace.skills_dir)
+        if sub_workspace.memory_file.exists():
+            sub_workspace.memory_file.unlink()
+        logger.info(f"子 agent {sub_workspace.agent_id} 工作空间已清理（logs 保留）")
+    except Exception as e:
+        logger.warning(f"清理子 agent 工作空间失败: {e}")
+
     return result or "子 agent 未返回结果"
