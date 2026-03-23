@@ -33,6 +33,22 @@ def list_sessions(sessions_dir: Path) -> list[dict]:
     return sessions
 
 
+def get_last_session_id(sessions_dir: Path) -> str | None:
+    """
+    获取最近使用的会话 ID（按修改时间排序，取最新的）。
+
+    Args:
+        sessions_dir: 会话文件目录
+    Returns:
+        str | None: 会话 ID，如果没有会话则返回 None
+    """
+    sessions_dir.mkdir(parents=True, exist_ok=True)
+    sessions = sorted(sessions_dir.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True)
+    if sessions:
+        return sessions[0].stem
+    return None
+
+
 def delete_session(session_id: str, sessions_dir: Path) -> bool:
     """删除指定会话文件，返回是否成功。"""
     path = sessions_dir / f"{session_id}.json"
@@ -43,13 +59,65 @@ def delete_session(session_id: str, sessions_dir: Path) -> bool:
     return False
 
 
+def estimate_tokens(messages: list[dict]) -> int:
+    """
+    估算消息列表的 token 数。
+
+    使用简单的字符计数估算：
+    - 英文约 4 字符 = 1 token
+    - 中文约 1.5 字符 = 1 token
+    - 综合估算：约 3 字符 = 1 token
+
+    Args:
+        messages: 消息列表
+    Returns:
+        int: 估算的 token 数
+    """
+    total_chars = 0
+    for msg in messages:
+        content = msg.get("content", "")
+        if isinstance(content, str):
+            total_chars += len(content)
+        elif isinstance(content, list):
+            # 处理多模态消息
+            for part in content:
+                if isinstance(part, dict) and part.get("type") == "text":
+                    total_chars += len(part.get("text", ""))
+    # 估算：约 3 字符 = 1 token
+    return total_chars // 3
+
+
 class Session:
-    def __init__(self, sessions_dir: Path, session_id: str = None):
-        # 不传 session_id 时自动生成，格式：YYYYMMDD-<uuid4 前8位>
-        if session_id is None:
+    def __init__(self, sessions_dir: Path, session_id: str = None, resume: bool = True):
+        """
+        初始化会话。
+
+        Args:
+            sessions_dir: 会话文件目录（由 Workspace 提供）
+            session_id: 指定会话 ID，为 None 时自动选择
+            resume: 是否恢复最近的会话（仅在 session_id 为 None 时生效）
+        """
+        # 如果指定了 session_id，直接使用
+        if session_id is not None:
+            self.session_id = session_id
+        # 否则根据 resume 决定是恢复最近会话还是创建新会话
+        elif resume:
+            # 尝试恢复最近的会话
+            last_id = get_last_session_id(sessions_dir)
+            if last_id:
+                self.session_id = last_id
+                logger.info(f"恢复最近的会话: {last_id}")
+            else:
+                # 没有历史会话，创建新的
+                short = uuid.uuid4().hex[:8]
+                self.session_id = f"{datetime.now().strftime('%Y%m%d')}-{short}"
+                logger.info(f"创建新会话: {self.session_id}")
+        else:
+            # 不恢复，创建新会话
             short = uuid.uuid4().hex[:8]
-            session_id = f"{datetime.now().strftime('%Y%m%d')}-{short}"
-        self.session_id = session_id
+            self.session_id = f"{datetime.now().strftime('%Y%m%d')}-{short}"
+            logger.info(f"创建新会话: {self.session_id}")
+
         self.messages: list[dict] = []
 
         # 上下文使用情况
@@ -62,9 +130,9 @@ class Session:
 
         # 会话文件路径（由 Workspace 提供的目录决定）
         sessions_dir.mkdir(parents=True, exist_ok=True)
-        self._path = sessions_dir / f"{session_id}.json"
+        self._path = sessions_dir / f"{self.session_id}.json"
 
-        logger.debug(f"初始化会话: {session_id}, 路径: {self._path}")
+        logger.debug(f"初始化会话: {self.session_id}, 路径: {self._path}")
 
         # 启动时加载历史
         self._load()
@@ -138,7 +206,9 @@ class Session:
                 data = json.loads(self._path.read_text(encoding="utf-8"))
                 # 过滤掉旧历史里的 system 消息，system prompt 由 agent 实时生成
                 self.messages = [m for m in data if m.get("role") != "system"]
-                logger.info(f"加载历史会话: {len(self.messages)} 条消息")
+                # 估算已加载消息的 token 数
+                self.prompt_tokens = estimate_tokens(self.messages)
+                logger.info(f"加载历史会话: {len(self.messages)} 条消息, 估算 {self.prompt_tokens} tokens")
             except Exception as e:
                 logger.error(f"加载会话失败: {e}", exc_info=True)
                 self.messages = []

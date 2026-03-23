@@ -26,6 +26,10 @@ def main() -> None:
     parser = argparse.ArgumentParser(prog="qrclaw", add_help=False)
     parser.add_argument("-a", "--agent", default="default", metavar="ID",
                         help="指定 agent ID（默认: default）")
+    parser.add_argument("--no-heartbeat", action="store_true",
+                        help="禁用心跳机制")
+    parser.add_argument("-n", "--new-session", action="store_true",
+                        help="创建新会话，不恢复历史")
     parser.add_argument("-h", "--help", action="store_true")
     args, _ = parser.parse_known_args()
 
@@ -41,13 +45,19 @@ def main() -> None:
     import qrclaw.tools.skills        # noqa: E402  触发 Skills 工具注册
     import qrclaw.tools.spawn_agent   # noqa: E402  触发 spawn_agent 工具注册
     import qrclaw.tools.wait_agents   # noqa: E402  触发 wait_agents 工具注册
+    import qrclaw.tools.review_memory # noqa: E402  触发 review_memory 工具注册
     from qrclaw.tools.spawn_agent import set_console as set_spawn_console
     set_spawn_console(console)  # 注入 console，子 agent 完成时直接打印
     from qrclaw.agent import run
     from qrclaw.memory.session import Session
+    from qrclaw.heartbeat import get_default_heartbeat_content
 
     # 3. 创建 Session（路径由 workspace 决定）
-    session = Session(sessions_dir=workspace.sessions_dir)
+    # resume=True 且不传 session_id 时，自动恢复最近的会话
+    session = Session(
+        sessions_dir=workspace.sessions_dir,
+        resume=not args.new_session
+    )
 
     # 4. 初始化日志（路径由 workspace 决定）
     setup_logger(
@@ -60,10 +70,31 @@ def main() -> None:
         log_dir=workspace.logs_dir,
     )
 
+    # 5. 初始化 HEARTBEAT.md（如果不存在）
+    if not workspace.heartbeat_file.exists():
+        workspace.heartbeat_file.write_text(get_default_heartbeat_content(), encoding="utf-8")
+        console.print("[dim]已创建默认心跳任务配置: HEARTBEAT.md[/dim]\n")
+
+    # 6. 启动心跳（可选）
+    if not args.no_heartbeat:
+        from qrclaw.heartbeat import start_heartbeat
+        from qrclaw.config import HEARTBEAT_ENABLED, HEARTBEAT_INTERVAL
+        
+        if HEARTBEAT_ENABLED:
+            def on_heartbeat():
+                """心跳触发时的回调"""
+                console.print("\n[bold yellow]⏰ 心跳触发[/bold yellow] - 请检查 HEARTBEAT.md 中的任务\n")
+            
+            start_heartbeat(interval=HEARTBEAT_INTERVAL, on_trigger=on_heartbeat)
+
+    # 启动提示
+    is_resumed = len(session.messages) > 0
+    session_status = "[dim]恢复会话[/dim]" if is_resumed else "[dim]新会话[/dim]"
+    
     console.print(
         f"[bold cyan]QRClaw Agent[/bold cyan] 启动  "
         f"[dim]agent: [/dim][bold cyan]{workspace.agent_id}[/bold cyan]  "
-        f"[dim]会话: [/dim][bold cyan]{session.session_id}[/bold cyan]\n"
+        f"[dim]会话: [/dim][bold cyan]{session.session_id}[/bold cyan] {session_status}\n"
         "[dim]Enter 发送 · Alt+Enter 换行 · exit 退出 · clear 清除 · "
         "/agent 管理agent · /session 管理会话 · /skill 管理技能[/dim]\n"
     )
@@ -132,10 +163,12 @@ def main() -> None:
 def _print_help() -> None:
     console.print("[bold cyan]QRClaw Agent[/bold cyan]")
     console.print()
-    console.print("用法: qrclaw [-a <agentID>]")
+    console.print("用法: qrclaw [-a <agentID>] [--no-heartbeat] [-n]")
     console.print()
     console.print("选项:")
     console.print("  -a, --agent <ID>     指定 agent ID（默认: default）")
+    console.print("  --no-heartbeat       禁用心跳机制")
+    console.print("  -n, --new-session    创建新会话，不恢复历史")
     console.print()
     console.print("运行时命令:")
     console.print("  /agent list                列出所有 agent")

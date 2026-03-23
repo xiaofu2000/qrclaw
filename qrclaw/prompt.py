@@ -4,6 +4,7 @@ System Prompt 构建模块。
 """
 import os
 import platform
+from pathlib import Path
 from qrclaw.config import AGENT_NAME
 from qrclaw.memory import LongTermMemory
 from qrclaw.skills.registry import SkillRegistry
@@ -19,6 +20,7 @@ _TOOL_DESCRIPTIONS = {
     "run_shell":       "执行 shell 命令，需要运行程序、安装依赖、操作系统时使用",
     "write_memory":    "写入中期记忆，仅用于记录用户偏好、项目配置等需要跨会话复用的信息，任务结果、调研报告等不要写入",
     "read_memory":     "读取中期记忆，查看之前记录的用户偏好或配置信息",
+    "review_memory":   "审查中期记忆，识别过时、重复内容，支持分析和清理操作。建议定期调用维护记忆质量",
     "use_skill":       "使用指定的技能（Skill）来完成复杂任务，技能是预定义的工作流",
     "create_plan":     "为复杂任务创建执行计划，拆解步骤时标注依赖关系，无依赖的步骤可用 spawn_agent 并行执行",
     "spawn_agent":     "在后台启动子 agent 并行执行独立子任务，任务可拆分时批量调用，子 agent 完成后结果自动打印",
@@ -102,6 +104,28 @@ def _build_memory_section(memory: LongTermMemory = None) -> str:
     ])
 
 
+def _build_heartbeat_section(heartbeat_file: Path = None) -> str:
+    """构建心跳任务部分"""
+    if heartbeat_file is None or not heartbeat_file.exists():
+        return ""
+    
+    try:
+        content = heartbeat_file.read_text(encoding="utf-8")
+        if not content.strip():
+            return ""
+        
+        logger.info("注入心跳任务到 system prompt")
+        return "\n".join([
+            "## 心跳任务",
+            "以下是定期执行的维护任务，请在每次心跳触发时执行：",
+            "",
+            content,
+        ])
+    except Exception as e:
+        logger.warning(f"读取心跳任务文件失败: {e}")
+        return ""
+
+
 def _build_skills_section(skill_registry: SkillRegistry) -> str:
     """构建技能部分（轻量级描述）"""
     skills_list = skill_registry.get_skills_list()
@@ -161,6 +185,7 @@ def build_system_prompt(
     memory: LongTermMemory = None,
     skill_registry: SkillRegistry | None = None,
     active_plan: dict | None = None,
+    heartbeat_file: Path | None = None,
 ) -> str:
     """构建完整的 system prompt"""
     sections = [
@@ -177,6 +202,8 @@ def build_system_prompt(
         _build_workspace_section(),
         "",
         _build_memory_section(memory),
+        "",
+        _build_heartbeat_section(heartbeat_file),
         "",
         _build_plan_section(active_plan),
     ]

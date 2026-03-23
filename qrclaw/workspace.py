@@ -8,7 +8,8 @@
     ├── sessions/          会话文件
     ├── logs/              日志文件
     ├── skills/            技能
-    ├── MEMORY.md          长期记忆
+    ├── MEMORY.md          中期记忆
+    ├── HEARTBEAT.md       心跳任务配置
     └── sub-agents/        子 agent 工作空间
         └── <sub_id>/
             ├── sessions/
@@ -35,6 +36,7 @@ class Workspace:
         self.logs_dir = self.root / "logs"
         self.skills_dir = self.root / "skills"
         self.memory_file = self.root / "MEMORY.md"
+        self.heartbeat_file = self.root / "HEARTBEAT.md"
         self.sub_agents_dir = self.root / "sub-agents"
 
         # 确保目录都存在
@@ -44,7 +46,7 @@ class Workspace:
 
     def sub_agent(self, sub_id: str) -> "Workspace":
         """
-        创建子 agent 的工作空间，嵌套在当前 agent 下。
+        创建子 agent 工作空间，嵌套在当前 agent 下。
 
         路径：<当前agent_root>/sub-agents/<sub_id>/
         """

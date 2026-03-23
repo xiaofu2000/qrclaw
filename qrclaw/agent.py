@@ -53,7 +53,16 @@ def run(user_input: str, session: Session, console: Console, workspace: Workspac
     memory = LongTermMemory(workspace.memory_file)
     skill_registry = SkillRegistry()
     skill_registry.load_from_dir(workspace.skills_dir)
-    system_prompt = {"role": "system", "content": build_system_prompt(tool_names, memory, skill_registry, active_plan=session.active_plan)}
+    system_prompt = {
+        "role": "system",
+        "content": build_system_prompt(
+            tool_names,
+            memory,
+            skill_registry,
+            active_plan=session.active_plan,
+            heartbeat_file=workspace.heartbeat_file,
+        )
+    }
     logger.debug(f"System prompt 已构建，可用工具: {', '.join(tool_names)}")
 
     for iteration in range(MAX_ITERATIONS):

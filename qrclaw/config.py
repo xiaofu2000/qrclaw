@@ -26,6 +26,10 @@ COMPRESS_RECENT_MAX_MSGS = int(os.getenv("COMPRESS_RECENT_MAX_MSGS", "10"))
 # Tavily API（网页搜索）
 TAVILY_API_KEY = os.getenv("TAVILY_API_KEY", "")
 
+# 心跳配置
+HEARTBEAT_ENABLED = os.getenv("HEARTBEAT_ENABLED", "true").lower() == "true"
+HEARTBEAT_INTERVAL = int(os.getenv("HEARTBEAT_INTERVAL", "3600"))  # 默认 1 小时
+
 # 日志配置
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
 LOG_MAX_DAYS = int(os.getenv("LOG_MAX_DAYS", "30"))

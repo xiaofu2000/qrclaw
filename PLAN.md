@@ -27,12 +27,19 @@
   → 会话历史持久化
   → 重启不丢上下文
   → 中期记忆（Markdown 文件）
+  → 心跳机制 + 记忆审查
   → 长期记忆（向量数据库，可选）
 
 第五阶段：扩展（选做）
   → CLI 美化
   → Telegram Bot 接入
   → 更多工具（Shell、网页抓取）
+
+第六阶段：Agent to Agent
+  → 子 agent 并行执行
+  → 线程隔离（独立 session/workspace）
+  → 任务池管理
+  → 结果收集与汇总
 ```
 
 ---
@@ -66,6 +73,8 @@
 - [ ] 启动时加载历史，保持上下文连续
 - [ ] 支持清除会话
 - [ ] 中期记忆（Markdown 文件）
+- [ ] 心跳机制（Heartbeat）
+- [ ] 记忆审查工具（review_memory）
 - [ ] 长期记忆（向量数据库，可选）
 
 ### 第五阶段：扩展（选做）
@@ -75,11 +84,20 @@
 - [ ] Telegram Bot 渠道接入
 - [ ] 内置工具：写文件、执行 Shell 命令、抓取网页
 
+### 第六阶段：Agent to Agent
+
+- [ ] spawn_agent 工具：后台启动子 agent
+- [ ] wait_agents 工具：等待并收集结果
+- [ ] 线程隔离：threading.local 隔离 session/workspace
+- [ ] 任务池管理：全局任务池 + 锁
+- [ ] 子 agent 静默运行：结果返回主 agent
+- [ ] 工作空间清理：子 agent 完成后自动清理
+
 ---
 
 ## 当前进度
 
-> 正在进行：**第四阶段 - 记忆系统**
+> 正在进行：**第四阶段 - 记忆系统（已完成）**
 
 ### 第一阶段 ✅
 - [x] 创建项目目录结构
@@ -99,11 +117,13 @@
 - [x] finish_reason 标志位判断
 - [x] MAX_ITERATIONS 兜底保护
 
-### 第四阶段（进行中）
+### 第四阶段 ✅
 - [x] 会话历史持久化（Session）
 - [x] 上下文压缩（摘要策略，target token 10%）
 - [x] 压缩阈值可配置（MODEL_MAX_TOKENS）
 - [x] 中期记忆（Markdown 文件）
+- [x] 心跳机制（Heartbeat）- 定期触发维护任务
+- [x] 记忆审查工具（review_memory）- 识别过时/重复内容，支持清理和归档
 - [ ] 长期记忆（向量数据库，可选）
 
 ### 第五阶段（进行中）
@@ -116,6 +136,15 @@
 - [x] 日志按会话 ID 分文件存储
 - [ ] Telegram Bot 渠道接入
 
+### 第六阶段 ✅
+- [x] spawn_agent 工具：后台启动子 agent，立即返回不阻塞
+- [x] wait_agents 工具：等待子 agent 完成，收集结果汇总
+- [x] 线程隔离：threading.local 隔离 session/workspace
+- [x] 任务池管理：全局 _task_pool + threading.Lock
+- [x] 子 agent 静默运行：run_sub_agent() 不打印到用户终端
+- [x] 自动打印结果：子 agent 完成后结果自动显示
+- [x] 工作空间清理：子 agent 完成后清理 sessions/skills/MEMORY.md
+
 ---
 
 ## 项目结构
@@ -123,12 +152,14 @@
 ```
 qrclaw/
 ├── __init__.py
-├── agent.py           # Agent 主循环
+├── agent.py           # Agent 主循环 + run_sub_agent
 ├── cli.py             # CLI 入口
-├── config.py          # 配置加载
+├── config.py          # 配置加载（含心跳配置）
 ├── config_manager.py  # 配置管理
 ├── llm.py             # LLM 调用
 ├── prompt.py          # System Prompt 构建
+├── workspace.py       # 工作空间管理
+├── heartbeat.py       # 心跳机制
 ├── logger/            # 日志系统
 │   ├── __init__.py
 │   └── logger.py
@@ -137,16 +168,89 @@ qrclaw/
 │   ├── session.py     # 短期记忆（会话）
 │   ├── compressor.py  # 上下文压缩
 │   └── long_term.py   # 中期记忆
-└── tools/             # 工具系统
+├── skills/            # 技能系统
+│   ├── __init__.py
+│   └── registry.py    # 技能注册
+├── tools/             # 工具系统
+│   ├── __init__.py
+│   ├── registry.py    # 工具注册
+│   ├── builtin.py     # 内置工具
+│   ├── spawn_agent.py # 启动子 agent
+│   ├── wait_agents.py # 等待子 agent
+│   ├── review_memory.py # 记忆审查
+│   └── skills.py      # 技能工具
+└── cli/               # CLI 相关
     ├── __init__.py
-    ├── registry.py    # 工具注册
-    └── builtin.py     # 内置工具
+    ├── app.py         # 主入口
+    ├── input.py       # 输入处理
+    ├── display.py     # 显示工具
+    └── commands/      # 命令处理
+        ├── __init__.py
+        ├── agent.py
+        ├── session.py
+        └── skill.py
 
-~/.qrclaw/             # 用户数据目录
-├── config             # 配置文件
-├── MEMORY.md          # 中期记忆
+~/.qrclaw/agents/<agent_id>/   # 用户数据目录
 ├── sessions/          # 会话历史
-│   └── default.json
-└── logs/              # 日志文件（按会话 ID 分文件）
-    └── qrclaw-default.log
+├── logs/              # 日志文件
+├── skills/            # 技能
+├── MEMORY.md          # 中期记忆
+├── HEARTBEAT.md       # 心跳任务配置
+└── sub-agents/        # 子 agent 工作空间
+```
+
+---
+
+## 心跳机制说明
+
+OpenClaw 风格的记忆维护机制：
+
+### 工作原理
+
+1. **HEARTBEAT.md** - 定义定期执行的维护任务
+2. **Heartbeat 线程** - 后台运行，定期触发
+3. **review_memory 工具** - AI 审查并清理记忆
+
+### 使用方式
+
+```bash
+# 启动时自动创建 HEARTBEAT.md
+qrclaw
+
+# 禁用心跳
+qrclaw --no-heartbeat
+
+# 配置心跳间隔（环境变量）
+HEARTBEAT_INTERVAL=1800  # 30分钟
+```
+
+### review_memory 工具
+
+```python
+# 分析记忆状态
+review_memory(action='analyze')
+
+# 清理过时条目
+review_memory(action='cleanup', keep_recent=10)
+
+# 归档旧记忆
+review_memory(action='archive', keep_recent=10)
+```
+
+### HEARTBEAT.md 示例
+
+```markdown
+# Heartbeat 任务
+
+每隔一段时间，Agent 会自动执行以下维护任务。
+
+---
+
+## 记忆维护
+
+- 审查 MEMORY.md，清理过时条目
+- 合并重复信息
+- 保留用户偏好
+
+**建议工具**: review_memory(action='analyze')
 ```
