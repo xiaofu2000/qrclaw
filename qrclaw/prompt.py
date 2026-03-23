@@ -20,7 +20,9 @@ _TOOL_DESCRIPTIONS = {
     "write_memory":    "写入中期记忆，仅用于记录用户偏好、项目配置等需要跨会话复用的信息，任务结果、调研报告等不要写入",
     "read_memory":     "读取中期记忆，查看之前记录的用户偏好或配置信息",
     "use_skill":       "使用指定的技能（Skill）来完成复杂任务，技能是预定义的工作流",
-    "create_plan":     "为复杂任务创建执行计划，简单任务无需调用，只在多步骤复杂任务时使用",
+    "create_plan":     "为复杂任务创建执行计划，拆解步骤时标注依赖关系，无依赖的步骤可用 spawn_agent 并行执行",
+    "spawn_agent":     "在后台启动子 agent 并行执行独立子任务，任务可拆分时批量调用，子 agent 完成后结果自动打印",
+    "wait_agents":     "等待所有后台子 agent 完成，返回各子 agent 的结构化摘要，再根据摘要决定是否用 read_file 查看详情",
 }
 
 
@@ -145,7 +147,11 @@ def _build_plan_section(active_plan: dict | None) -> str:
         lines.append(f"- Step {step['id']}: {step['description']} [{status}]")
     lines.extend([
         "",
-        "请按顺序执行待执行的步骤，每完成一步调用 complete_step 标记完成后再继续。",
+        "执行规则：",
+        "1. 有依赖关系的步骤必须串行执行（前置步骤完成后再执行下一步）",
+        "2. 无依赖关系的步骤可以用 spawn_agent 并行执行，再用 wait_agents 等待结果，效率更高",
+        "3. 每完成一步调用 complete_step 标记完成后再继续",
+        "4. 最终整合步骤必须等所有子任务完成后再执行",
     ])
     return "\n".join(lines)
 

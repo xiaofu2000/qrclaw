@@ -206,8 +206,9 @@ def run_sub_agent(task: str, sub_workspace: Workspace) -> str:
     sub_session = Session(sessions_dir=sub_workspace.sessions_dir)
 
     result = run(task, sub_session, sub_console, sub_workspace, auto_confirm=True)
+    result = result or "子 agent 未返回结果"
 
-    logger.info(f"子 agent {sub_workspace.agent_id} 执行完毕，结果长度: {len(result or '')} 字符")
+    logger.info(f"子 agent {sub_workspace.agent_id} 执行完毕，结果长度: {len(result)} 字符")
 
     # 清理工作空间：保留 logs，删除 sessions/skills/MEMORY.md
     try:
@@ -221,4 +222,4 @@ def run_sub_agent(task: str, sub_workspace: Workspace) -> str:
     except Exception as e:
         logger.warning(f"清理子 agent 工作空间失败: {e}")
 
-    return result or "子 agent 未返回结果"
+    return result

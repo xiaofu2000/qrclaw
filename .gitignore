@@ -18,4 +18,4 @@ logs/
 *.log
 
 # 用户配置（统一在 ~/.qrclaw/ 目录）
-# 注意：项目目录下不再需要 .env，配置在 ~/.qrclaw/config
+# 注意：项目目录下不再需要 .env，配置在 ~/.qrclaw/config*.md
