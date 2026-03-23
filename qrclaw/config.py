@@ -14,13 +14,24 @@ MAX_ITERATIONS = int(os.getenv("MAX_ITERATIONS", "50"))
 
 # 模型最大上下文窗口（token数）
 _MODEL_MAX_TOKENS = int(os.getenv("MODEL_MAX_TOKENS", "128000"))
+
+# 压缩配置
 # 超过 60% 触发压缩
 COMPRESS_THRESHOLD = int(_MODEL_MAX_TOKENS * 0.6)
-# 摘要最大输出 token 数（固定上限，给 LLM 的 max_tokens 参数）
-COMPRESS_SUMMARY_MAX_TOKENS = int(os.getenv("COMPRESS_SUMMARY_MAX_TOKENS", "8000"))
-# 压缩后短期记忆保留的 token 预算（估算值，用字符数换算）
-COMPRESS_RECENT_MAX_TOKENS = int(os.getenv("COMPRESS_RECENT_MAX_TOKENS", str(int(_MODEL_MAX_TOKENS * 0.25))))
-# 压缩后短期记忆最多保留条数
+
+# 压缩后目标范围：摘要 + 短期记忆 = 20%~25% 上下文窗口
+COMPRESS_TARGET_MIN_RATIO = 0.20  # 最小 20%，避免压缩太短
+COMPRESS_TARGET_MAX_RATIO = 0.25  # 最大 25%，避免压缩效果差
+
+# 摘要目标占 12% 上下文窗口
+COMPRESS_SUMMARY_TARGET_TOKENS = int(_MODEL_MAX_TOKENS * 0.12)
+# 摘要最大输出 token 数（LLM 的 max_tokens 参数上限）
+COMPRESS_SUMMARY_MAX_TOKENS = int(os.getenv("COMPRESS_SUMMARY_MAX_TOKENS", str(COMPRESS_SUMMARY_TARGET_TOKENS * 2)))
+
+# 短期记忆目标占 10% 上下文窗口（摘要 12% + 短期 10% ≈ 22%，在 20%~25% 范围内）
+COMPRESS_RECENT_TARGET_TOKENS = int(_MODEL_MAX_TOKENS * 0.10)
+COMPRESS_RECENT_MAX_TOKENS = int(os.getenv("COMPRESS_RECENT_MAX_TOKENS", str(COMPRESS_RECENT_TARGET_TOKENS)))
+# 短期记忆最多保留条数
 COMPRESS_RECENT_MAX_MSGS = int(os.getenv("COMPRESS_RECENT_MAX_MSGS", "10"))
 
 # Tavily API（网页搜索）

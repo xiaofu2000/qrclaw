@@ -1,14 +1,18 @@
 """
 上下文压缩模块。
 
-压缩策略：递归摘要 + 双重限制保留窗口
-- 保留窗口：从最新消息往前数，同时满足「不超过N个token」和「最多M条」
+压缩策略：递归摘要 + 目标范围控制
+- 目标范围：压缩后（摘要 + 短期记忆）占上下文窗口的 20%~25%
+- 保留窗口：从最新消息往前选，同时满足 token 限制和条数限制
 - 递归摘要：检测旧摘要，有则合并一起压缩，保证信息不丢失
 """
 from openai import OpenAI
 from qrclaw.config import (
     OPENAI_API_KEY, OPENAI_MODEL, OPENAI_BASE_URL,
-    COMPRESS_SUMMARY_MAX_TOKENS, COMPRESS_RECENT_MAX_TOKENS, COMPRESS_RECENT_MAX_MSGS,
+    COMPRESS_SUMMARY_MAX_TOKENS, COMPRESS_SUMMARY_TARGET_TOKENS,
+    COMPRESS_RECENT_MAX_TOKENS, COMPRESS_RECENT_MAX_MSGS,
+    COMPRESS_TARGET_MIN_RATIO, COMPRESS_TARGET_MAX_RATIO,
+    _MODEL_MAX_TOKENS,
 )
 from qrclaw.logger import get_logger
 
@@ -20,6 +24,7 @@ SUMMARIZE_PROMPT = """请把下面的对话内容整理成结构化摘要，要�
 1. 按以下分类输出，没有内容的分类可以省略
 2. 保留所有关键信息，不要遗漏重要细节
 3. 语言简洁，不要废话
+4. 控制摘要长度，目标约 {target_tokens} tokens
 
 格式：
 【用户信息】用户的基本信息、身份、偏好等
@@ -43,14 +48,22 @@ def _estimate_tokens(message: dict) -> int:
     return max(1, len(content) // 2)
 
 
-def _pick_recent(messages: list[dict]) -> tuple[list[dict], list[dict]]:
+def _estimate_text_tokens(text: str) -> int:
+    """估算文本的 token 数"""
+    return max(1, len(text) // 2)
+
+
+def _pick_recent(messages: list[dict], max_tokens: int = None) -> tuple[list[dict], list[dict]]:
     """
     从最新消息往前选，同时满足：
-      1. 累计 token 不超过 COMPRESS_RECENT_MAX_TOKENS
+      1. 累计 token 不超过 max_tokens（默认 COMPRESS_RECENT_MAX_TOKENS）
       2. 条数不超过 COMPRESS_RECENT_MAX_MSGS
 
     返回 (recent, old)：recent 是保留的，old 是要压缩的。
     """
+    if max_tokens is None:
+        max_tokens = COMPRESS_RECENT_MAX_TOKENS
+
     recent = []
     token_count = 0
 
@@ -58,7 +71,7 @@ def _pick_recent(messages: list[dict]) -> tuple[list[dict], list[dict]]:
         if len(recent) >= COMPRESS_RECENT_MAX_MSGS:
             break
         t = _estimate_tokens(msg)
-        if token_count + t > COMPRESS_RECENT_MAX_TOKENS:
+        if token_count + t > max_tokens:
             break
         recent.insert(0, msg)
         token_count += t
@@ -73,9 +86,15 @@ def summarize(session) -> None:
     递归摘要压缩：
     1. 按双重限制（token数+条数）选出保留的短期记忆
     2. 检测是否有旧摘要，有则合并进待压缩内容（递归摘要）
-    3. 调用 LLM 生成新摘要，重建 session.messages
+    3. 调用 LLM 生成新摘要
+    4. 检查总长度是否在 20%~25% 范围内，必要时调整
     """
     logger.info("开始压缩历史消息")
+
+    # 计算目标范围
+    target_min = int(_MODEL_MAX_TOKENS * COMPRESS_TARGET_MIN_RATIO)
+    target_max = int(_MODEL_MAX_TOKENS * COMPRESS_TARGET_MAX_RATIO)
+    logger.debug(f"目标范围: {target_min} ~ {target_max} tokens ({COMPRESS_TARGET_MIN_RATIO*100:.0f}% ~ {COMPRESS_TARGET_MAX_RATIO*100:.0f}%)")
 
     recent, old = _pick_recent(session.messages)
 
@@ -98,27 +117,55 @@ def summarize(session) -> None:
     )
 
     try:
-        logger.debug("调用 LLM 生成摘要")
+        logger.debug(f"调用 LLM 生成摘要，目标: {COMPRESS_SUMMARY_TARGET_TOKENS} tokens")
         response = client.chat.completions.create(
             model=OPENAI_MODEL,
             max_tokens=COMPRESS_SUMMARY_MAX_TOKENS,
             messages=[
-                {"role": "user", "content": SUMMARIZE_PROMPT.format(history=history_text)}
+                {"role": "user", "content": SUMMARIZE_PROMPT.format(
+                    history=history_text,
+                    target_tokens=COMPRESS_SUMMARY_TARGET_TOKENS
+                )}
             ],
         )
         summary = response.choices[0].message.content
+        summary_tokens = _estimate_text_tokens(summary)
 
-        logger.info(f"摘要生成成功，长度: {len(summary)} 字符，使用 {response.usage.total_tokens} tokens")
+        logger.info(f"摘要生成成功，长度: {len(summary)} 字符，约 {summary_tokens} tokens")
         logger.debug(f"摘要内容预览: {summary[:200]}...")
 
+        # 计算短期记忆的 token 数
+        recent_tokens = sum(_estimate_tokens(msg) for msg in recent)
+        total_tokens = summary_tokens + recent_tokens
+
+        logger.info(f"压缩后总长度: {total_tokens} tokens (摘要 {summary_tokens} + 短期记忆 {recent_tokens})")
+
+        # 检查是否在目标范围内
+        if total_tokens > target_max:
+            logger.warning(f"压缩后 {total_tokens} tokens 超过上限 {target_max}，减少短期记忆")
+            # 减少短期记忆的 token 预算
+            available_for_recent = target_max - summary_tokens
+            if available_for_recent > 0:
+                recent, old = _pick_recent(session.messages, max_tokens=available_for_recent)
+                recent_tokens = sum(_estimate_tokens(msg) for msg in recent)
+                total_tokens = summary_tokens + recent_tokens
+                logger.info(f"调整后: {total_tokens} tokens (摘要 {summary_tokens} + 短期记忆 {recent_tokens})")
+            else:
+                logger.warning("摘要本身已超过上限，保持现状")
+
+        elif total_tokens < target_min:
+            logger.info(f"压缩后 {total_tokens} tokens 低于下限 {target_min}，但这是好事，保持现状")
+
+        # 重建 session.messages
         session.messages = [
             {"role": "assistant", "content": f"[SUMMARY] 以下是之前对话的结构化摘要：\n{summary}"},
             *recent,
         ]
         session._save()
 
-        logger.info(f"压缩完成，消息数: {len(session.messages)} (摘要1条 + 短期记忆{len(recent)}条)")
-        print("  [系统] 上下文压缩完成")
+        ratio = total_tokens / _MODEL_MAX_TOKENS * 100
+        logger.info(f"压缩完成，消息数: {len(session.messages)}，占比: {ratio:.1f}%")
+        print(f"  [系统] 上下文压缩完成，占比 {ratio:.1f}%")
 
     except Exception as e:
         logger.error(f"压缩失败: {e}", exc_info=True)
