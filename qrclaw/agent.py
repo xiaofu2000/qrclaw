@@ -2,28 +2,18 @@ import json
 from openai import OpenAI
 from rich.console import Console
 from rich.panel import Panel
-from rich.syntax import Syntax
-from qrclaw.config import OPENAI_API_KEY, OPENAI_MODEL, OPENAI_BASE_URL, MAX_ITERATIONS, COMPRESS_THRESHOLD, _MODEL_MAX_TOKENS
+from qrclaw.config import OPENAI_API_KEY, OPENAI_MODEL, OPENAI_BASE_URL, MAX_ITERATIONS, COMPRESS_THRESHOLD
 from qrclaw.tools.registry import get_schemas, execute, need_confirm
 from qrclaw.memory.session import Session
 from qrclaw.memory import compressor, LongTermMemory
 from qrclaw.prompt import build_system_prompt
 from qrclaw.cli.display import show_plan_progress
+from qrclaw.workspace import Workspace
 from qrclaw.logger import get_logger
 
 logger = get_logger("qrclaw.agent")
 
 client = OpenAI(api_key=OPENAI_API_KEY, base_url=OPENAI_BASE_URL or None)
-
-# 全局中期记忆实例
-_memory = None
-
-def get_memory() -> LongTermMemory:
-    """获取中期记忆实例（单例）"""
-    global _memory
-    if _memory is None:
-        _memory = LongTermMemory()
-    return _memory
 
 
 # 全局 session 实例（供工具函数访问）
@@ -39,7 +29,7 @@ def get_session() -> Session | None:
     return _session
 
 
-def run(user_input: str, session: Session, console: Console):
+def run(user_input: str, session: Session, console: Console, workspace: Workspace):
     logger.info(f"收到用户输入: {user_input[:100]}...")
 
     set_session(session)
@@ -47,9 +37,12 @@ def run(user_input: str, session: Session, console: Console):
 
     # system prompt 每次实时构建，不存进 session
     # 这样工作目录、工具列表永远是最新的
+    from qrclaw.skills.registry import SkillRegistry
     tool_names = [s["function"]["name"] for s in get_schemas()]
-    memory = get_memory()
-    system_prompt = {"role": "system", "content": build_system_prompt(tool_names, memory, active_plan=session.active_plan)}
+    memory = LongTermMemory(workspace.memory_file)
+    skill_registry = SkillRegistry()
+    skill_registry.load_from_dir(workspace.skills_dir)
+    system_prompt = {"role": "system", "content": build_system_prompt(tool_names, memory, skill_registry, active_plan=session.active_plan)}
     logger.debug(f"System prompt 已构建，可用工具: {', '.join(tool_names)}")
 
     for iteration in range(MAX_ITERATIONS):

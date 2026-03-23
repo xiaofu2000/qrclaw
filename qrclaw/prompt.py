@@ -91,12 +91,8 @@ def _build_memory_section(memory: LongTermMemory = None) -> str:
     ])
 
 
-def _build_skills_section(skill_registry: SkillRegistry = None) -> str:
+def _build_skills_section(skill_registry: SkillRegistry) -> str:
     """构建技能部分（轻量级描述）"""
-    if skill_registry is None:
-        skill_registry = SkillRegistry()
-        skill_registry.load_from_dir()
-
     skills_list = skill_registry.get_skills_list()
 
     if not skills_list:
@@ -148,7 +144,7 @@ def _build_plan_section(active_plan: dict | None) -> str:
 def build_system_prompt(
     tool_names: list[str] | None = None,
     memory: LongTermMemory = None,
-    skill_registry: SkillRegistry = None,
+    skill_registry: SkillRegistry | None = None,
     active_plan: dict | None = None,
 ) -> str:
     """构建完整的 system prompt"""
@@ -157,7 +153,7 @@ def build_system_prompt(
         "",
         _build_tooling_section(tool_names or []),
         "",
-        _build_skills_section(skill_registry),
+        _build_skills_section(skill_registry or SkillRegistry()),
         "",
         _build_behavior_section(),
         "",

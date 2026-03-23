@@ -6,20 +6,19 @@ from qrclaw.logger import get_logger
 
 logger = get_logger("qrclaw.memory.session")
 
-# 会话文件统一存在这个目录下
-SESSIONS_DIR = Path.home() / ".qrclaw" / "sessions"
 
-
-def list_sessions() -> list[dict]:
+def list_sessions(sessions_dir: Path) -> list[dict]:
     """
-    列出所有已保存的会话。
+    列出指定目录下所有已保存的会话。
 
+    Args:
+        sessions_dir: 会话文件目录（由 Workspace 提供）
     Returns:
-        list[dict]: 每项包含 id、message_count、updated_at（文件修改时间）
+        list[dict]: 每项包含 id、message_count、updated_at
     """
-    SESSIONS_DIR.mkdir(parents=True, exist_ok=True)
+    sessions_dir.mkdir(parents=True, exist_ok=True)
     sessions = []
-    for path in sorted(SESSIONS_DIR.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True):
+    for path in sorted(sessions_dir.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True):
         try:
             data = json.loads(path.read_text(encoding="utf-8"))
             msg_count = len([m for m in data if m.get("role") != "system"])
@@ -34,9 +33,9 @@ def list_sessions() -> list[dict]:
     return sessions
 
 
-def delete_session(session_id: str) -> bool:
+def delete_session(session_id: str, sessions_dir: Path) -> bool:
     """删除指定会话文件，返回是否成功。"""
-    path = SESSIONS_DIR / f"{session_id}.json"
+    path = sessions_dir / f"{session_id}.json"
     if path.exists():
         path.unlink()
         logger.info(f"删除会话: {session_id}")
@@ -45,7 +44,7 @@ def delete_session(session_id: str) -> bool:
 
 
 class Session:
-    def __init__(self, session_id: str = None):
+    def __init__(self, sessions_dir: Path, session_id: str = None):
         # 不传 session_id 时自动生成，格式：YYYYMMDD-<uuid4 前8位>
         if session_id is None:
             short = uuid.uuid4().hex[:8]
@@ -61,9 +60,9 @@ class Session:
         # 当前活跃计划
         self.active_plan: dict | None = None
 
-        # 确保目录存在
-        SESSIONS_DIR.mkdir(parents=True, exist_ok=True)
-        self._path = SESSIONS_DIR / f"{session_id}.json"
+        # 会话文件路径（由 Workspace 提供的目录决定）
+        sessions_dir.mkdir(parents=True, exist_ok=True)
+        self._path = sessions_dir / f"{session_id}.json"
 
         logger.debug(f"初始化会话: {session_id}, 路径: {self._path}")
 

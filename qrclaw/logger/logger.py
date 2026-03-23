@@ -80,7 +80,8 @@ class QRClawLogger:
         log_to_file: bool = True,
         log_to_console: bool = True,
         log_max_days: int = 30,
-        console_level: str = "WARNING"
+        console_level: str = "WARNING",
+        log_dir: Path = None,
     ):
         """
         设置日志系统
@@ -92,6 +93,7 @@ class QRClawLogger:
             log_to_console: 是否输出到控制台
             log_max_days: 日志文件保留天数
             console_level: 控制台日志级别
+            log_dir: 日志目录（由 Workspace 提供，不传则用默认路径）
         """
         # session_id 未变则跳过，但必须确认 logger 已挂载 handlers
         # （防止 switch A→B→A 时 handler 实际指向 B 的文件）
@@ -103,8 +105,9 @@ class QRClawLogger:
         ):
             return
 
-        # 创建日志目录：~/.qrclaw/logs/
-        log_dir = Path.home() / ".qrclaw" / "logs"
+        # 日志目录：优先用传入的，否则用默认
+        if log_dir is None:
+            log_dir = Path.home() / ".qrclaw" / "logs"
         log_dir.mkdir(parents=True, exist_ok=True)
 
         # 获取 root logger
@@ -198,7 +201,8 @@ def setup_logger(
     log_to_file: bool = True,
     log_to_console: bool = True,
     log_max_days: int = 30,
-    console_level: str = "WARNING"
+    console_level: str = "WARNING",
+    log_dir: Path = None,
 ):
     """
     设置日志系统（全局函数）
@@ -210,6 +214,7 @@ def setup_logger(
         log_to_console: 是否输出到控制台
         log_max_days: 日志文件保留天数
         console_level: 控制台日志级别
+        log_dir: 日志目录（由 Workspace 提供）
     """
     _logger_manager.setup(
         session_id=session_id,
@@ -217,7 +222,8 @@ def setup_logger(
         log_to_file=log_to_file,
         log_to_console=log_to_console,
         log_max_days=log_max_days,
-        console_level=console_level
+        console_level=console_level,
+        log_dir=log_dir,
     )
 
 

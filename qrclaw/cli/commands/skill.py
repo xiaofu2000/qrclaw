@@ -6,7 +6,7 @@ from rich.table import Table
 from qrclaw.skills.registry import SkillRegistry
 
 
-def handle(args: str, console: Console) -> None:
+def handle(args: str, console: Console, workspace) -> None:
     """处理 /skill 子命令。"""
     parts = args.strip().split(maxsplit=1)
 
@@ -18,7 +18,7 @@ def handle(args: str, console: Console) -> None:
     sub_args = parts[1].strip() if len(parts) > 1 else ""
 
     if subcommand == "list":
-        _cmd_list(console)
+        _cmd_list(console, workspace)
     elif subcommand == "import":
         _cmd_import(sub_args, console)
     else:
@@ -26,9 +26,9 @@ def handle(args: str, console: Console) -> None:
         _print_help(console)
 
 
-def _cmd_list(console: Console) -> None:
+def _cmd_list(console: Console, workspace) -> None:
     registry = SkillRegistry()
-    registry.load_from_dir()
+    registry.load_from_dir(workspace.skills_dir)
 
     if not registry.skills:
         console.print("[yellow]没有安装任何技能[/yellow]")

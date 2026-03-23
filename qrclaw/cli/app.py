@@ -11,6 +11,7 @@ import argparse
 from rich.console import Console
 from rich.panel import Panel
 from qrclaw.logger import setup_logger
+from qrclaw.workspace import Workspace
 from qrclaw.config import LOG_LEVEL, LOG_MAX_DAYS, LOG_TO_FILE, LOG_TO_CONSOLE, LOG_CONSOLE_LEVEL
 from qrclaw.cli.input import get_input
 from qrclaw.cli.display import show_context_usage, show_plan_progress
@@ -22,6 +23,8 @@ console = Console()
 
 def main() -> None:
     parser = argparse.ArgumentParser(prog="qrclaw", add_help=False)
+    parser.add_argument("-a", "--agent", default="default", metavar="ID",
+                        help="指定 agent ID（默认: default）")
     parser.add_argument("-h", "--help", action="store_true")
     args, _ = parser.parse_known_args()
 
@@ -29,16 +32,19 @@ def main() -> None:
         _print_help()
         return
 
-    # 2. 日志就绪后再触发各子模块 import（它们顶层会调用 get_logger）
+    # 1. 初始化工作空间（确定所有路径）
+    workspace = Workspace(agent_id=args.agent)
+
+    # 2. 延迟导入各子模块（在 setup_logger 之前不能触发 get_logger）
     import qrclaw.tools.builtin  # noqa: E402  触发工具注册
     import qrclaw.tools.skills   # noqa: E402  触发 Skills 工具注册
     from qrclaw.agent import run
     from qrclaw.memory.session import Session
 
-    # 1. 先生成 Session（自动生成 session_id）
-    session = Session()
+    # 3. 创建 Session（路径由 workspace 决定）
+    session = Session(sessions_dir=workspace.sessions_dir)
 
-    # 2. 用该 session_id 初始化日志，日志文件与 session 一一对应
+    # 4. 初始化日志（路径由 workspace 决定）
     setup_logger(
         session_id=session.session_id,
         log_level=LOG_LEVEL,
@@ -46,10 +52,12 @@ def main() -> None:
         log_to_console=LOG_TO_CONSOLE,
         log_max_days=LOG_MAX_DAYS,
         console_level=LOG_CONSOLE_LEVEL,
+        log_dir=workspace.logs_dir,
     )
 
     console.print(
         f"[bold cyan]QRClaw Agent[/bold cyan] 启动  "
+        f"[dim]agent: [/dim][bold cyan]{workspace.agent_id}[/bold cyan]  "
         f"[dim]会话: [/dim][bold cyan]{session.session_id}[/bold cyan]\n"
         "[dim]Enter 发送 · Alt+Enter 换行 · exit 退出 · clear 清除 · "
         "/session 管理会话 · /skill 管理技能[/dim]\n"
@@ -74,12 +82,12 @@ def main() -> None:
 
         if user_input.startswith("/session"):
             sub = user_input[8:].strip()
-            session = session_cmd.handle(sub, session, console)
+            session = session_cmd.handle(sub, session, console, workspace)
             continue
 
         if user_input.startswith("/skill"):
             sub = user_input[6:].strip()
-            skill_cmd.handle(sub, console)
+            skill_cmd.handle(sub, console, workspace)
             continue
 
         if user_input == "exit":
@@ -104,7 +112,7 @@ def main() -> None:
         ))
 
         try:
-            run(user_input, session, console)
+            run(user_input, session, console, workspace)
         except Exception:
             console.print_exception()
 
@@ -112,14 +120,14 @@ def main() -> None:
 def _print_help() -> None:
     console.print("[bold cyan]QRClaw Agent[/bold cyan]")
     console.print()
-    console.print("用法: qrclaw [-s <会话ID>]")
+    console.print("用法: qrclaw [-a <agentID>]")
     console.print()
     console.print("选项:")
-    console.print("  -s, --session <ID>   指定会话 ID（默认: default）")
+    console.print("  -a, --agent <ID>     指定 agent ID（默认: default）")
     console.print()
     console.print("运行时命令:")
     console.print("  /session list              列出所有会话")
-    console.print("  /session new <id>          新建会话")
+    console.print("  /session new [id]          新建会话")
     console.print("  /session switch <id>       切换会话")
     console.print("  /session delete <id>       删除会话")
     console.print("  /skill list                列出技能")
