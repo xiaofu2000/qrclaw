@@ -265,3 +265,34 @@ def read_memory() -> str:
         error_msg = f"错误：读取中期记忆失败 {e}"
         logger.error(error_msg, exc_info=True)
         return error_msg
+import requests
+
+class WebFetchArgs(BaseModel):
+    url: str = Field(..., description="要抓取的网页 URL，例如 https://example.com")
+
+@register(description="访问指定网页并提取纯净的 Markdown 正文，适合阅读文章、文档", args_model=WebFetchArgs)
+def web_fetch(url: str) -> str:
+    logger.debug(f"抓取网页正文: {url}")
+    try:
+        jina_url = f"https://r.jina.ai/{url}"
+        headers = {
+            "Accept": "application/json", 
+            "X-Return-Format": "markdown"
+        }
+        response = requests.get(jina_url, headers=headers, timeout=30)
+        
+        if response.status_code == 200:
+            data = response.json()
+            content = data.get("data", {}).get("content", "")
+            if not content:
+                content = data.get("data", {}).get("text", "正文为空")
+            logger.info(f"网页抓取成功: {url}, 长度: {len(content)}")
+            return content
+        else:
+            fallback_text = requests.get(jina_url, timeout=30).text
+            logger.info(f"网页抓取(降级)成功: {url}, 长度: {len(fallback_text)}")
+            return fallback_text
+    except Exception as e:
+        error_msg = f"网页抓取失败: {e}"
+        logger.error(error_msg)
+        return error_msg

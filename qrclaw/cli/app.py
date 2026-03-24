@@ -160,7 +160,7 @@ def main() -> None:
         ))
 
         try:
-            run(user_input, session, console, workspace)
+            run(user_input, session, console, workspace, auto_confirm=True)
         except Exception:
             console.print_exception()
 
