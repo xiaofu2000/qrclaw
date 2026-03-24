@@ -34,18 +34,37 @@ def need_confirm(name: str) -> bool:
     return _tools.get(name, {}).get("confirm", False)
 
 
+def _resolve_refs(schema: dict, defs: dict) -> dict:
+    """递归展开 $ref 并清理 title，Gemini 不支持 $ref"""
+    if "$ref" in schema:
+        ref_name = schema["$ref"].split("/")[-1]
+        resolved = _resolve_refs(defs.get(ref_name, {}), defs)
+        other = {k: v for k, v in schema.items() if k != "$ref"}
+        return {**resolved, **other}
+    result = {}
+    for k, v in schema.items():
+        if k in ("$defs", "title"):
+            continue  # 去掉 $defs 和所有层级的 title
+        elif isinstance(v, dict):
+            result[k] = _resolve_refs(v, defs)
+        elif isinstance(v, list):
+            result[k] = [_resolve_refs(i, defs) if isinstance(i, dict) else i for i in v]
+        else:
+            result[k] = v
+    return result
+
+
 def _build_schema(name: str, description: str, args_model: Type[BaseModel]) -> dict:
-    """从 Pydantic 模型生成 OpenAI Tool Schema"""
-    # Pydantic v2 用 model_json_schema()
+    """从 Pydantic 模型生成 OpenAI Tool Schema，兼容 Gemini"""
     pydantic_schema = args_model.model_json_schema()
+    defs = pydantic_schema.get("$defs", {})
 
-    # 去掉 Pydantic 自动生成的 title 字段，LLM 不需要它
-    properties = {
-        k: {pk: pv for pk, pv in v.items() if pk != "title"}
-        for k, v in pydantic_schema.get("properties", {}).items()
-    }
+    # 展开 $ref，内联所有引用，同时递归清理 title
+    resolved = _resolve_refs(pydantic_schema, defs)
 
-    # 某些 LLM API（如 Gemini 兼容层）不接受空 properties，无参数工具省略 parameters 字段
+    properties = dict(resolved.get("properties", {}))
+
+    # 无参数工具：省略 parameters 字段（Gemini 不接受空 properties）
     if not properties:
         return {
             "type": "function",
@@ -55,16 +74,21 @@ def _build_schema(name: str, description: str, args_model: Type[BaseModel]) -> d
             },
         }
 
+    required = pydantic_schema.get("required", [])
+    parameters: dict = {
+        "type": "object",
+        "properties": properties,
+    }
+    # required 为空时省略，避免某些 API 报错
+    if required:
+        parameters["required"] = required
+
     return {
         "type": "function",
         "function": {
             "name": name,
             "description": description,
-            "parameters": {
-                "type": "object",
-                "properties": properties,
-                "required": pydantic_schema.get("required", []),
-            },
+            "parameters": parameters,
         },
     }
 

@@ -51,6 +51,43 @@ def is_sub_agent() -> bool:
     return get_agent_depth() > 0
 
 
+def _dump_assistant_msg(message) -> dict:
+    """
+    把 assistant message 转成可存储的 dict。
+    - 过滤顶层 null 字段（refusal/annotations/audio 等）
+    - tool_calls 保留完整原始结构（Gemini 要求回传时带 thought_signature）
+    - content 为 null 时替换为空字符串
+    """
+    # 顶层只保留非 null 字段
+    raw = message.model_dump()
+    msg = {k: v for k, v in raw.items() if v is not None}
+    msg["role"] = "assistant"
+    msg["content"] = message.content or ""
+    return msg
+
+
+def _sanitize_messages(messages: list[dict]) -> list[dict]:
+    """
+    发送给 LLM 前清理消息列表：
+    - 过滤顶层 null 字段（refusal/annotations/audio 等）
+    - content 为 null 时替换为空字符串
+    - tool_calls 原样保留（Gemini 需要其中的 thought_signature）
+    """
+    # 这些顶层字段如果为 null 就删掉，避免 Gemini 报 400
+    drop_if_null = {"refusal", "annotations", "audio", "function_call"}
+    result = []
+    for msg in messages:
+        cleaned = {}
+        for k, v in msg.items():
+            if k in drop_if_null and v is None:
+                continue
+            cleaned[k] = v
+        if cleaned.get("content") is None:
+            cleaned["content"] = ""
+        result.append(cleaned)
+    return result
+
+
 def run(user_input: str, session: Session, console: Console, workspace: Workspace, auto_confirm: bool = False):
     logger.info(f"收到用户输入: {user_input[:100]}...")
 
@@ -80,8 +117,8 @@ def run(user_input: str, session: Session, console: Console, workspace: Workspac
     for iteration in range(MAX_ITERATIONS):
         logger.debug(f"开始第 {iteration + 1} 轮推理")
 
-        # 每次调 LLM 时把 system prompt 拼到最前面
-        messages = [system_prompt, *session.messages]
+        # 每次调 LLM 时把 system prompt 拼到最前面，并清理 null content
+        messages = _sanitize_messages([system_prompt, *session.messages])
 
         # spinner 只包住 LLM 请求这一步，拿到响应立即退出
         with console.status("[bold yellow]思考中...[/bold yellow]", spinner="dots"):
@@ -166,13 +203,13 @@ def run(user_input: str, session: Session, console: Console, workspace: Workspac
                     logger.warning(f"用户拒绝执行工具: {name}")
                     console.print(Panel(result, title="[bold red]已拒绝[/bold red]", border_style="red", expand=False))
                     if not assistant_msg_saved:
-                        session.add(message.model_dump())
+                        session.add(_dump_assistant_msg(message))
                         assistant_msg_saved = True
                     session.add({"role": "tool", "tool_call_id": tc.id, "content": result})
                     break  # 退出工具循环，回到外层让LLM重新推理
 
             if not assistant_msg_saved:
-                session.add(message.model_dump())
+                session.add(_dump_assistant_msg(message))
                 assistant_msg_saved = True
 
             try:
@@ -209,7 +246,7 @@ def run_sub_agent(task: str, sub_workspace: Workspace) -> str:
     以静默模式运行子 agent，返回结果字符串。
     子 agent 不打印到用户终端，结果直接返回给调用方（主 agent）。
     任务完成后自动清理工作空间（保留 logs，删除 sessions/skills/MEMORY.md）。
-    
+
     重要：子 agent 不允许再派生子 agent，防止无限嵌套。
 
     Args:
