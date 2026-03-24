@@ -38,6 +38,18 @@ def get_workspace() -> Workspace | None:
     """获取当前线程的 workspace"""
     return getattr(_thread_local, "workspace", None)
 
+def set_agent_depth(depth: int):
+    """设置当前 agent 的深度（0=顶层 agent）"""
+    _thread_local.agent_depth = depth
+
+def get_agent_depth() -> int:
+    """获取当前 agent 的深度，默认为 0（顶层）"""
+    return getattr(_thread_local, "agent_depth", 0)
+
+def is_sub_agent() -> bool:
+    """判断当前是否是子 agent"""
+    return get_agent_depth() > 0
+
 
 def run(user_input: str, session: Session, console: Console, workspace: Workspace, auto_confirm: bool = False):
     logger.info(f"收到用户输入: {user_input[:100]}...")
@@ -197,6 +209,8 @@ def run_sub_agent(task: str, sub_workspace: Workspace) -> str:
     以静默模式运行子 agent，返回结果字符串。
     子 agent 不打印到用户终端，结果直接返回给调用方（主 agent）。
     任务完成后自动清理工作空间（保留 logs，删除 sessions/skills/MEMORY.md）。
+    
+    重要：子 agent 不允许再派生子 agent，防止无限嵌套。
 
     Args:
         task: 子 agent 要执行的任务描述
@@ -211,14 +225,22 @@ def run_sub_agent(task: str, sub_workspace: Workspace) -> str:
 
     logger.info(f"启动子 agent: {sub_workspace.agent_id}, 任务: {task[:100]}...")
 
+    # 设置子 agent 深度（当前深度 + 1）
+    current_depth = get_agent_depth()
+    set_agent_depth(current_depth + 1)
+    logger.info(f"子 agent 深度: {current_depth + 1}")
+
     buffer = StringIO()
     sub_console = RichConsole(file=buffer, highlight=False)
-    sub_session = Session(sessions_dir=sub_workspace.sessions_dir)
+    sub_session = Session(sessions_dir=sub_workspace.sessions_dir, resume=False)
 
-    result = run(task, sub_session, sub_console, sub_workspace, auto_confirm=True)
-    result = result or "子 agent 未返回结果"
-
-    logger.info(f"子 agent {sub_workspace.agent_id} 执行完毕，结果长度: {len(result)} 字符")
+    try:
+        result = run(task, sub_session, sub_console, sub_workspace, auto_confirm=True)
+        result = result or "子 agent 未返回结果"
+        logger.info(f"子 agent {sub_workspace.agent_id} 执行完毕，结果长度: {len(result)} 字符")
+    finally:
+        # 恢复深度
+        set_agent_depth(current_depth)
 
     # 清理工作空间：保留 logs，删除 sessions/skills/MEMORY.md
     try:

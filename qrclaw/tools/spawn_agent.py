@@ -4,6 +4,8 @@ spawn_agent 工具
 允许主 agent 并行创建多个子 agent 执行任务。
 子 agent 在后台线程运行，立即返回，不阻塞主 agent。
 通过 wait_agents 工具等待并收集所有结果。
+
+重要：子 agent 不允许再派生子 agent，防止无限嵌套。
 """
 import threading
 from rich.console import Console
@@ -56,8 +58,12 @@ def spawn_agent(agent_id: str, task: str) -> str:
     Returns:
         str: 启动确认信息
     """
-    from qrclaw.agent import get_workspace, run_sub_agent
+    from qrclaw.agent import get_workspace, run_sub_agent, is_sub_agent
     from qrclaw.workspace import Workspace
+
+    # 关键检查：子 agent 不允许再派生子 agent，防止无限嵌套
+    if is_sub_agent():
+        return "错误：子 agent 不允许再派生子 agent，这会导致无限嵌套。请直接执行任务，不要使用 spawn_agent。"
 
     # 如果该 agent_id 已在运行，拒绝重复启动
     with _task_pool_lock:
