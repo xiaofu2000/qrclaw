@@ -45,6 +45,16 @@ def _build_schema(name: str, description: str, args_model: Type[BaseModel]) -> d
         for k, v in pydantic_schema.get("properties", {}).items()
     }
 
+    # 某些 LLM API（如 Gemini 兼容层）不接受空 properties，无参数工具省略 parameters 字段
+    if not properties:
+        return {
+            "type": "function",
+            "function": {
+                "name": name,
+                "description": description,
+            },
+        }
+
     return {
         "type": "function",
         "function": {
@@ -79,15 +89,15 @@ def execute(name: str, arguments: str) -> str:
     try:
         raw_args = json.loads(arguments)
         logger.debug(f"工具 {name} 原始参数: {raw_args}")
-        
+
         # 用 Pydantic 校验并解析参数
         validated = _tools[name]["model"](**raw_args)
         logger.debug(f"工具 {name} 校验后参数: {validated.model_dump()}")
-        
+
         # 执行工具
         result = _tools[name]["fn"](**validated.model_dump())
         logger.info(f"工具 {name} 执行成功")
-        
+
         return result
     except json.JSONDecodeError as e:
         error_msg = f"错误：参数不是合法的 JSON: {e}"
