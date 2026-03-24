@@ -109,7 +109,7 @@ def run(user_input: str, session: Session, console: Console, workspace: Workspac
             session.add({"role": "assistant", "content": message.content})
             console.print()  # 添加空行
             console.print(Panel(
-                Markdown(message.content),
+                Markdown(message.content, code_theme="ansi_dark"),
                 title="[bold green]Agent[/bold green]",
                 border_style="green",
                 expand=True,

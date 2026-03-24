@@ -64,7 +64,8 @@ def _cmd_list(current_session: Session, console: Console, workspace: Workspace) 
 
 def _cmd_new(session_id: str, current_session: Session, console: Console, workspace: Workspace) -> Session:
     _reinit_logger(session_id or None, workspace)
-    new_session = Session(sessions_dir=workspace.sessions_dir, session_id=session_id or None)
+    # 关键修复：必须传入 resume=False，否则会恢复最近的会话
+    new_session = Session(sessions_dir=workspace.sessions_dir, session_id=session_id or None, resume=False)
     console.print(f"[bold cyan]已新建并切换到会话: {new_session.session_id}[/bold cyan]")
     return new_session
 
