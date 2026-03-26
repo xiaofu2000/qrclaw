@@ -23,18 +23,32 @@ CONFIG_FILE = CONFIG_DIR / "config"
 DEFAULT_CONFIG = """# QRClaw 配置文件
 # 配置说明：https://github.com/fu-qingrong/qrclaw
 
-# Agent 配置
+# ── Agent 配置 ───────────────────────────────────────
 AGENT_NAME=QRClaw
+MAX_ITERATIONS=50
+
+# ── LLM 渠道配置 ─────────────────────────────────────
+# 支持以下渠道，修改 LLM_PROVIDER 切换：
+#
+#   openai  —— OpenAI 官方 或 任何兼容 OpenAI 接口的服务
+#              （如 DeepSeek、通义千问、本地 Ollama 等）
+#              需要配置：OPENAI_API_KEY、OPENAI_MODEL
+#              可选配置：OPENAI_BASE_URL（不填则走 OpenAI 官方）
+#
+#   vertex  —— Google Vertex AI（使用 Express API Key）
+#              需要配置：OPENAI_API_KEY（填 Vertex Express Key）、OPENAI_MODEL
+#
+LLM_PROVIDER=openai
+
 OPENAI_API_KEY=
 OPENAI_MODEL=gpt-4o
 OPENAI_BASE_URL=
 MODEL_MAX_TOKENS=128000
-MAX_ITERATIONS=50
 
-# Tavily API（网页搜索）
+# ── Tavily API（网页搜索）────────────────────────────
 TAVILY_API_KEY=
 
-# 日志配置
+# ── 日志配置 ─────────────────────────────────────────
 LOG_LEVEL=INFO
 LOG_MAX_DAYS=30
 LOG_TO_FILE=true
