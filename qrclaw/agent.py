@@ -1,9 +1,10 @@
 import json
-from openai import OpenAI
 from rich.console import Console
 from rich.panel import Panel
 from rich.markdown import Markdown
-from qrclaw.config import OPENAI_API_KEY, OPENAI_MODEL, OPENAI_BASE_URL, MAX_ITERATIONS, COMPRESS_THRESHOLD
+from qrclaw.config import MAX_ITERATIONS, COMPRESS_THRESHOLD
+from qrclaw.providers import provider
+from qrclaw.providers.base import LLMResponse
 from qrclaw.tools.registry import get_schemas, execute, need_confirm
 from qrclaw.memory.session import Session
 from qrclaw.memory import compressor, LongTermMemory
@@ -13,8 +14,6 @@ from qrclaw.workspace import Workspace
 from qrclaw.logger import get_logger
 
 logger = get_logger("qrclaw.agent")
-
-client = OpenAI(api_key=OPENAI_API_KEY, base_url=OPENAI_BASE_URL or None)
 
 
 # 用 threading.local 隔离每个线程的 session/workspace
@@ -51,41 +50,15 @@ def is_sub_agent() -> bool:
     return get_agent_depth() > 0
 
 
-def _dump_assistant_msg(message) -> dict:
-    """
-    把 assistant message 转成可存储的 dict。
-    - 过滤顶层 null 字段（refusal/annotations/audio 等）
-    - tool_calls 保留完整原始结构（Gemini 要求回传时带 thought_signature）
-    - content 为 null 时替换为空字符串
-    """
-    # 顶层只保留非 null 字段
-    raw = message.model_dump()
-    msg = {k: v for k, v in raw.items() if v is not None}
-    msg["role"] = "assistant"
-    msg["content"] = message.content or ""
+def _dump_assistant_msg(response: LLMResponse) -> dict:
+    """把 LLMResponse 转成可存入 session 的 assistant 消息 dict"""
+    msg: dict = {"role": "assistant", "content": response.content or ""}
+    if response.tool_calls:
+        msg["tool_calls"] = [
+            {"id": tc.id, "type": "function", "function": {"name": tc.name, "arguments": tc.arguments}}
+            for tc in response.tool_calls
+        ]
     return msg
-
-
-def _sanitize_messages(messages: list[dict]) -> list[dict]:
-    """
-    发送给 LLM 前清理消息列表：
-    - 过滤顶层 null 字段（refusal/annotations/audio 等）
-    - content 为 null 时替换为空字符串
-    - tool_calls 原样保留（Gemini 需要其中的 thought_signature）
-    """
-    # 这些顶层字段如果为 null 就删掉，避免 Gemini 报 400
-    drop_if_null = {"refusal", "annotations", "audio", "function_call"}
-    result = []
-    for msg in messages:
-        cleaned = {}
-        for k, v in msg.items():
-            if k in drop_if_null and v is None:
-                continue
-            cleaned[k] = v
-        if cleaned.get("content") is None:
-            cleaned["content"] = ""
-        result.append(cleaned)
-    return result
 
 
 def run(user_input: str, session: Session, console: Console, workspace: Workspace, auto_confirm: bool = False):
@@ -117,54 +90,45 @@ def run(user_input: str, session: Session, console: Console, workspace: Workspac
     for iteration in range(MAX_ITERATIONS):
         logger.debug(f"开始第 {iteration + 1} 轮推理")
 
-        # 每次调 LLM 时把 system prompt 拼到最前面，并清理 null content
-        messages = _sanitize_messages([system_prompt, *session.messages])
+        # 每次调 LLM 时把 system prompt 拼到最前面
+        messages = [system_prompt, *session.messages]
 
         # spinner 只包住 LLM 请求这一步，拿到响应立即退出
         with console.status("[bold yellow]思考中...[/bold yellow]", spinner="dots"):
             logger.debug(f"调用 LLM，消息数: {len(messages)}")
             try:
-                response = client.chat.completions.create(
-                    model=OPENAI_MODEL,
-                    messages=messages,
-                    tools=get_schemas(),
-                )
-
-                # 更新 token 使用情况
-                usage = response.usage
+                response = provider.chat(messages, tools=get_schemas())
                 session.update_tokens(
-                    prompt_tokens=usage.prompt_tokens,
-                    completion_tokens=usage.completion_tokens,
-                    total_tokens=usage.total_tokens
+                    prompt_tokens=response.prompt_tokens,
+                    completion_tokens=response.completion_tokens,
+                    total_tokens=response.total_tokens,
                 )
-
-                logger.info(f"LLM 响应成功，使用 {usage.total_tokens} tokens (prompt: {usage.prompt_tokens}, completion: {usage.completion_tokens})")
+                logger.info(f"LLM 响应成功，使用 {response.total_tokens} tokens")
             except Exception as e:
                 logger.error(f"LLM 调用失败: {e}", exc_info=True)
                 raise
 
-        finish_reason = response.choices[0].finish_reason
-        message = response.choices[0].message
+        finish_reason = response.finish_reason
 
         # 检查是否需要压缩
-        if response.usage.prompt_tokens > COMPRESS_THRESHOLD:
-            logger.warning(f"Prompt tokens ({response.usage.prompt_tokens}) 超过阈值 ({COMPRESS_THRESHOLD})，触发压缩")
+        if response.prompt_tokens > COMPRESS_THRESHOLD:
+            logger.warning(f"Prompt tokens ({response.prompt_tokens}) 超过阈值 ({COMPRESS_THRESHOLD})，触发压缩")
             compressor.summarize(session)
         else:
-            logger.debug(f"Prompt tokens: {response.usage.prompt_tokens}, 阈值: {COMPRESS_THRESHOLD}")
+            logger.debug(f"Prompt tokens: {response.prompt_tokens}, 阈值: {COMPRESS_THRESHOLD}")
 
         if finish_reason == "stop":
-            logger.info(f"推理完成，最终答案长度: {len(message.content)} 字符")
-            session.add({"role": "assistant", "content": message.content})
+            logger.info(f"推理完成，最终答案长度: {len(response.content)} 字符")
+            session.add({"role": "assistant", "content": response.content})
             console.print()  # 添加空行
             console.print(Panel(
-                Markdown(message.content, code_theme="ansi_dark"),
+                Markdown(response.content, code_theme="ansi_dark"),
                 title="[bold green]Agent[/bold green]",
                 border_style="green",
                 expand=True,
             ))
             console.print()  # 添加空行
-            return message.content
+            return response.content
 
         if finish_reason == "length":
             logger.warning("LLM 响应被截断 (finish_reason=length)")
@@ -174,9 +138,9 @@ def run(user_input: str, session: Session, console: Console, workspace: Workspac
         # assistant 消息只存一次，在工具循环之前
         assistant_msg_saved = False
 
-        for tc in message.tool_calls:
-            name = tc.function.name
-            arguments = tc.function.arguments
+        for tc in response.tool_calls:
+            name = tc.name
+            arguments = tc.arguments
             logger.info(f"工具调用: {name}, 参数: {arguments[:200]}...")
 
             # 把 JSON 字符串格式化后高亮显示
@@ -203,13 +167,13 @@ def run(user_input: str, session: Session, console: Console, workspace: Workspac
                     logger.warning(f"用户拒绝执行工具: {name}")
                     console.print(Panel(result, title="[bold red]已拒绝[/bold red]", border_style="red", expand=False))
                     if not assistant_msg_saved:
-                        session.add(_dump_assistant_msg(message))
+                        session.add(_dump_assistant_msg(response))
                         assistant_msg_saved = True
                     session.add({"role": "tool", "tool_call_id": tc.id, "content": result})
                     break  # 退出工具循环，回到外层让LLM重新推理
 
             if not assistant_msg_saved:
-                session.add(_dump_assistant_msg(message))
+                session.add(_dump_assistant_msg(response))
                 assistant_msg_saved = True
 
             try:
@@ -233,6 +197,7 @@ def run(user_input: str, session: Session, console: Console, workspace: Workspac
                 "tool_call_id": tc.id,
                 "content": result,
             })
+
 
             if name in ("create_plan", "complete_step"):
                 show_plan_progress(console, session)
