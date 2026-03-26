@@ -8,7 +8,7 @@ _providers: Dict[str, Type[WebSearchProvider]] = {}
 
 def register_provider(provider_cls: Type[WebSearchProvider]):
     """注册一个新的 Search Provider"""
-    _providers[provider_cls.id] = provider_cls
+    _providers[provider_cls().id] = provider_cls
 
 def list_providers() -> List[Type[WebSearchProvider]]:
     """列出所有已注册的 Provider"""

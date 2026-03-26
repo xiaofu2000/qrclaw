@@ -1,6 +1,6 @@
 import time
 from typing import List
-from duckduckgo_search import DDGS
+from ddgs import DDGS
 from qrclaw.web_search.types import WebSearchProvider, SearchResult, WebSearchResponse
 from qrclaw.logger import get_logger
 
@@ -22,13 +22,13 @@ class DuckDuckGoSearchProvider(WebSearchProvider):
     def search(self, query: str, max_results: int = 5, **kwargs) -> WebSearchResponse:
         start_time = time.time()
         logger.debug(f"DuckDuckGo searching: {query}")
-        
+
         results: List[SearchResult] = []
         try:
             with DDGS() as ddgs:
                 # region="wt-wt" 表示全球搜索，timelimit="y" 表示最近一年(可选)
                 ddg_results = ddgs.text(query, max_results=max_results, region="wt-wt")
-                
+
                 for r in ddg_results:
                     results.append(SearchResult(
                         title=r.get("title", ""),
