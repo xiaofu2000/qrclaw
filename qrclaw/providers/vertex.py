@@ -44,19 +44,23 @@ class VertexProvider(LLMProvider):
         contents = []
         system_parts = []
 
-        for msg in messages:
+        i = 0
+        while i < len(messages):
+            msg = messages[i]
             role = msg.get("role")
             content = msg.get("content", "")
 
             if role == "system":
                 if content:
                     system_parts.append(content)
+                i += 1
 
             elif role == "user":
                 contents.append(types.Content(
                     role="user",
                     parts=[types.Part(text=content or "")]
                 ))
+                i += 1
 
             elif role == "assistant":
                 parts = []
@@ -69,7 +73,6 @@ class VertexProvider(LLMProvider):
                         args = json.loads(fn["arguments"])
                     except Exception:
                         args = {}
-                    # 从 tc 里取回 thought_signature（base64 -> bytes）
                     ts_b64 = tc.get(_TS_KEY)
                     ts_bytes = base64.b64decode(ts_b64) if ts_b64 else None
 
@@ -84,25 +87,32 @@ class VertexProvider(LLMProvider):
                     parts.append(part)
                 if parts:
                     contents.append(types.Content(role="model", parts=parts))
+                i += 1
 
             elif role == "tool":
-                # tool 结果转成 function_response，name 用 tool_call_id（即函数名）
-                tool_call_id = msg.get("tool_call_id", "")
-                try:
-                    result = json.loads(content) if content else {}
-                    if not isinstance(result, dict):
-                        result = {"result": content}
-                except Exception:
-                    result = {"result": content}
-                contents.append(types.Content(
-                    role="user",
-                    parts=[types.Part(
+                # 把连续的 tool 消息合并到同一个 Content，Vertex AI 要求 function_response 数量与 function_call 一致
+                tool_parts = []
+                while i < len(messages) and messages[i].get("role") == "tool":
+                    m = messages[i]
+                    tool_call_id = m.get("tool_call_id", "")
+                    c = m.get("content", "")
+                    try:
+                        result = json.loads(c) if c else {}
+                        if not isinstance(result, dict):
+                            result = {"result": c}
+                    except Exception:
+                        result = {"result": c}
+                    tool_parts.append(types.Part(
                         function_response=types.FunctionResponse(
                             name=tool_call_id,
                             response=result,
                         )
-                    )]
-                ))
+                    ))
+                    i += 1
+                contents.append(types.Content(role="user", parts=tool_parts))
+
+            else:
+                i += 1
 
         config_kwargs = {}
         if system_parts:
