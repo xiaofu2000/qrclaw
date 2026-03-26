@@ -1,225 +1,104 @@
-# QRClaw
-
-<div align="center">
+# QRClaw: 运行在本地的自主 AI Agent 🐾
 
 [![PyPI version](https://badge.fury.io/py/qrclaw.svg)](https://badge.fury.io/py/qrclaw)
-[![Python](https://img.shields.io/pypi/pyversions/qrclaw.svg)](https://pypi.org/project/qrclaw/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-**A powerful AI agent with skills system**
+**QRClaw** 是一个开源的、可本地运行的自主 AI Agent 框架。它不仅拥有强大的记忆系统，还内置了多引擎联网搜索能力，支持插件扩展，能够像人类一样规划任务并逐步执行。
 
-[English](#english) | [中文](#中文)
+## 🌟 核心特性
 
-</div>
+- **🚀 本地优先**：核心逻辑完全在本地运行，数据隐私安全。
+- **🔍 智能联网搜索**：
+  - **多引擎支持**：Tavily (强)、Google (准)、DuckDuckGo (免费保底)。
+  - **自动故障转移**：Tavily 额度用完？自动切 DuckDuckGo，永不断连。
+  - **结果清洗**：自动去除广告，提取纯净正文，拒绝垃圾信息。
+- **🧠 记忆系统**：
+  - **长期记忆 (Long-Term)**：自动记录你的偏好、项目背景。
+  - **短期会话 (Session)**：支持多轮对话，上下文自动管理。
+- **🛠️ 插件化架构**：
+  - **Tools**：文件操作、Shell 命令、网页抓取。
+  - **Skills**：一键安装社区技能（如代码审查、文档生成）。
+- **📅 任务规划**：遇到复杂问题，自动拆解步骤（Plan -> Execute -> Review）。
 
----
-
-## English
-
-### Features
-
-- 🤖 **AI Agent** - Powered by OpenAI, with intelligent context management
-- 🎯 **Skills System** - Extend functionality with modular skills
-- 🔄 **OpenClaw Compatible** - Fully compatible with OpenClaw skills ecosystem
-- 💾 **Session Management** - Persistent conversation history
-- 🎨 **Rich UI** - Beautiful terminal interface with syntax highlighting
-- 📦 **Easy to Use** - Simple installation and configuration
-
-### Installation
+## 📦 快速安装
 
 ```bash
-# Install from PyPI
+# 推荐使用 pip 安装
 pip install qrclaw
-
-# Or install from GitHub
-pip install git+https://github.com/fu-qingrong/qrclaw.git
 ```
 
-### Quick Start
+或者从源码安装：
 
-1. **Set up API Key**
-   ```bash
-   # Create .env file
-   echo "OPENAI_API_KEY=your-api-key-here" > ~/.qrclaw/.env
-   ```
+```bash
+git clone https://gitee.com/fu-qingrong/qrclaw.git
+cd qrclaw
+pip install .
+```
 
-2. **Run QRClaw**
+## 🚀 快速上手
+
+1. **初始化**：
+   在任意目录下运行 `qrclaw`，它会自动引导你配置。
+
    ```bash
    qrclaw
    ```
 
-3. **Start Chatting**
-   ```
-   > Hello, how can you help me?
-   > Analyze this project for me
-   > Review the code in src/main.py
-   ```
+2. **基本命令**：
+   - **对话**：直接输入自然语言（例如："帮我查一下最新的 RAG 优化方案"）。
+   - **多行输入**：按 `Alt+Enter` 换行。
+   - **退出**：输入 `exit`。
+   - **管理 Agent**：`/agent list`。
+   - **管理会话**：`/session list`。
 
-### Skills System
+## ⚙️ 配置指南
 
-QRClaw comes with built-in skills:
+QRClaw 会自动读取环境变量（`.env`）或系统环境变量。
 
-- **review-code** - Review code and provide improvement suggestions
-- **generate-docs** - Generate README, API docs, etc.
-- **analyze-project** - Analyze project structure and code quality
-- **install-skill** - Install new skills from GitHub/ClawHub
+### 必填项
+```bash
+# 你的 OpenAI 兼容 API Key（如 DeepSeek, Moonshot, OpenAI）
+export OPENAI_API_KEY="sk-..."
+export OPENAI_BASE_URL="https://api.openai.com/v1"  # 可选，默认官方
+export OPENAI_MODEL="gpt-4o"                        # 可选，默认 gpt-4o
+```
 
-#### Install New Skills
+### 联网搜索配置（可选）
+QRClaw 默认使用 **DuckDuckGo**（完全免费）。如果你想更强：
 
 ```bash
-# In QRClaw chat
-> 导入 skill meow-finder
+# 方案 A: Tavily (推荐，不仅能搜还能读网页)
+export TAVILY_API_KEY="tvly-..."
 
-# Or use CLI
-/skill import meow-finder
+# 方案 B: Google Search (每日 100 次免费)
+export GOOGLE_API_KEY="AIza..."
+export GOOGLE_CSE_ID="012345..."
 ```
 
-### Configuration
+## 🧩 插件开发
 
-Configuration file: `~/.qrclaw/config`
+想给 Agent 加个新能力？只需在 `qrclaw/tools/` 下新建一个 `.py` 文件：
 
-```ini
-[DEFAULT]
-model = gpt-4o-mini
-max_tokens = 128000
-log_level = INFO
+```python
+from qrclaw.tools.registry import register
+
+@register(description="计算两个数的和")
+def add(a: int, b: int) -> int:
+    return a + b
 ```
 
-### Commands
+重启 `qrclaw`，Agent 就能用这个新技能了！
 
-- `exit` - Exit QRClaw
-- `clear` - Clear conversation history
-- `/skill list` - List installed skills
-- `/skill import <name>` - Import a new skill
+## 🤝 贡献指南
 
-### Development
+欢迎提交 PR 或 Issue！
 
-```bash
-# Clone repository
-git clone https://github.com/fu-qingrong/qrclaw.git
-cd qrclaw
+1. Fork 本仓库
+2. 创建分支 (`git checkout -b feature/AmazingFeature`)
+3. 提交更改 (`git commit -m 'Add some AmazingFeature'`)
+4. 推送 (`git push origin feature/AmazingFeature`)
+5. 提 Pull Request
 
-# Create virtual environment
-python -m venv .venv
-source .venv/bin/activate  # Windows: .venv\Scripts\activate
+## 📄 开源协议
 
-# Install dependencies
-pip install -e .
-
-# Run
-python -m qrclaw.cli
-```
-
----
-
-## 中文
-
-### 特性
-
-- 🤖 **AI 代理** - 基于 OpenAI，智能上下文管理
-- 🎯 **技能系统** - 模块化技能扩展功能
-- 🔄 **OpenClaw 兼容** - 完全兼容 OpenClaw 技能生态
-- 💾 **会话管理** - 持久化对话历史
-- 🎨 **精美界面** - 终端界面美观，支持语法高亮
-- 📦 **易于使用** - 简单安装和配置
-
-### 安装
-
-```bash
-# 从 PyPI 安装
-pip install qrclaw
-
-# 或从 GitHub 安装
-pip install git+https://github.com/fu-qingrong/qrclaw.git
-```
-
-### 快速开始
-
-1. **设置 API Key**
-   ```bash
-   # 创建 .env 文件
-   echo "OPENAI_API_KEY=your-api-key-here" > ~/.qrclaw/.env
-   ```
-
-2. **运行 QRClaw**
-   ```bash
-   qrclaw
-   ```
-
-3. **开始对话**
-   ```
-   > 你好，你能帮我做什么？
-   > 帮我分析一下这个项目
-   > 审查 src/main.py 的代码
-   ```
-
-### 技能系统
-
-QRClaw 内置技能：
-
-- **review-code** - 代码审查和改进建议
-- **generate-docs** - 生成 README、API 文档等
-- **analyze-project** - 分析项目结构和代码质量
-- **install-skill** - 从 GitHub/ClawHub 安装新技能
-
-#### 安装新技能
-
-```bash
-# 在 QRClaw 对话中
-> 导入 skill meow-finder
-
-# 或使用 CLI
-/skill import meow-finder
-```
-
-### 配置
-
-配置文件：`~/.qrclaw/config`
-
-```ini
-[DEFAULT]
-model = gpt-4o-mini
-max_tokens = 128000
-log_level = INFO
-```
-
-### 命令
-
-- `exit` - 退出 QRClaw
-- `clear` - 清除对话历史
-- `/skill list` - 列出已安装技能
-- `/skill import <name>` - 导入新技能
-
-### 开发
-
-```bash
-# 克隆仓库
-git clone https://github.com/fu-qingrong/qrclaw.git
-cd qrclaw
-
-# 创建虚拟环境
-python -m venv .venv
-source .venv/bin/activate  # Windows: .venv\Scripts\activate
-
-# 安装依赖
-pip install -e .
-
-# 运行
-python -m qrclaw.cli
-```
-
----
-
-## License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
-
-## Acknowledgments
-
-- Inspired by [OpenClaw](https://github.com/openclaw/openclaw)
-- Built with [OpenAI API](https://openai.com/)
-- UI powered by [Rich](https://github.com/Textualize/rich)
+本项目采用 [MIT License](LICENSE) 开源。允许个人或商业免费使用，只需保留版权声明。
