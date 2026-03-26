@@ -8,6 +8,9 @@
 ## 🌟 核心特性
 
 - **🚀 本地优先**：核心逻辑完全在本地运行，数据隐私安全。
+- **🤖 多模型支持**：
+  - **OpenAI 兼容接口**：DeepSeek, Moonshot, Qwen, GPT-4o...
+  - **Google Vertex AI**：原生支持 Gemini Pro，速度快，上下文长。
 - **🔍 智能联网搜索**：
   - **多引擎支持**：Tavily (强)、Google (准)、DuckDuckGo (免费保底)。
   - **自动故障转移**：Tavily 额度用完？自动切 DuckDuckGo，永不断连。
@@ -55,12 +58,24 @@ pip install .
 
 QRClaw 会自动读取环境变量（`.env`）或系统环境变量。
 
-### 必填项
+### 模型配置 (二选一)
+
+#### 方案 A: OpenAI 兼容接口 (推荐 DeepSeek/Moonshot)
 ```bash
-# 你的 OpenAI 兼容 API Key（如 DeepSeek, Moonshot, OpenAI）
+export LLM_PROVIDER="openai"                        # 默认值
 export OPENAI_API_KEY="sk-..."
-export OPENAI_BASE_URL="https://api.openai.com/v1"  # 可选，默认官方
-export OPENAI_MODEL="gpt-4o"                        # 可选，默认 gpt-4o
+export OPENAI_BASE_URL="https://api.deepseek.com"   # 如果用 DeepSeek
+export OPENAI_MODEL="deepseek-chat"                 # 模型名称
+```
+
+#### 方案 B: Google Vertex AI (Gemini Pro)
+需提前配置 `gcloud auth application-default login` 或设置 `GOOGLE_APPLICATION_CREDENTIALS`。
+
+```bash
+export LLM_PROVIDER="vertex"
+export VERTEX_PROJECT_ID="your-gcp-project-id"
+export VERTEX_LOCATION="us-central1"
+export VERTEX_MODEL="gemini-1.0-pro"
 ```
 
 ### 联网搜索配置（可选）
