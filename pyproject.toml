@@ -1,6 +1,6 @@
 [project]
 name = "qrclaw"
-version = "0.4.9"
+version = "0.5.0"
 description = "A powerful AI agent with skills system"
 readme = "README.md"
 license = {text = "MIT"}

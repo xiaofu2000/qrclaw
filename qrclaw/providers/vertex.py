@@ -1,11 +1,10 @@
-import os
 import json
 import base64
 from google import genai
 from google.genai import types
 from google.genai.types import HttpOptions
 from qrclaw.providers.base import LLMProvider, LLMResponse, ToolCall
-from qrclaw.config import OPENAI_API_KEY, OPENAI_MODEL
+from qrclaw.config import OPENAI_MODEL, VERTEX_PROJECT, VERTEX_LOCATION
 from qrclaw.logger import get_logger
 
 logger = get_logger("qrclaw.providers.vertex")
@@ -33,10 +32,11 @@ def _build_vertex_tools(schemas: list[dict]) -> list[types.Tool] | None:
 class VertexProvider(LLMProvider):
 
     def __init__(self):
-        os.environ["GOOGLE_GENAI_USE_VERTEXAI"] = "True"
         self._client = genai.Client(
+            vertexai=True,
+            project=VERTEX_PROJECT,
+            location=VERTEX_LOCATION,
             http_options=HttpOptions(api_version="v1"),
-            api_key=OPENAI_API_KEY,
         )
         logger.info("Vertex AI 渠道已初始化")
 
