@@ -35,9 +35,8 @@ MAX_ITERATIONS=50
 #              需要配置：OPENAI_API_KEY、OPENAI_MODEL
 #              可选配置：OPENAI_BASE_URL（不填则走 OpenAI 官方）
 #
-#   vertex  —— Google Vertex AI（ADC 认证，需提前执行 gcloud auth application-default login）
-#              需要配置：VERTEX_PROJECT、OPENAI_MODEL
-#              可选配置：VERTEX_LOCATION（默认 us-central1）
+#   vertex  —— Google Vertex AI（Express API Key 认证）
+#              需要配置：VERTEX_API_KEY、OPENAI_MODEL
 #
 LLM_PROVIDER=openai
 
@@ -47,8 +46,7 @@ OPENAI_BASE_URL=
 MODEL_MAX_TOKENS=128000
 
 # ── Vertex AI 配置 ────────────────────────────────────
-VERTEX_PROJECT=
-VERTEX_LOCATION=us-central1
+VERTEX_API_KEY=
 
 # ── Tavily API（网页搜索）────────────────────────────
 TAVILY_API_KEY=

@@ -14,9 +14,8 @@ OPENAI_BASE_URL = os.getenv("OPENAI_BASE_URL", "")
 # LLM 渠道：openai（默认）| vertex
 LLM_PROVIDER = os.getenv("LLM_PROVIDER", "openai")
 
-# Vertex AI 配置
-VERTEX_PROJECT = os.getenv("VERTEX_PROJECT", "")
-VERTEX_LOCATION = os.getenv("VERTEX_LOCATION", "us-central1")
+# Vertex AI 配置（Express API Key 方式）
+VERTEX_API_KEY = os.getenv("VERTEX_API_KEY", "")
 
 MAX_ITERATIONS = int(os.getenv("MAX_ITERATIONS", "50"))
 
