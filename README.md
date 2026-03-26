@@ -10,7 +10,7 @@
 - **🚀 本地优先**：核心逻辑完全在本地运行，数据隐私安全。
 - **🤖 多模型支持**：
   - **OpenAI 兼容接口**：DeepSeek, Moonshot, Qwen, GPT-4o...
-  - **Google Vertex AI**：原生支持 Gemini Pro，速度快，上下文长。
+  - **Google Vertex AI**：原生支持 Gemini Pro，速度快，上下文长，**仅需 API Key**。
 - **🔍 智能联网搜索**：
   - **多引擎支持**：Tavily (强)、Google (准)、DuckDuckGo (免费保底)。
   - **自动故障转移**：Tavily 额度用完？自动切 DuckDuckGo，永不断连。
@@ -69,13 +69,12 @@ export OPENAI_MODEL="deepseek-chat"                 # 模型名称
 ```
 
 #### 方案 B: Google Vertex AI (Gemini Pro)
-需提前配置 `gcloud auth application-default login` 或设置 `GOOGLE_APPLICATION_CREDENTIALS`。
+**无需安装 gcloud 或配置 Project ID**，只需一个 API Key。
 
 ```bash
 export LLM_PROVIDER="vertex"
-export VERTEX_PROJECT_ID="your-gcp-project-id"
-export VERTEX_LOCATION="us-central1"
-export VERTEX_MODEL="gemini-1.0-pro"
+export VERTEX_API_KEY="AIza..."                     # 你的 Google API Key
+export OPENAI_MODEL="gemini-1.5-pro"                # 可选，默认 gemini-pro
 ```
 
 ### 联网搜索配置（可选）
