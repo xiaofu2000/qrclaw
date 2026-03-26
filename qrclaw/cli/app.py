@@ -41,11 +41,7 @@ def main() -> None:
     workspace = Workspace(agent_id=args.agent)
 
     # 2. 延迟导入各子模块（在 setup_logger 之前不能触发 get_logger）
-    import qrclaw.tools.builtin       # noqa: E402  触发工具注册
-    import qrclaw.tools.skills        # noqa: E402  触发 Skills 工具注册
-    import qrclaw.tools.spawn_agent   # noqa: E402  触发 spawn_agent 工具注册
-    import qrclaw.tools.wait_agents   # noqa: E402  触发 wait_agents 工具注册
-    import qrclaw.tools.review_memory # noqa: E402  触发 review_memory 工具注册
+    import qrclaw.tools               # noqa: E402  触发所有工具注册
     from qrclaw.tools.spawn_agent import set_console as set_spawn_console
     set_spawn_console(console)  # 注入 console，子 agent 完成时直接打印
     from qrclaw.agent import run

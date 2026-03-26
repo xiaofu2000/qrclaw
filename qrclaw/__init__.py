@@ -2,4 +2,4 @@
 QRClaw - 运行在本地的自主 AI Agent
 """
 
-__version__ = "0.4.3"
+__version__ = "0.5.3"

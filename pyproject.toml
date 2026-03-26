@@ -1,6 +1,6 @@
 [project]
 name = "qrclaw"
-version = "0.5.2"
+version = "0.5.3"
 description = "A powerful AI agent with skills system"
 readme = "README.md"
 license = {text = "MIT"}
@@ -29,6 +29,8 @@ dependencies = [
     "pyyaml>=6.0.0",
     "tiktoken>=0.5.0",
     "google-genai>=1.0.0",
+    "duckduckgo-search>=6.0.0",
+    "google-api-python-client>=2.0.0",
 ]
 
 [project.scripts]
