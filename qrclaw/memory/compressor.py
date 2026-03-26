@@ -9,9 +9,8 @@
 Token 计算：使用 tiktoken 精确计算，支持 GPT-4o 等模型
 """
 import tiktoken
-from openai import OpenAI
 from qrclaw.config import (
-    OPENAI_API_KEY, OPENAI_MODEL, OPENAI_BASE_URL,
+    OPENAI_MODEL,
     COMPRESS_SUMMARY_MAX_TOKENS, COMPRESS_SUMMARY_TARGET_TOKENS,
     COMPRESS_RECENT_MAX_TOKENS,
     COMPRESS_TARGET_MIN_RATIO, COMPRESS_TARGET_MAX_RATIO,
@@ -20,8 +19,6 @@ from qrclaw.config import (
 from qrclaw.logger import get_logger
 
 logger = get_logger("qrclaw.memory.compressor")
-
-client = OpenAI(api_key=OPENAI_API_KEY, base_url=OPENAI_BASE_URL or None)
 
 # 初始化 tiktoken encoder
 # 对于未知模型，fallback 到 cl100k_base（GPT-4/4o 使用）
@@ -35,10 +32,10 @@ except KeyError:
 def count_tokens(messages: list[dict]) -> int:
     """
     精确计算消息列表的 token 数。
-    
+
     Args:
         messages: OpenAI 格式的消息列表
-        
+
     Returns:
         int: token 总数
     """
@@ -56,10 +53,10 @@ def count_tokens(messages: list[dict]) -> int:
 def count_text_tokens(text: str) -> int:
     """
     精确计算文本的 token 数。
-    
+
     Args:
         text: 文本内容
-        
+
     Returns:
         int: token 数
     """
@@ -143,18 +140,15 @@ def summarize(session) -> None:
     )
 
     try:
+        from qrclaw.providers import provider
         logger.debug(f"调用 LLM 生成摘要，目标: {COMPRESS_SUMMARY_TARGET_TOKENS} tokens")
-        response = client.chat.completions.create(
-            model=OPENAI_MODEL,
-            max_tokens=COMPRESS_SUMMARY_MAX_TOKENS,
-            messages=[
-                {"role": "user", "content": SUMMARIZE_PROMPT.format(
-                    history=history_text,
-                    target_tokens=COMPRESS_SUMMARY_TARGET_TOKENS
-                )}
-            ],
-        )
-        summary = response.choices[0].message.content
+        resp = provider.chat([
+            {"role": "user", "content": SUMMARIZE_PROMPT.format(
+                history=history_text,
+                target_tokens=COMPRESS_SUMMARY_TARGET_TOKENS,
+            )}
+        ])
+        summary = resp.content
         summary_tokens = count_text_tokens(summary)
 
         logger.info(f"摘要生成成功，长度: {len(summary)} 字符，{summary_tokens} tokens")

@@ -14,6 +14,9 @@ OPENAI_BASE_URL = os.getenv("OPENAI_BASE_URL", "")
 # LLM 渠道：openai（默认）| vertex
 LLM_PROVIDER = os.getenv("LLM_PROVIDER", "openai")
 
+# Vertex AI 配置（Express API Key 方式）
+VERTEX_API_KEY = os.getenv("VERTEX_API_KEY", "")
+
 MAX_ITERATIONS = int(os.getenv("MAX_ITERATIONS", "50"))
 
 # 模型最大上下文窗口（token数）

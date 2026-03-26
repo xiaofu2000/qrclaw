@@ -35,8 +35,8 @@ MAX_ITERATIONS=50
 #              需要配置：OPENAI_API_KEY、OPENAI_MODEL
 #              可选配置：OPENAI_BASE_URL（不填则走 OpenAI 官方）
 #
-#   vertex  —— Google Vertex AI（使用 Express API Key）
-#              需要配置：OPENAI_API_KEY（填 Vertex Express Key）、OPENAI_MODEL
+#   vertex  —— Google Vertex AI（Express API Key 认证）
+#              需要配置：VERTEX_API_KEY、OPENAI_MODEL
 #
 LLM_PROVIDER=openai
 
@@ -44,6 +44,9 @@ OPENAI_API_KEY=
 OPENAI_MODEL=gpt-4o
 OPENAI_BASE_URL=
 MODEL_MAX_TOKENS=128000
+
+# ── Vertex AI 配置 ────────────────────────────────────
+VERTEX_API_KEY=
 
 # ── Tavily API（网页搜索）────────────────────────────
 TAVILY_API_KEY=
@@ -67,23 +70,23 @@ def migrate_from_env():
     """从项目目录的 .env 迁移配置到 ~/.qrclaw/config"""
     # 查找项目目录下的 .env 文件
     project_env = Path.cwd() / ".env"
-    
+
     if not project_env.exists():
         return False
-    
+
     logger.info(f"发现项目目录下的 .env 文件: {project_env}")
-    
+
     # 读取 .env 内容
     try:
         env_content = project_env.read_text(encoding="utf-8")
-        
+
         # 写入到 ~/.qrclaw/config
         ensure_config_dir()
         CONFIG_FILE.write_text(env_content, encoding="utf-8")
-        
+
         logger.info(f"已迁移配置到: {CONFIG_FILE}")
         logger.info("建议删除项目目录下的 .env 文件，避免误提交到 git")
-        
+
         return True
     except Exception as e:
         logger.error(f"迁移配置失败: {e}", exc_info=True)
@@ -93,20 +96,20 @@ def migrate_from_env():
 def init_config():
     """
     初始化配置文件
-    
+
     1. 如果 ~/.qrclaw/config 不存在，尝试从 .env 迁移
     2. 如果都没有，创建默认配置
     """
     ensure_config_dir()
-    
+
     if CONFIG_FILE.exists():
         logger.info(f"使用配置文件: {CONFIG_FILE}")
         return
-    
+
     # 尝试从 .env 迁移
     if migrate_from_env():
         return
-    
+
     # 创建默认配置
     CONFIG_FILE.write_text(DEFAULT_CONFIG, encoding="utf-8")
     logger.info(f"创建默认配置文件: {CONFIG_FILE}")
@@ -116,7 +119,7 @@ def init_config():
 def load_config():
     """
     加载配置
-    
+
     优先级：
     1. ~/.qrclaw/config（用户配置）
     2. .env（兼容旧版本）
@@ -126,7 +129,7 @@ def load_config():
     if CONFIG_FILE.exists():
         load_dotenv(CONFIG_FILE)
         logger.debug(f"已加载配置: {CONFIG_FILE}")
-    
+
     # 兼容：加载项目目录下的 .env
     project_env = Path.cwd() / ".env"
     if project_env.exists():

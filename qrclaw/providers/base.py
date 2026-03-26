@@ -6,7 +6,8 @@ from dataclasses import dataclass, field
 class ToolCall:
     id: str
     name: str
-    arguments: str  # JSON 字符串
+    arguments: str          # JSON 字符串
+    thought_signature: str | None = None  # base64 编码，Vertex AI thinking model 专用
 
 
 @dataclass
