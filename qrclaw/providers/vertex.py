@@ -1,5 +1,6 @@
 import os
 import json
+import base64
 from google import genai
 from google.genai import types
 from google.genai.types import HttpOptions
@@ -8,6 +9,9 @@ from qrclaw.config import OPENAI_API_KEY, OPENAI_MODEL
 from qrclaw.logger import get_logger
 
 logger = get_logger("qrclaw.providers.vertex")
+
+# thought_signature 在 tool_call 里的存储 key
+_TS_KEY = "__thought_signature__"
 
 
 def _build_vertex_tools(schemas: list[dict]) -> list[types.Tool] | None:
@@ -58,24 +62,31 @@ class VertexProvider(LLMProvider):
                 parts = []
                 if content:
                     parts.append(types.Part(text=content))
-                # 处理 tool_calls
+                # 处理 tool_calls，恢复 thought_signature
                 for tc in msg.get("tool_calls", []):
                     fn = tc["function"]
                     try:
                         args = json.loads(fn["arguments"])
                     except Exception:
                         args = {}
-                    parts.append(types.Part(
+                    # 从 tc 里取回 thought_signature（base64 -> bytes）
+                    ts_b64 = tc.get(_TS_KEY)
+                    ts_bytes = base64.b64decode(ts_b64) if ts_b64 else None
+
+                    part = types.Part(
                         function_call=types.FunctionCall(
                             name=fn["name"],
                             args=args,
                         )
-                    ))
+                    )
+                    if ts_bytes:
+                        part.thought_signature = ts_bytes
+                    parts.append(part)
                 if parts:
                     contents.append(types.Content(role="model", parts=parts))
 
             elif role == "tool":
-                # tool 结果，转成 function_response
+                # tool 结果转成 function_response，name 用 tool_call_id（即函数名）
                 tool_call_id = msg.get("tool_call_id", "")
                 try:
                     result = json.loads(content) if content else {}
@@ -108,7 +119,7 @@ class VertexProvider(LLMProvider):
             config=config,
         )
 
-        # 解析响应
+        # 解析响应，把 thought_signature 用 base64 存进 ToolCall
         tool_calls = []
         text_content = ""
         finish_reason = "stop"
@@ -119,16 +130,18 @@ class VertexProvider(LLMProvider):
                 text_content += part.text
             elif part.function_call:
                 fc = part.function_call
+                ts = getattr(part, "thought_signature", None)
+                ts_b64 = base64.b64encode(ts).decode() if ts else None
                 tool_calls.append(ToolCall(
-                    id=fc.name,  # Vertex AI 没有 tool_call_id，用函数名代替
+                    id=fc.name,
                     name=fc.name,
                     arguments=json.dumps(dict(fc.args), ensure_ascii=False),
+                    thought_signature=ts_b64,
                 ))
 
         if tool_calls:
             finish_reason = "tool_calls"
 
-        # token 统计
         usage = response.usage_metadata
         prompt_tokens = getattr(usage, "prompt_token_count", 0) or 0
         completion_tokens = getattr(usage, "candidates_token_count", 0) or 0

@@ -54,10 +54,18 @@ def _dump_assistant_msg(response: LLMResponse) -> dict:
     """把 LLMResponse 转成可存入 session 的 assistant 消息 dict"""
     msg: dict = {"role": "assistant", "content": response.content or ""}
     if response.tool_calls:
-        msg["tool_calls"] = [
-            {"id": tc.id, "type": "function", "function": {"name": tc.name, "arguments": tc.arguments}}
-            for tc in response.tool_calls
-        ]
+        tc_list = []
+        for tc in response.tool_calls:
+            entry = {
+                "id": tc.id,
+                "type": "function",
+                "function": {"name": tc.name, "arguments": tc.arguments},
+            }
+            # 保留 thought_signature，回传给 Vertex AI 时需要
+            if tc.thought_signature:
+                entry["__thought_signature__"] = tc.thought_signature
+            tc_list.append(entry)
+        msg["tool_calls"] = tc_list
     return msg
 
 

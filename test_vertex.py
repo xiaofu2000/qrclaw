@@ -6,10 +6,10 @@
 import os
 import sys
 
-API_KEY = "AQ.Ab8RN6IF4dyO_h9oIiNffqWak2VtNtzAfE3VOqqh7pvWuZ7jMw"
+API_KEY = "AQ.Ab8RN6I0hjRf4rcaxISFVYZtJN4LUkbHSogWHkiGOaV1DapE_g"
 
 os.environ["GOOGLE_GENAI_USE_VERTEXAI"] = "True"
-# os.environ["GOOGLE_CLOUD_PROJECT"] = "enhanced-voyage-491210-n9"
+os.environ["GOOGLE_CLOUD_PROJECT"] = "enhanced-voyage-491210-n9"
 os.environ["GOOGLE_CLOUD_LOCATION"] = "us-central1"
 
 try:
