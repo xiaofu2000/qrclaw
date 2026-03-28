@@ -5,6 +5,7 @@
 配置存储在 ~/.qrclaw/permissions.yaml 中。
 """
 import os
+import re
 import yaml
 from pathlib import Path
 from typing import List, Literal, Optional
@@ -13,15 +14,18 @@ from pydantic import BaseModel, Field
 # 权限配置文件路径
 PERMISSIONS_FILE = Path.home() / ".qrclaw" / "permissions.yaml"
 
+
 class AgentPermission(BaseModel):
     """单个 Agent 的权限配置"""
     access: Literal["full", "scoped", "readonly"] = "scoped"
     allow_paths: List[str] = Field(default_factory=list)
 
+
 class PermissionConfig(BaseModel):
     """全局权限配置"""
     default_policy: Literal["restricted", "full"] = "restricted"
     agents: dict[str, AgentPermission] = Field(default_factory=dict)
+
 
 # 默认配置：Default Agent 拥有最高权限
 DEFAULT_PERMISSIONS = {
@@ -33,6 +37,21 @@ DEFAULT_PERMISSIONS = {
         }
     }
 }
+
+
+# 高危命令黑名单（正则匹配）
+DANGEROUS_COMMANDS = [
+    r"rm\s+-rf\s+/",
+    r"rm\s+-rf\s+~",
+    r"rm\s+-rf\s+\*",
+    r">\s*/dev/sd[a-z]",
+    r"mkfs\s+",
+    r"dd\s+if=.*of=/dev/",
+    r":(){ :|:& };:",  # fork bomb
+    r"chmod\s+777\s+/",
+    r"chown\s+.*\s+/",
+]
+
 
 class SecurityManager:
     _instance = None
@@ -48,7 +67,7 @@ class SecurityManager:
         """加载权限配置，文件不存在则创建默认配置"""
         if not PERMISSIONS_FILE.exists():
             self._create_default_config()
-        
+
         try:
             with open(PERMISSIONS_FILE, "r", encoding="utf-8") as f:
                 data = yaml.safe_load(f) or {}
@@ -57,7 +76,7 @@ class SecurityManager:
                     data["agents"] = {}
                 if "default" not in data["agents"]:
                     data["agents"]["default"] = DEFAULT_PERMISSIONS["agents"]["default"]
-                
+
                 self._config = PermissionConfig(**data)
         except Exception as e:
             print(f"❌ 加载权限配置失败: {e}，将使用默认安全策略")
@@ -77,7 +96,7 @@ class SecurityManager:
         # 1. 优先查明确配置
         if agent_id in self._config.agents:
             return self._config.agents[agent_id]
-        
+
         # 2. 回退到默认策略
         # 如果全局策略是 restricted，则新 Agent 默认为 scoped
         return AgentPermission(access="scoped")
@@ -106,17 +125,14 @@ class SecurityManager:
         if tool_name in ["read_file", "write_file", "list_directory", "delete_file"]:
             path_str = args.get("path")
             if not path_str:
-                return # 无路径参数，跳过
-            
+                return  # 无路径参数，跳过
+
             self._check_path_safety(path_str, perm, workspace_root, tool_name)
 
-        # Level 3: 检查 Shell 命令 (待扩展)
+        # Level 3: 检查 Shell 命令
         if tool_name == "run_shell":
             command = args.get("command", "")
-            # 简单防护：禁止 rm -rf / 等
-            # 这里可以扩展更复杂的命令分析
-            if "rm -rf /" in command:
-                raise PermissionError(f"🚫 [Security] 禁止执行高危命令: {command}")
+            self._check_shell_safety(command, perm, workspace_root)
 
     def _check_path_safety(self, path_str: str, perm: AgentPermission, workspace_root: Path, tool_name: str):
         """检查路径是否在允许范围内"""
@@ -128,7 +144,7 @@ class SecurityManager:
 
         # 1. 检查是否在 Workspace 内部
         if self._is_subpath(target_path, ws_root):
-            return # 放行
+            return  # 放行
 
         # 2. 检查白名单
         for allowed in perm.allow_paths:
@@ -137,10 +153,39 @@ class SecurityManager:
                 # 如果是 readonly 权限，且试图写操作 -> 拦截
                 if perm.access == "readonly" and tool_name in ["write_file", "delete_file"]:
                     raise PermissionError(f"🚫 [Security] 该路径只读，禁止写入: {path_str}")
-                return # 放行
+                return  # 放行
 
         # 3. 拦截
         raise PermissionError(f"🚫 [Security] Agent 无权访问 Workspace 外部路径: {path_str}\n(请在 permissions.yaml 中配置 allow_paths)")
+
+    def _check_shell_safety(self, command: str, perm: AgentPermission, workspace_root: Path):
+        """
+        检查 Shell 命令安全性
+        
+        对于 scoped 权限的 agent：
+        1. 禁止高危命令（rm -rf /, fork bomb 等）
+        2. 命令必须在 workspace 目录下执行（由 shell.py 强制 cwd）
+        """
+        # 检查高危命令
+        for pattern in DANGEROUS_COMMANDS:
+            if re.search(pattern, command, re.IGNORECASE):
+                raise PermissionError(f"🚫 [Security] 禁止执行高危命令: {command}")
+
+        # 检查是否有尝试逃逸工作目录的命令
+        # 注意：实际的 cwd 限制由 shell.py 强制执行
+        escape_patterns = [
+            r"cd\s+/",
+            r"cd\s+~",
+            r"cd\s+\.\./\.\./\.\./\.\.",  # 深层 cd ..
+        ]
+        for pattern in escape_patterns:
+            if re.search(pattern, command):
+                    # 只是警告，不拦截（因为 cwd 会被强制限制）
+                    # 但日志记录
+                    import logging
+                    logging.getLogger("qrclaw.security").warning(
+                        f"Agent 尝试切换到外部目录，但会被强制限制在 workspace 内: {command}"
+                    )
 
     def _is_subpath(self, target: Path, parent: Path) -> bool:
         """判断 target 是否是 parent 的子路径"""
@@ -149,6 +194,7 @@ class SecurityManager:
             return True
         except ValueError:
             return False
+
 
 # 全局单例
 security_manager = SecurityManager()
