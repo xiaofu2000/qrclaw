@@ -8,6 +8,7 @@ from pathlib import Path
 from qrclaw.config import AGENT_NAME
 from qrclaw.memory import LongTermMemory
 from qrclaw.skills.registry import SkillRegistry
+from qrclaw.tools.registry import get_schemas
 from qrclaw.logger import get_logger
 
 logger = get_logger("qrclaw.prompt")
@@ -30,12 +31,39 @@ _TOOL_DESCRIPTIONS = {
 
 
 def _build_tooling_section(tool_names: list[str]) -> str:
+    """
+    动态构建工具列表。
+    优先从 registry 获取实时的 schema 描述，
+    如果 registry 里没有（理论上不应该），再回退到 _TOOL_DESCRIPTIONS。
+    """
     if not tool_names:
         return ""
+
+    # 1. 动态获取所有已注册工具的描述
+    # 格式: {'read_file': '读取本地文件...', 'web_search': '联网搜索...'}
+    dynamic_descriptions = {}
+    try:
+        schemas = get_schemas()
+        for schema in schemas:
+            name = schema.get("function", {}).get("name")
+            desc = schema.get("function", {}).get("description")
+            if name and desc:
+                dynamic_descriptions[name] = desc
+    except Exception as e:
+        logger.warning(f"获取工具 schema 失败: {e}")
+
     lines = ["## 可用工具", "工具名称区分大小写，按名称精确调用："]
+    
     for name in tool_names:
-        desc = _TOOL_DESCRIPTIONS.get(name, "")
-        lines.append(f"- {name}: {desc}" if desc else f"- {name}")
+        # 2. 优先用动态描述，没有则用硬编码的备用
+        desc = dynamic_descriptions.get(name) or _TOOL_DESCRIPTIONS.get(name, "")
+        
+        if desc:
+            lines.append(f"- {name}: {desc}")
+        else:
+            # 如果真的都没有，只显示名字
+            lines.append(f"- {name}")
+            
     return "\n".join(lines)
 
 

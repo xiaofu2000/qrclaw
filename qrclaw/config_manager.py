@@ -2,139 +2,192 @@
 配置管理模块
 
 统一管理用户配置，所有配置文件存放在 ~/.qrclaw/ 目录下：
-- ~/.qrclaw/config        用户配置（API Key 等）
-- ~/.qrclaw/MEMORY.md     中期记忆
-- ~/.qrclaw/sessions/     会话历史
-- ~/.qrclaw/logs/         日志文件
+- ~/.qrclaw/config.yaml      用户配置（API Key 等）
+- ~/.qrclaw/permissions.yaml 权限配置
+- ~/.qrclaw/MEMORY.md        中期记忆
+- ~/.qrclaw/sessions/        会话历史
+- ~/.qrclaw/logs/            日志文件
 """
 
 import os
+import yaml
 from pathlib import Path
-from dotenv import load_dotenv
+from typing import Any
 from qrclaw.logger import get_logger
 
 logger = get_logger("qrclaw.config_manager")
 
 # 配置目录
 CONFIG_DIR = Path.home() / ".qrclaw"
-CONFIG_FILE = CONFIG_DIR / "config"
+CONFIG_FILE = CONFIG_DIR / "config.yaml"
 
 # 默认配置
-DEFAULT_CONFIG = """# QRClaw 配置文件
-# 配置说明：https://github.com/fu-qingrong/qrclaw
+DEFAULT_CONFIG = {
+    "agent": {
+        "name": "QRClaw",
+        "max_iterations": 50,
+    },
+    "llm": {
+        "provider": "openai",  # openai | vertex
+        "openai": {
+            "api_key": "",
+            "model": "gpt-4o",
+            "base_url": "",
+            "max_tokens": 128000,
+        },
+        "vertex": {
+            "api_key": "",
+        },
+    },
+    "search": {
+        "tavily_api_key": "",
+    },
+    "log": {
+        "level": "INFO",
+        "max_days": 30,
+        "to_file": True,
+        "to_console": True,
+        "console_level": "WARNING",
+    },
+    "heartbeat": {
+        "enabled": True,
+        "interval": 3600,
+    },
+    "compress": {
+        "threshold_ratio": 0.6,
+        "target_min_ratio": 0.20,
+        "target_max_ratio": 0.25,
+    },
+}
 
-# ── Agent 配置 ───────────────────────────────────────
-AGENT_NAME=QRClaw
-MAX_ITERATIONS=50
+# 配置注释
+CONFIG_HEADER = """# ═══════════════════════════════════════════════════════════════
+# QRClaw 配置文件
+# ═══════════════════════════════════════════════════════════════
+# 文档：https://github.com/fu-qingrong/qrclaw
+# 修改配置后无需重启，下次启动自动生效。
+# ═══════════════════════════════════════════════════════════════
 
-# ── LLM 渠道配置 ─────────────────────────────────────
-# 支持以下渠道，修改 LLM_PROVIDER 切换：
-#
-#   openai  —— OpenAI 官方 或 任何兼容 OpenAI 接口的服务
-#              （如 DeepSeek、通义千问、本地 Ollama 等）
-#              需要配置：OPENAI_API_KEY、OPENAI_MODEL
-#              可选配置：OPENAI_BASE_URL（不填则走 OpenAI 官方）
-#
-#   vertex  —— Google Vertex AI（Express API Key 认证）
-#              需要配置：VERTEX_API_KEY、OPENAI_MODEL
-#
-LLM_PROVIDER=openai
-
-OPENAI_API_KEY=
-OPENAI_MODEL=gpt-4o
-OPENAI_BASE_URL=
-MODEL_MAX_TOKENS=128000
-
-# ── Vertex AI 配置 ────────────────────────────────────
-VERTEX_API_KEY=
-
-# ── Tavily API（网页搜索）────────────────────────────
-TAVILY_API_KEY=
-
-# ── 日志配置 ─────────────────────────────────────────
-LOG_LEVEL=INFO
-LOG_MAX_DAYS=30
-LOG_TO_FILE=true
-LOG_TO_CONSOLE=true
-LOG_CONSOLE_LEVEL=WARNING
 """
 
 
 def ensure_config_dir():
     """确保配置目录存在"""
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-    logger.debug(f"配置目录: {CONFIG_DIR}")
 
 
-def migrate_from_env():
-    """从项目目录的 .env 迁移配置到 ~/.qrclaw/config"""
-    # 查找项目目录下的 .env 文件
-    project_env = Path.cwd() / ".env"
+def _write_config(config: dict):
+    """写入配置文件"""
+    ensure_config_dir()
+    with open(CONFIG_FILE, "w", encoding="utf-8") as f:
+        f.write(CONFIG_HEADER)
+        yaml.dump(config, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
 
-    if not project_env.exists():
-        return False
 
-    logger.info(f"发现项目目录下的 .env 文件: {project_env}")
-
-    # 读取 .env 内容
-    try:
-        env_content = project_env.read_text(encoding="utf-8")
-
-        # 写入到 ~/.qrclaw/config
-        ensure_config_dir()
-        CONFIG_FILE.write_text(env_content, encoding="utf-8")
-
-        logger.info(f"已迁移配置到: {CONFIG_FILE}")
-        logger.info("建议删除项目目录下的 .env 文件，避免误提交到 git")
-
-        return True
-    except Exception as e:
-        logger.error(f"迁移配置失败: {e}", exc_info=True)
-        return False
+def _deep_merge(base: dict, override: dict) -> dict:
+    """深度合并两个字典"""
+    result = base.copy()
+    for key, value in override.items():
+        if key in result and isinstance(result[key], dict) and isinstance(value, dict):
+            result[key] = _deep_merge(result[key], value)
+        else:
+            result[key] = value
+    return result
 
 
 def init_config():
-    """
-    初始化配置文件
-
-    1. 如果 ~/.qrclaw/config 不存在，尝试从 .env 迁移
-    2. 如果都没有，创建默认配置
-    """
+    """初始化配置文件（不存在则创建默认配置）"""
     ensure_config_dir()
 
     if CONFIG_FILE.exists():
-        logger.info(f"使用配置文件: {CONFIG_FILE}")
+        logger.debug(f"使用配置文件: {CONFIG_FILE}")
         return
 
-    # 尝试从 .env 迁移
-    if migrate_from_env():
-        return
-
-    # 创建默认配置
-    CONFIG_FILE.write_text(DEFAULT_CONFIG, encoding="utf-8")
+    _write_config(DEFAULT_CONFIG)
     logger.info(f"创建默认配置文件: {CONFIG_FILE}")
     logger.info("请编辑配置文件，填入你的 API Key")
 
 
 def load_config():
-    """
-    加载配置
+    """加载配置并注入到环境变量"""
+    if not CONFIG_FILE.exists():
+        init_config()
 
-    优先级：
-    1. ~/.qrclaw/config（用户配置）
-    2. .env（兼容旧版本）
-    3. 环境变量
-    """
-    # 加载 ~/.qrclaw/config
-    if CONFIG_FILE.exists():
-        load_dotenv(CONFIG_FILE)
+    try:
+        with open(CONFIG_FILE, "r", encoding="utf-8") as f:
+            config = yaml.safe_load(f) or {}
+
+        config = _deep_merge(DEFAULT_CONFIG, config)
+        _inject_to_env(config)
         logger.debug(f"已加载配置: {CONFIG_FILE}")
 
-    # 兼容：加载项目目录下的 .env
-    project_env = Path.cwd() / ".env"
-    if project_env.exists():
-        load_dotenv(project_env, override=False)
-        logger.debug(f"已加载配置: {project_env}")
+    except Exception as e:
+        logger.error(f"加载配置失败: {e}", exc_info=True)
+
+
+def _inject_to_env(config: dict):
+    """将配置注入到环境变量"""
+    os.environ.setdefault("AGENT_NAME", config["agent"]["name"])
+    os.environ.setdefault("MAX_ITERATIONS", str(config["agent"]["max_iterations"]))
+
+    os.environ.setdefault("LLM_PROVIDER", config["llm"]["provider"])
+    os.environ.setdefault("OPENAI_API_KEY", config["llm"]["openai"]["api_key"])
+    os.environ.setdefault("OPENAI_MODEL", config["llm"]["openai"]["model"])
+    os.environ.setdefault("OPENAI_BASE_URL", config["llm"]["openai"]["base_url"])
+    os.environ.setdefault("MODEL_MAX_TOKENS", str(config["llm"]["openai"]["max_tokens"]))
+    os.environ.setdefault("VERTEX_API_KEY", config["llm"]["vertex"]["api_key"])
+
+    os.environ.setdefault("TAVILY_API_KEY", config["search"]["tavily_api_key"])
+
+    os.environ.setdefault("LOG_LEVEL", config["log"]["level"])
+    os.environ.setdefault("LOG_MAX_DAYS", str(config["log"]["max_days"]))
+    os.environ.setdefault("LOG_TO_FILE", str(config["log"]["to_file"]).lower())
+    os.environ.setdefault("LOG_TO_CONSOLE", str(config["log"]["to_console"]).lower())
+    os.environ.setdefault("LOG_CONSOLE_LEVEL", config["log"]["console_level"])
+
+    os.environ.setdefault("HEARTBEAT_ENABLED", str(config["heartbeat"]["enabled"]).lower())
+    os.environ.setdefault("HEARTBEAT_INTERVAL", str(config["heartbeat"]["interval"]))
+
+
+def get_config() -> dict:
+    """获取完整配置字典"""
+    if not CONFIG_FILE.exists():
+        return DEFAULT_CONFIG.copy()
+
+    with open(CONFIG_FILE, "r", encoding="utf-8") as f:
+        config = yaml.safe_load(f) or {}
+
+    return _deep_merge(DEFAULT_CONFIG, config)
+
+
+def get(key: str, default: Any = None) -> Any:
+    """获取配置项（支持点号路径，如 llm.openai.api_key）"""
+    config = get_config()
+    keys = key.split(".")
+    value = config
+
+    for k in keys:
+        if isinstance(value, dict) and k in value:
+            value = value[k]
+        else:
+            return default
+
+    return value
+
+
+def set_config(key: str, value: Any):
+    """设置配置项（支持点号路径）"""
+    config = get_config()
+    keys = key.split(".")
+    target = config
+
+    for k in keys[:-1]:
+        if k not in target:
+            target[k] = {}
+        target = target[k]
+
+    target[keys[-1]] = value
+    _write_config(config)
 
 
 def get_config_path() -> Path:
