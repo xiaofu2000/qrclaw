@@ -39,6 +39,28 @@ def get_task_pool_lock() -> threading.Lock:
     return _task_pool_lock
 
 
+# 存储子 agent 到父 agent 的映射（用于权限继承）
+_parent_agent_map: dict = {}
+_parent_agent_map_lock = threading.Lock()
+
+
+def get_parent_agent_id(sub_agent_id: str) -> str | None:
+    """获取子 agent 的父 agent ID"""
+    return _parent_agent_map.get(sub_agent_id)
+
+
+def set_parent_agent(sub_agent_id: str, parent_agent_id: str):
+    """设置子 agent 的父 agent ID"""
+    with _parent_agent_map_lock:
+        _parent_agent_map[sub_agent_id] = parent_agent_id
+
+
+def clear_parent_agent(sub_agent_id: str):
+    """清除子 agent 的父 agent 映射"""
+    with _parent_agent_map_lock:
+        _parent_agent_map.pop(sub_agent_id, None)
+
+
 class SpawnAgentArgs(BaseModel):
     agent_id: str = Field(description="子 agent 的 ID，例如 'coder'、'reviewer'")
     task: str = Field(description="交给子 agent 的任务描述，要清晰具体")
@@ -74,7 +96,11 @@ def spawn_agent(agent_id: str, task: str) -> str:
     # 这样无论当前是顶层 agent 还是子 agent，新建的子 agent 都是同级的
     main_workspace = get_workspace() or Workspace("default")
     sub_workspace = main_workspace.sub_agent(agent_id)
-    logger.info(f"启动子 agent: {agent_id}, 工作空间: {sub_workspace.root}")
+    
+    # 记录子 agent 的父 agent ID（用于权限继承）
+    set_parent_agent(agent_id, main_workspace.agent_id)
+    
+    logger.info(f"启动子 agent: {agent_id}, 工作空间: {sub_workspace.root}, 父 agent: {main_workspace.agent_id}")
 
     def _run():
         try:
@@ -100,6 +126,9 @@ def spawn_agent(agent_id: str, task: str) -> str:
                 _task_pool[agent_id]["result"] = f"执行出错: {e}"
             if _console:
                 _console.print(f"\n[bold red]子 agent '{agent_id}' 执行出错: {e}[/bold red]\n")
+        finally:
+            # 清理父 agent 映射
+            clear_parent_agent(agent_id)
 
     thread = threading.Thread(target=_run, name=f"sub-agent-{agent_id}", daemon=True)
 

@@ -91,9 +91,14 @@ def run(user_input: str, session: Session, console: Console, workspace: Workspac
             skill_registry,
             active_plan=session.active_plan,
             heartbeat_file=workspace.heartbeat_file,
+            is_sub_agent=is_sub_agent(),
         )
     }
     logger.debug(f"System prompt 已构建，可用工具: {', '.join(tool_names)}")
+
+    # 权限拒绝计数器
+    permission_denied_count = 0
+    MAX_PERMISSION_DENIED = 2
 
     for iteration in range(MAX_ITERATIONS):
         logger.debug(f"开始第 {iteration + 1} 轮推理")
@@ -187,6 +192,26 @@ def run(user_input: str, session: Session, console: Console, workspace: Workspac
             try:
                 result = execute(name, arguments)
                 logger.info(f"工具执行成功: {name}, 结果长度: {len(result)} 字符")
+                # 工具执行成功，重置权限拒绝计数器
+                permission_denied_count = 0
+            except PermissionError as e:
+                # 权限拒绝
+                permission_denied_count += 1
+                result = str(e)
+                logger.warning(f"权限拒绝 ({permission_denied_count}/{MAX_PERMISSION_DENIED}): {name}, 原因: {e}")
+                
+                # 检查是否达到上限
+                if permission_denied_count >= MAX_PERMISSION_DENIED:
+                    console.print(Panel(
+                        f"[bold red]您没有权限执行这个操作！[/bold red]\n\n"
+                        f"连续 {MAX_PERMISSION_DENIED} 次权限拒绝，任务终止。\n\n"
+                        f"最后一次拒绝原因:\n{e}",
+                        title="[bold red]⛔ 权限不足[/bold red]",
+                        border_style="red",
+                        expand=False,
+                    ))
+                    console.print()
+                    return f"错误：连续 {MAX_PERMISSION_DENIED} 次权限拒绝，任务终止"
             except Exception as e:
                 result = f"工具执行失败: {str(e)}"
                 logger.error(f"工具执行失败: {name}, 错误: {e}", exc_info=True)
@@ -206,6 +231,9 @@ def run(user_input: str, session: Session, console: Console, workspace: Workspac
                 "content": result,
             })
 
+            # 如果已经达到权限拒绝上限，直接退出
+            if permission_denied_count >= MAX_PERMISSION_DENIED:
+                break
 
             if name in ("create_plan", "complete_step"):
                 show_plan_progress(console, session)

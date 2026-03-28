@@ -10,6 +10,7 @@ from . import skills
 from . import review_memory
 from . import spawn_agent
 from . import wait_agents
+from . import agent_tools
 
 __all__ = [
     "get_schemas",
