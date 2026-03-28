@@ -105,6 +105,9 @@ def execute(name: str, arguments: str) -> str:
     执行工具。
     用 Pydantic 模型校验参数，不合法直接报错，不会传脏数据给工具函数。
     同时执行安全切面检查。
+    
+    Raises:
+        PermissionError: 当权限检查失败时抛出，由上层 agent.py 捕获处理
     """
     if name not in _tools:
         error_msg = f"错误：找不到工具 {name}"
@@ -138,11 +141,10 @@ def execute(name: str, arguments: str) -> str:
                     args=validated_args,
                     workspace_root=ws.root
                 )
-        except PermissionError as pe:
-            # 明确的安全拦截
-            error_msg = str(pe)
-            logger.warning(error_msg)
-            return error_msg
+        except PermissionError:
+            # 权限拒绝：透传给上层 agent.py 处理
+            logger.warning(f"工具 {name} 权限检查失败")
+            raise  # 关键：重新抛出异常，而不是返回字符串
         except ImportError:
             # 可能是环境问题，忽略
             pass
@@ -158,6 +160,9 @@ def execute(name: str, arguments: str) -> str:
         logger.info(f"工具 {name} 执行成功")
 
         return result
+    except PermissionError:
+        # 权限拒绝：透传给上层 agent.py 处理
+        raise
     except json.JSONDecodeError as e:
         error_msg = f"错误：参数不是合法的 JSON: {e}"
         logger.error(error_msg)
