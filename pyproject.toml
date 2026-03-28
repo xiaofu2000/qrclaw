@@ -1,6 +1,6 @@
 [project]
 name = "qrclaw"
-version = "0.5.5"
+version = "0.6.0"
 description = "A powerful AI agent with skills system"
 readme = "README.md"
 license = {text = "MIT"}
@@ -31,6 +31,12 @@ dependencies = [
     "google-genai>=1.0.0",
     "ddgs>=7.0.0",
     "google-api-python-client>=2.0.0",
+]
+
+[project.optional-dependencies]
+test = [
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
 ]
 
 [project.scripts]
