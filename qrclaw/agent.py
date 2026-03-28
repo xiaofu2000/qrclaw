@@ -91,6 +91,7 @@ def run(user_input: str, session: Session, console: Console, workspace: Workspac
             skill_registry,
             active_plan=session.active_plan,
             heartbeat_file=workspace.heartbeat_file,
+            is_sub_agent=is_sub_agent(),
         )
     }
     logger.debug(f"System prompt 已构建，可用工具: {', '.join(tool_names)}")

@@ -3,6 +3,10 @@
 
 负责管理 Agent 的权限，实施沙箱隔离，防止越权访问。
 配置存储在 ~/.qrclaw/permissions.yaml 中。
+
+权限继承规则：
+- 子 agent 继承父 agent 的权限
+- 这样子 agent 可以访问父 agent 能访问的路径
 """
 import os
 import re
@@ -124,6 +128,34 @@ def _llm_check_command_safety(command: str, workspace: Path) -> bool:
         return False
 
 
+def _get_effective_agent_id(agent_id: str) -> str:
+    """
+    获取有效的 agent ID（用于权限继承）
+    
+    子 agent 会继承父 agent 的权限。
+    例如：如果 sub-agent "coder" 的父 agent 是 "default"，
+    那么 "coder" 会使用 "default" 的权限配置。
+    
+    Args:
+        agent_id: 当前 agent ID（可能是子 agent）
+    
+    Returns:
+        str: 用于权限查找的有效 agent ID
+    """
+    # 尝试导入 spawn_agent 模块获取父 agent 映射
+    try:
+        from qrclaw.tools.spawn_agent import get_parent_agent_id
+        parent_id = get_parent_agent_id(agent_id)
+        if parent_id:
+            # 递归查找，直到找到没有父 agent 的顶层 agent
+            return _get_effective_agent_id(parent_id)
+    except ImportError:
+        pass
+    
+    # 没有父 agent，返回自身
+    return agent_id
+
+
 class SecurityManager:
     _instance = None
     _config: PermissionConfig = None
@@ -163,10 +195,24 @@ class SecurityManager:
             f.write("# allow_paths: 允许访问的外部路径列表\n")
 
     def get_permission(self, agent_id: str) -> AgentPermission:
-        """获取指定 Agent 的权限配置"""
+        """
+        获取指定 Agent 的权限配置（支持子 agent 权限继承）
+        
+        子 agent 会继承父 agent 的权限。
+        例如：如果 "coder" 是 "default" 的子 agent，
+        那么 "coder" 会使用 "default" 的权限配置。
+        """
+        # 获取有效的 agent ID（可能从父 agent 继承）
+        effective_id = _get_effective_agent_id(agent_id)
+        
+        if effective_id != agent_id:
+            from qrclaw.logger import get_logger
+            logger = get_logger("qrclaw.security")
+            logger.debug(f"子 agent '{agent_id}' 继承父 agent '{effective_id}' 的权限")
+
         # 1. 优先查明确配置
-        if agent_id in self._config.agents:
-            return self._config.agents[agent_id]
+        if effective_id in self._config.agents:
+            return self._config.agents[effective_id]
 
         # 2. 回退到默认策略
         # 如果全局策略是 restricted，则新 Agent 默认为 scoped
