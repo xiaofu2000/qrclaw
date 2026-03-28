@@ -85,15 +85,6 @@ def _build_workspace_section() -> str:
         f"- 操作系统：{os_name}",
         f"- 当前工作目录：{cwd}",
         "- 文件操作默认相对于当前工作目录",
-        "",
-        "## Agent 管理与工作区",
-        "- 所有的 Agent 的工作区统一存放在 `~/.qrclaw/agents/` 目录下",
-        "- 每个 Agent（例如 default 或 wechat-pipeline）都有独立的子目录，如 `~/.qrclaw/agents/<agent_name>/`",
-        "- 当用户要求你【创建一个新 Agent】或【配置一个新 Agent】时，你需要：",
-        "  1. 在 `~/.qrclaw/agents/` 下创建对应名称的新目录",
-        "  2. 在该目录下创建 `skills/`、`logs/`、`sessions/` 等子目录，以及 `MEMORY.md` 等基础文件",
-        "  3. 如果需要给新 Agent 添加技能，直接将 `.md` 或 python 脚本存入它的 `skills/` 目录中即可",
-        "  4. 绝不要去修改你的系统源码（如 qrclaw/ 目录下的代码）来创建 Agent",
     ])
 
 
