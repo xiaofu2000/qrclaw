@@ -8,6 +8,7 @@ from qrclaw.workspace import Workspace, list_agents, AGENTS_ROOT
 from qrclaw.memory.session import Session
 from qrclaw.logger import setup_logger
 from qrclaw.config import LOG_LEVEL, LOG_MAX_DAYS, LOG_TO_FILE, LOG_TO_CONSOLE, LOG_CONSOLE_LEVEL
+from qrclaw.tools.agent_tools import create_agent as _create_agent, delete_agent as _delete_agent
 
 
 def handle(args: str, current_workspace: Workspace, current_session: Session, console: Console) -> tuple[Workspace, Session]:
@@ -68,9 +69,18 @@ def _cmd_new(agent_id: str, current_workspace: Workspace, current_session: Sessi
         console.print("[red]用法: /agent new <agentID>[/red]")
         return current_workspace, current_session
 
+    # 调用统一的创建函数（会自动写入 permissions.yaml）
+    result = _create_agent(agent_id)
+    
+    if result.startswith("错误") or result.startswith("❌"):
+        console.print(f"[red]{result}[/red]")
+        return current_workspace, current_session
+    
+    console.print(f"[green]{result}[/green]")
+    
     new_workspace = Workspace(agent_id=agent_id)
     new_session = _switch_to(new_workspace, console)
-    console.print(f"[bold cyan]已新建并切换到 agent: {agent_id}[/bold cyan]")
+    console.print(f"[bold cyan]已切换到 agent: {agent_id}[/bold cyan]")
     return new_workspace, new_session
 
 
@@ -98,13 +108,14 @@ def _cmd_delete(agent_id: str, current_workspace: Workspace, current_session: Se
         console.print("[red]不能删除当前正在使用的 agent，请先切换到其他 agent[/red]")
         return current_workspace, current_session
 
-    agent_root = AGENTS_ROOT / agent_id
-    if not agent_root.exists():
-        console.print(f"[yellow]agent {agent_id} 不存在[/yellow]")
-        return current_workspace, current_session
-
-    shutil.rmtree(agent_root)
-    console.print(f"[dim]agent {agent_id} 已删除[/dim]")
+    # 调用统一的删除函数（会清理 permissions.yaml）
+    result = _delete_agent(agent_id)
+    
+    if result.startswith("错误") or result.startswith("❌"):
+        console.print(f"[red]{result}[/red]")
+    else:
+        console.print(f"[green]{result}[/green]")
+    
     return current_workspace, current_session
 
 
