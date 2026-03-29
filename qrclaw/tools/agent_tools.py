@@ -29,6 +29,42 @@ def _is_valid_name(name: str) -> bool:
     return bool(re.match(r'^[a-zA-Z0-9_-]+$', name))
 
 
+def _add_agent_permissions(name: str, sandbox_enabled: bool = True):
+    """在 permissions.yaml 中添加 agent 的默认权限配置"""
+    # 确保配置文件存在
+    if not PERMISSIONS_FILE.exists():
+        PERMISSIONS_FILE.parent.mkdir(parents=True, exist_ok=True)
+        PERMISSIONS_FILE.write_text("default_policy: \"restricted\"\n\nagents:\n", encoding="utf-8")
+    
+    try:
+        with open(PERMISSIONS_FILE, "r", encoding="utf-8") as f:
+            config = yaml.safe_load(f) or {}
+        
+        # 确保 agents 节点存在
+        if "agents" not in config:
+            config["agents"] = {}
+        
+        # 如果已存在配置，不覆盖
+        if name in config["agents"]:
+            logger.info(f"agent '{name}' 已有权限配置，跳过")
+            return
+        
+        # 添加默认配置
+        config["agents"][name] = {
+            "sandbox": {
+                "enabled": sandbox_enabled
+            }
+        }
+        
+        with open(PERMISSIONS_FILE, "w", encoding="utf-8") as f:
+            yaml.dump(config, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
+        
+        logger.info(f"已为 agent '{name}' 添加默认权限配置")
+    
+    except Exception as e:
+        logger.warning(f"添加权限配置失败: {e}")
+
+
 def _remove_agent_permissions(name: str):
     """从 permissions.yaml 中移除 agent 的权限配置"""
     if not PERMISSIONS_FILE.exists():
@@ -45,7 +81,7 @@ def _remove_agent_permissions(name: str):
         del config["agents"][name]
         
         with open(PERMISSIONS_FILE, "w", encoding="utf-8") as f:
-            yaml.dump(config, f, default_flow_style=False, allow_unicode=True)
+            yaml.dump(config, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
         
         logger.info(f"已从 permissions.yaml 中移除 agent '{name}' 的权限配置")
     
@@ -65,8 +101,8 @@ def create_agent(name: str) -> str:
     ├── skills/      # 技能脚本
     └── MEMORY.md    # 中期记忆
     
-    注意：新创建的 Agent 默认为 scoped 权限（只能访问自己的工作目录）。
-    如需访问外部目录，需手动编辑 ~/.qrclaw/permissions.yaml 配置白名单。
+    新创建的 Agent 默认启用沙箱（Docker 隔离）。
+    如需完全信任，请在 ~/.qrclaw/permissions.yaml 中设置 sandbox.enabled: false。
     """
     logger.info(f"创建 Agent: {name}")
 
@@ -93,8 +129,11 @@ def create_agent(name: str) -> str:
         memory_file = agent_dir / "MEMORY.md"
         memory_file.write_text(f"# {name} 中期记忆\n\n", encoding="utf-8")
 
+        # 添加默认权限配置（新 agent 默认启用沙箱）
+        _add_agent_permissions(name, sandbox_enabled=True)
+
         logger.info(f"Agent '{name}' 创建成功: {agent_dir}")
-        return f"✅ Agent '{name}' 创建成功\n\n工作目录: {agent_dir}\n\n目录结构:\n- sessions/  (会话历史)\n- logs/      (日志文件)\n- skills/    (技能脚本)\n- MEMORY.md  (中期记忆)\n\n默认权限: scoped (只能访问自己的工作目录)\n如需访问外部目录，请在 ~/.qrclaw/permissions.yaml 中配置白名单。"
+        return f"✅ Agent '{name}' 创建成功\n\n工作目录: {agent_dir}\n\n目录结构:\n- sessions/  (会话历史)\n- logs/      (日志文件)\n- skills/    (技能脚本)\n- MEMORY.md  (中期记忆)\n\n默认配置（已写入 permissions.yaml）:\n- sandbox.enabled: true（启用沙箱）\n\n如需完全信任此 agent，请在 ~/.qrclaw/permissions.yaml 中设置 sandbox.enabled: false"
 
     except Exception as e:
         error_msg = f"错误：创建 Agent 失败: {e}"
