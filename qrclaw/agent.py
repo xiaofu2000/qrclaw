@@ -242,26 +242,27 @@ def run(user_input: str, session: Session, console: Console, workspace: Workspac
     return "错误：达到最大迭代次数"
 
 
-def run_sub_agent(task: str, sub_workspace: Workspace) -> str:
+def run_sub_agent(task: str, workspace: Workspace, agent_id: str) -> str:
     """
     以静默模式运行子 agent，返回结果字符串。
     子 agent 不打印到用户终端，结果直接返回给调用方（主 agent）。
-    任务完成后自动清理工作空间（保留 logs，删除 sessions/skills/MEMORY.md）。
+    子 agent 共享父 agent 的工作空间，不创建独立目录。
 
     重要：子 agent 不允许再派生子 agent，防止无限嵌套。
 
     Args:
         task: 子 agent 要执行的任务描述
-        sub_workspace: 子 agent 的工作空间
+        workspace: 父 agent 的工作空间（共享）
+        agent_id: 子 agent 的 ID（用于日志标识）
     Returns:
         str: 子 agent 的最终回复
     """
-    import shutil
     from io import StringIO
     from rich.console import Console as RichConsole
     from qrclaw.memory.session import Session
+    import uuid
 
-    logger.info(f"启动子 agent: {sub_workspace.agent_id}, 任务: {task[:100]}...")
+    logger.info(f"启动子 agent: {agent_id}, 任务: {task[:100]}...")
 
     # 设置子 agent 深度（当前深度 + 1）
     current_depth = get_agent_depth()
@@ -270,26 +271,22 @@ def run_sub_agent(task: str, sub_workspace: Workspace) -> str:
 
     buffer = StringIO()
     sub_console = RichConsole(file=buffer, highlight=False)
-    sub_session = Session(sessions_dir=sub_workspace.sessions_dir, resume=False)
+    
+    # 子 agent 使用独立的 session 文件（但共享工作空间）
+    # 使用 uuid 区分不同子 agent 的 session
+    session_id = f"sub-{agent_id}-{uuid.uuid4().hex[:8]}"
+    sub_session = Session(
+        sessions_dir=workspace.sessions_dir,
+        session_id=session_id,
+        resume=False,
+    )
 
     try:
-        result = run(task, sub_session, sub_console, sub_workspace, auto_confirm=True)
+        result = run(task, sub_session, sub_console, workspace, auto_confirm=True)
         result = result or "子 agent 未返回结果"
-        logger.info(f"子 agent {sub_workspace.agent_id} 执行完毕，结果长度: {len(result)} 字符")
+        logger.info(f"子 agent {agent_id} 执行完毕，结果长度: {len(result)} 字符")
     finally:
         # 恢复深度
         set_agent_depth(current_depth)
-
-    # 清理工作空间：保留 logs，删除 sessions/skills/MEMORY.md
-    try:
-        if sub_workspace.sessions_dir.exists():
-            shutil.rmtree(sub_workspace.sessions_dir)
-        if sub_workspace.skills_dir.exists():
-            shutil.rmtree(sub_workspace.skills_dir)
-        if sub_workspace.memory_file.exists():
-            sub_workspace.memory_file.unlink()
-        logger.info(f"子 agent {sub_workspace.agent_id} 工作空间已清理（logs 保留）")
-    except Exception as e:
-        logger.warning(f"清理子 agent 工作空间失败: {e}")
 
     return result

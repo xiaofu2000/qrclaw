@@ -4,6 +4,10 @@ spawn_agent 工具
 允许主 agent 并行创建多个子 agent 执行任务。
 子 agent 在后台线程运行，立即返回，不阻塞主 agent。
 
+工作空间：
+- 子 agent 共享父 agent 的工作空间（子 agent 是一次性的）
+- 不需要创建独立目录，也不需要清理
+
 沙箱支持：
 - 子 agent 根据配置自动创建沙箱
 - 子 agent 完成后自动销毁沙箱
@@ -11,7 +15,6 @@ spawn_agent 工具
 
 重要：子 agent 不允许再派生子 agent，防止无限嵌套。
 """
-import os
 import threading
 from rich.console import Console
 from rich.panel import Panel
@@ -45,60 +48,6 @@ def get_task_pool_lock() -> threading.Lock:
     return _task_pool_lock
 
 
-# 父子 agent 映射
-_parent_agent_map: dict = {}
-_parent_agent_map_lock = threading.Lock()
-
-
-def get_parent_agent_id(sub_agent_id: str) -> str | None:
-    """获取子 agent 的父 agent ID"""
-    return _parent_agent_map.get(sub_agent_id)
-
-
-def set_parent_agent(sub_agent_id: str, parent_agent_id: str):
-    """设置父子关系"""
-    with _parent_agent_map_lock:
-        _parent_agent_map[sub_agent_id] = parent_agent_id
-
-
-def clear_parent_agent(sub_agent_id: str):
-    """清除父子关系"""
-    with _parent_agent_map_lock:
-        _parent_agent_map.pop(sub_agent_id, None)
-
-
-def _create_sub_agent_sandbox(agent_id: str, workspace) -> bool:
-    """为子 agent 创建沙箱"""
-    try:
-        from qrclaw.sandbox import create_sandbox
-        from pathlib import Path
-        
-        create_sandbox(
-            agent_id=agent_id,
-            workspace=Path(workspace.root),
-        )
-        
-        logger.info(f"已为子 agent {agent_id} 创建沙箱")
-        return True
-        
-    except Exception as e:
-        logger.warning(f"为子 agent {agent_id} 创建沙箱失败: {e}")
-        return False
-
-
-def _destroy_sub_agent_sandbox(agent_id: str):
-    """销毁子 agent 的沙箱"""
-    try:
-        from qrclaw.sandbox import destroy_sandbox, sandbox_manager
-        
-        if sandbox_manager.has_sandbox(agent_id):
-            destroy_sandbox(agent_id)
-            logger.info(f"已销毁子 agent {agent_id} 的沙箱")
-            
-    except Exception as e:
-        logger.warning(f"销毁子 agent {agent_id} 的沙箱失败: {e}")
-
-
 class SpawnAgentArgs(BaseModel):
     agent_id: str = Field(description="子 agent 的 ID，例如 'coder'、'reviewer'")
     task: str = Field(description="交给子 agent 的任务描述，要清晰具体")
@@ -113,6 +62,7 @@ def spawn_agent(agent_id: str, task: str) -> str:
     from qrclaw.agent import get_workspace, run_sub_agent, is_sub_agent
     from qrclaw.workspace import Workspace, ensure_workspace_cwd
     from qrclaw.sandbox import is_sandbox_enabled
+    import os
 
     # 子 agent 不允许再派生子 agent
     if is_sub_agent():
@@ -123,32 +73,38 @@ def spawn_agent(agent_id: str, task: str) -> str:
         if agent_id in _task_pool and _task_pool[agent_id]["status"] == "running":
             return f"子 agent '{agent_id}' 已在运行中，请等待完成或使用不同的 agent_id"
 
-    # 获取工作空间
-    main_workspace = get_workspace() or Workspace("default")
-    sub_workspace = main_workspace.sub_agent(agent_id)
-    
-    # 记录父子关系
-    set_parent_agent(agent_id, main_workspace.agent_id)
+    # 获取父 agent 的工作空间（子 agent 共享）
+    parent_workspace = get_workspace() or Workspace("default")
     
     # 检查是否需要创建沙箱
     sandbox_enabled = is_sandbox_enabled(agent_id)
     
-    logger.info(f"启动子 agent: {agent_id}, 工作空间: {sub_workspace.root}, 沙箱: {sandbox_enabled}")
+    logger.info(f"启动子 agent: {agent_id}, 共享工作空间: {parent_workspace.root}, 沙箱: {sandbox_enabled}")
 
     def _run():
         original_cwd = os.getcwd()
         sandbox_created = False
         
         try:
-            cwd_changed = ensure_workspace_cwd(sub_workspace)
-            if cwd_changed:
-                logger.info(f"子 agent {agent_id} 已切换 cwd 到: {sub_workspace.root}")
+            # 切换到父 agent 的工作目录
+            ensure_workspace_cwd(parent_workspace)
             
-            # 创建沙箱
+            # 创建沙箱（如果启用）
             if sandbox_enabled:
-                sandbox_created = _create_sub_agent_sandbox(agent_id, sub_workspace)
+                from pathlib import Path
+                try:
+                    from qrclaw.sandbox import create_sandbox
+                    create_sandbox(
+                        agent_id=agent_id,
+                        workspace=Path(parent_workspace.root),
+                    )
+                    sandbox_created = True
+                    logger.info(f"已为子 agent {agent_id} 创建沙箱")
+                except Exception as e:
+                    logger.warning(f"为子 agent {agent_id} 创建沙箱失败: {e}")
             
-            result = run_sub_agent(task, sub_workspace)
+            # 执行子 agent（共享父 agent 的工作空间）
+            result = run_sub_agent(task, parent_workspace, agent_id)
             
             with _task_pool_lock:
                 _task_pool[agent_id]["status"] = "done"
@@ -176,10 +132,13 @@ def spawn_agent(agent_id: str, task: str) -> str:
         finally:
             # 销毁沙箱
             if sandbox_created:
-                _destroy_sub_agent_sandbox(agent_id)
-            
-            # 清理父子关系
-            clear_parent_agent(agent_id)
+                try:
+                    from qrclaw.sandbox import destroy_sandbox, sandbox_manager
+                    if sandbox_manager.has_sandbox(agent_id):
+                        destroy_sandbox(agent_id)
+                        logger.info(f"已销毁子 agent {agent_id} 的沙箱")
+                except Exception as e:
+                    logger.warning(f"销毁子 agent {agent_id} 的沙箱失败: {e}")
             
             # 恢复 cwd
             try:

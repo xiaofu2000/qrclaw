@@ -2,6 +2,7 @@
 工作空间模块
 
 每个 agent 有独立的工作空间，所有路径都从这里派生。
+子 agent 共享父 agent 的工作空间（子 agent 是一次性的）。
 """
 import os
 from pathlib import Path
@@ -23,17 +24,11 @@ class Workspace:
         self.skills_dir = self.root / "skills"
         self.memory_file = self.root / "MEMORY.md"
         self.heartbeat_file = self.root / "HEARTBEAT.md"
-        self.sub_agents_dir = self.root / "sub-agents"
 
         # 确保目录都存在
         self.sessions_dir.mkdir(parents=True, exist_ok=True)
         self.logs_dir.mkdir(parents=True, exist_ok=True)
         self.skills_dir.mkdir(parents=True, exist_ok=True)
-
-    def sub_agent(self, sub_id: str) -> "Workspace":
-        """创建子 agent 工作空间"""
-        sub_root = self.sub_agents_dir / sub_id
-        return Workspace(agent_id=sub_id, _root=sub_root)
 
 
 def list_agents() -> list[str]:
