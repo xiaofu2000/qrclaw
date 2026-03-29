@@ -11,7 +11,7 @@ import argparse
 from rich.console import Console
 from rich.panel import Panel
 from qrclaw.logger import setup_logger
-from qrclaw.workspace import Workspace
+from qrclaw.workspace import Workspace, ensure_workspace_cwd
 from qrclaw.config import LOG_LEVEL, LOG_MAX_DAYS, LOG_TO_FILE, LOG_TO_CONSOLE, LOG_CONSOLE_LEVEL
 from qrclaw.cli.input import get_input
 from qrclaw.cli.display import show_context_usage, show_plan_progress
@@ -40,6 +40,11 @@ def main() -> None:
     # 1. 初始化工作空间（确定所有路径）
     workspace = Workspace(agent_id=args.agent)
 
+    # 1.5. 根据 agent 权限自动切换 cwd（非 full 权限强制在 workspace 目录下工作）
+    cwd_changed = ensure_workspace_cwd(workspace)
+    if cwd_changed:
+        console.print(f"[dim]已切换工作目录到: {workspace.root}[/dim]\n")
+
     # 2. 延迟导入各子模块（在 setup_logger 之前不能触发 get_logger）
     import qrclaw.tools               # noqa: E402  触发所有工具注册
     from qrclaw.tools.spawn_agent import set_console as set_spawn_console
@@ -60,9 +65,8 @@ def main() -> None:
         session_id=session.session_id,
         log_level=LOG_LEVEL,
         log_to_file=LOG_TO_FILE,
-        log_to_console=LOG_TO_CONSOLE,
+        log_to_console=LOG_CONSOLE_LEVEL,
         log_max_days=LOG_MAX_DAYS,
-        console_level=LOG_CONSOLE_LEVEL,
         log_dir=workspace.logs_dir,
     )
 

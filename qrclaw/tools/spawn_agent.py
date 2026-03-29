@@ -7,6 +7,7 @@ spawn_agent 工具
 
 重要：子 agent 不允许再派生子 agent，防止无限嵌套。
 """
+import os
 import threading
 from rich.console import Console
 from rich.panel import Panel
@@ -81,7 +82,7 @@ def spawn_agent(agent_id: str, task: str) -> str:
         str: 启动确认信息
     """
     from qrclaw.agent import get_workspace, run_sub_agent, is_sub_agent
-    from qrclaw.workspace import Workspace
+    from qrclaw.workspace import Workspace, ensure_workspace_cwd
 
     # 关键检查：子 agent 不允许再派生子 agent，防止无限嵌套
     if is_sub_agent():
@@ -103,7 +104,15 @@ def spawn_agent(agent_id: str, task: str) -> str:
     logger.info(f"启动子 agent: {agent_id}, 工作空间: {sub_workspace.root}, 父 agent: {main_workspace.agent_id}")
 
     def _run():
+        # 保存父线程的 cwd，子 agent 完成后恢复
+        original_cwd = os.getcwd()
+        
         try:
+            # 根据 agent 权限自动切换 cwd（非 full 权限强制在 workspace 目录下工作）
+            cwd_changed = ensure_workspace_cwd(sub_workspace)
+            if cwd_changed:
+                logger.info(f"子 agent {agent_id} 已切换 cwd 到: {sub_workspace.root}")
+            
             result = run_sub_agent(task, sub_workspace)
             with _task_pool_lock:
                 _task_pool[agent_id]["status"] = "done"
@@ -129,6 +138,11 @@ def spawn_agent(agent_id: str, task: str) -> str:
         finally:
             # 清理父 agent 映射
             clear_parent_agent(agent_id)
+            # 恢复父线程的 cwd
+            try:
+                os.chdir(original_cwd)
+            except Exception:
+                pass
 
     thread = threading.Thread(target=_run, name=f"sub-agent-{agent_id}", daemon=True)
 

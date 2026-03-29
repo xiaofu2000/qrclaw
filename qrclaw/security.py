@@ -28,27 +28,33 @@ PROTECTED_PATHS = [
 PERMISSION_DENIED_SUFFIX = "\n\n⚠️ 你的上级不允许操作除了你工作空间以外的任何文件，请立即停止！"
 
 # LLM 安全检查的 prompt
-SHELL_SAFETY_PROMPT = """你是一个命令行安全审查员。判断以下 shell 命令是否安全。
-
-安全规则：
-1. 命令只能操作当前工作目录内的文件
-2. 不能访问、读取、修改工作目录外的任何文件或目录
-3. 不能使用绝对路径（如 /etc/passwd, ~/.ssh/id_rsa）
-4. 不能使用管道或重定向访问外部文件
-5. 不能执行网络操作（curl, wget, nc 等）
-6. 不能修改系统配置或环境变量
-7. 不能执行提权操作（sudo, su, chmod 777 等）
+SHELL_SAFETY_PROMPT = """你是安全审查员。判断 shell 命令是否安全。
 
 工作目录: {workspace}
+命令会自动在这个目录下执行。
 
 命令:
 {command}
 
-只返回一个词: true 或 false
-true = 安全，允许执行
-false = 危险，拒绝执行
+判断标准：
+- 命令是否只操作工作目录内的文件？
+- 绝对路径（如 /etc/passwd, ~/.ssh）是否在工作目录内？
+- 相对路径默认指向工作目录内
 
-不要解释，只返回 true 或 false。"""
+只返回一个词: true 或 false"""
+
+# 高危命令黑名单（直接拒绝，不问 LLM）
+DANGEROUS_COMMANDS = [
+    r"rm\s+-rf\s+/",
+    r"rm\s+-rf\s+~",
+    r"rm\s+-rf\s+\*",
+    r">\s*/dev/sd[a-z]",
+    r"mkfs\s+",
+    r"dd\s+if=.*of=/dev/",
+    r":(){ :|:& };:",  # fork bomb
+    r"chmod\s+777\s+/",
+    r"chown\s+.*\s+/",
+]
 
 
 class AgentPermission(BaseModel):
@@ -75,30 +81,9 @@ DEFAULT_PERMISSIONS = {
 }
 
 
-# 高危命令黑名单（正则匹配）
-DANGEROUS_COMMANDS = [
-    r"rm\s+-rf\s+/",
-    r"rm\s+-rf\s+~",
-    r"rm\s+-rf\s+\*",
-    r">\s*/dev/sd[a-z]",
-    r"mkfs\s+",
-    r"dd\s+if=.*of=/dev/",
-    r":(){ :|:& };:",  # fork bomb
-    r"chmod\s+777\s+/",
-    r"chown\s+.*\s+/",
-]
-
-
 def _llm_check_command_safety(command: str, workspace: Path) -> bool:
     """
-    使用 LLM 判断命令是否安全
-    
-    Args:
-        command: 要检查的命令
-        workspace: 工作目录路径
-    
-    Returns:
-        True = 安全，False = 危险
+    使用 LLM 判断命令是否安全（仅用于无法通过规则判断的命令）
     """
     try:
         from qrclaw.providers import provider
@@ -121,38 +106,89 @@ def _llm_check_command_safety(command: str, workspace: Path) -> bool:
         return result == "true"
     
     except Exception as e:
-        # LLM 调用失败时，默认拒绝（安全优先）
         from qrclaw.logger import get_logger
         logger = get_logger("qrclaw.security")
         logger.error(f"LLM 安全检查失败: {e}")
         return False
 
 
+def _check_command_paths(command: str, workspace: Path) -> Optional[bool]:
+    """
+    检查命令中的路径是否安全
+    
+    Returns:
+        True = 路径安全（都在工作目录内）
+        False = 路径危险（访问了外部目录）
+        None = 无法判断，需要 LLM
+    """
+    ws_resolved = workspace.resolve()
+    
+    # 提取命令中的所有路径参数
+    # 排除 URL、选项参数等
+    words = command.split()
+    
+    found_paths = []
+    for word in words:
+        # 跳过选项参数（以 - 开头）
+        if word.startswith('-'):
+            continue
+        # 跳过 URL
+        if word.startswith('http://') or word.startswith('https://'):
+            continue
+        # 跳过纯数字、命令本身等
+        if re.match(r'^[a-zA-Z0-9_\-\.]+$', word) and not any(c in word for c in ['/', '~', '$']):
+            continue
+        
+        # 可能是路径
+        if any(c in word for c in ['/', '~', '$', '.']):
+            found_paths.append(word)
+    
+    # 没有路径参数 → 安全
+    if not found_paths:
+        return True
+    
+    # 检查每个路径
+    for path_str in found_paths:
+        try:
+            # 展开 ~ 和 $HOME
+            expanded = os.path.expandvars(os.path.expanduser(path_str))
+            
+            # 如果是相对路径（不是以 / 开头），需要检查是否逃逸
+            if not expanded.startswith('/'):
+                # 相对路径，解析后检查是否在工作目录内
+                resolved = (ws_resolved / expanded).resolve()
+            else:
+                # 绝对路径
+                resolved = Path(expanded).resolve()
+            
+            # 检查是否在工作目录内
+            try:
+                resolved.relative_to(ws_resolved)
+                # 在工作目录内，继续检查下一个
+            except ValueError:
+                # 不在工作目录内，危险！
+                return False
+                
+        except Exception:
+            # 路径解析失败，交给 LLM
+            return None
+    
+    # 所有路径都在工作目录内
+    return True
+
+
 def _get_effective_agent_id(agent_id: str) -> str:
     """
     获取有效的 agent ID（用于权限继承）
-    
-    子 agent 会继承父 agent 的权限。
-    例如：如果 sub-agent "coder" 的父 agent 是 "default"，
-    那么 "coder" 会使用 "default" 的权限配置。
-    
-    Args:
-        agent_id: 当前 agent ID（可能是子 agent）
-    
-    Returns:
-        str: 用于权限查找的有效 agent ID
     """
-    # 尝试导入 spawn_agent 模块获取父 agent 映射
     try:
         from qrclaw.tools.spawn_agent import get_parent_agent_id
         parent_id = get_parent_agent_id(agent_id)
         if parent_id:
-            # 递归查找，直到找到没有父 agent 的顶层 agent
             return _get_effective_agent_id(parent_id)
     except ImportError:
         pass
     
-    # 没有父 agent，返回自身
     return agent_id
 
 
@@ -174,12 +210,10 @@ class SecurityManager:
         try:
             with open(PERMISSIONS_FILE, "r", encoding="utf-8") as f:
                 data = yaml.safe_load(f) or {}
-                # 兼容性处理：确保 default agent 始终存在
                 if "agents" not in data:
                     data["agents"] = {}
                 if "default" not in data["agents"]:
                     data["agents"]["default"] = DEFAULT_PERMISSIONS["agents"]["default"]
-
                 self._config = PermissionConfig(**data)
         except Exception as e:
             print(f"❌ 加载权限配置失败: {e}，将使用默认安全策略")
@@ -190,19 +224,11 @@ class SecurityManager:
         PERMISSIONS_FILE.parent.mkdir(parents=True, exist_ok=True)
         with open(PERMISSIONS_FILE, "w", encoding="utf-8") as f:
             yaml.dump(DEFAULT_PERMISSIONS, f, default_flow_style=False, allow_unicode=True)
-            # 添加注释
             f.write("\n# access: full (无限制) | scoped (仅限workspace+白名单) | readonly (只读)\n")
             f.write("# allow_paths: 允许访问的外部路径列表\n")
 
     def get_permission(self, agent_id: str) -> AgentPermission:
-        """
-        获取指定 Agent 的权限配置（支持子 agent 权限继承）
-        
-        子 agent 会继承父 agent 的权限。
-        例如：如果 "coder" 是 "default" 的子 agent，
-        那么 "coder" 会使用 "default" 的权限配置。
-        """
-        # 获取有效的 agent ID（可能从父 agent 继承）
+        """获取指定 Agent 的权限配置（支持子 agent 权限继承）"""
         effective_id = _get_effective_agent_id(agent_id)
         
         if effective_id != agent_id:
@@ -210,46 +236,31 @@ class SecurityManager:
             logger = get_logger("qrclaw.security")
             logger.debug(f"子 agent '{agent_id}' 继承父 agent '{effective_id}' 的权限")
 
-        # 1. 优先查明确配置
         if effective_id in self._config.agents:
             return self._config.agents[effective_id]
 
-        # 2. 回退到默认策略
-        # 如果全局策略是 restricted，则新 Agent 默认为 scoped
         return AgentPermission(access="scoped")
 
     def check_access(self, agent_id: str, tool_name: str, args: dict, workspace_root: Path):
         """
         核心切面：检查工具调用是否合规
-        
-        Args:
-            agent_id: 当前 Agent ID
-            tool_name: 工具名称
-            args: 工具参数
-            workspace_root: 当前 Agent 的工作区根目录
-        
-        Raises:
-            PermissionError: 如果权限不足
         """
         perm = self.get_permission(agent_id)
 
-        # Level 1: Full Access (Root)
+        # Full Access 直接放行
         if perm.access == "full":
-            return  # 放行
+            return
 
-        # Level 2: 检查文件路径
-        # 针对涉及文件操作的工具进行拦截
+        # 检查文件路径工具
         if tool_name in ["read_file", "write_file", "list_directory", "delete_file"]:
             path_str = args.get("path")
-            if not path_str:
-                return  # 无路径参数，跳过
+            if path_str:
+                self._check_path_safety(path_str, perm, workspace_root, tool_name, agent_id)
 
-            self._check_path_safety(path_str, perm, workspace_root, tool_name, agent_id)
-
-        # Level 3: 检查 Shell 命令
+        # 检查 Shell 命令
         if tool_name == "run_shell":
             command = args.get("command", "")
-            self._check_shell_safety(command, perm, workspace_root, agent_id)
+            self._check_shell_safety(command, workspace_root)
 
     def _check_path_safety(self, path_str: str, perm: AgentPermission, workspace_root: Path, tool_name: str, agent_id: str):
         """检查路径是否在允许范围内"""
@@ -259,44 +270,57 @@ class SecurityManager:
         except Exception as e:
             raise PermissionError(f"🚫 [Security] 路径解析失败: {e}{PERMISSION_DENIED_SUFFIX}")
 
-        # 检查保护路径（只有 default agent 可访问）
+        # 检查保护路径
         for protected in PROTECTED_PATHS:
             if target_path == protected.resolve():
                 if agent_id != "default":
                     raise PermissionError(f"🚫 [Security] 系统配置文件只有 default agent 可访问: {path_str}{PERMISSION_DENIED_SUFFIX}")
 
-        # 1. 检查是否在 Workspace 内部
+        # 检查是否在 Workspace 内部
         if self._is_subpath(target_path, ws_root):
-            return  # 放行
+            return
 
-        # 2. 检查白名单
+        # 检查白名单
         for allowed in perm.allow_paths:
             allowed_path = Path(allowed).expanduser().resolve()
             if self._is_subpath(target_path, allowed_path):
-                # 如果是 readonly 权限，且试图写操作 -> 拦截
                 if perm.access == "readonly" and tool_name in ["write_file", "delete_file"]:
                     raise PermissionError(f"🚫 [Security] 该路径只读，禁止写入: {path_str}{PERMISSION_DENIED_SUFFIX}")
-                return  # 放行
+                return
 
-        # 3. 拦截
         raise PermissionError(f"🚫 [Security] Agent 无权访问 Workspace 外部路径: {path_str}{PERMISSION_DENIED_SUFFIX}")
 
-    def _check_shell_safety(self, command: str, perm: AgentPermission, workspace_root: Path, agent_id: str):
+    def _check_shell_safety(self, command: str, workspace_root: Path):
         """
         检查 Shell 命令安全性
         
-        对于 scoped 权限的 agent：
-        1. 禁止高危命令（rm -rf /, fork bomb 等）- 规则匹配
-        2. 使用 LLM 判断命令是否试图访问工作目录外的文件
+        策略：
+        1. 高危命令黑名单 → 直接拒绝
+        2. 检查路径 → 相对路径安全，绝对路径检查是否在工作目录内
+        3. 无法判断 → LLM 兜底
         """
-        # 检查高危命令（规则匹配，快速拦截）
+        from qrclaw.logger import get_logger
+        logger = get_logger("qrclaw.security")
+        
+        # 1. 高危命令黑名单
         for pattern in DANGEROUS_COMMANDS:
             if re.search(pattern, command, re.IGNORECASE):
                 raise PermissionError(f"🚫 [Security] 禁止执行高危命令: {command}{PERMISSION_DENIED_SUFFIX}")
 
-        # 使用 LLM 判断命令安全性
+        # 2. 检查命令中的路径
+        path_result = _check_command_paths(command, workspace_root)
+        
+        if path_result is True:
+            logger.debug(f"路径检查通过: {command[:50]}")
+            return
+        
+        if path_result is False:
+            raise PermissionError(f"🚫 [Security] 命令访问了工作目录外的文件: {command}{PERMISSION_DENIED_SUFFIX}")
+
+        # 3. 无法判断，交给 LLM
+        logger.debug(f"路径无法判断，调用 LLM: {command[:50]}")
         if not _llm_check_command_safety(command, workspace_root):
-            raise PermissionError(f"🚫 [Security] LLM 判断命令存在安全风险，拒绝执行: {command}{PERMISSION_DENIED_SUFFIX}")
+            raise PermissionError(f"🚫 [Security] 命令存在安全风险: {command}{PERMISSION_DENIED_SUFFIX}")
 
     def _is_subpath(self, target: Path, parent: Path) -> bool:
         """判断 target 是否是 parent 的子路径"""

@@ -17,6 +17,7 @@
             ├── skills/
             └── MEMORY.md
 """
+import os
 from pathlib import Path
 
 # 所有 agent 的根目录
@@ -59,3 +60,34 @@ def list_agents() -> list[str]:
     if not AGENTS_ROOT.exists():
         return []
     return [d.name for d in sorted(AGENTS_ROOT.iterdir()) if d.is_dir()]
+
+
+def ensure_workspace_cwd(workspace: Workspace) -> bool:
+    """
+    根据 agent 权限自动设置工作目录（cwd）。
+    
+    如果 agent 权限不是 full，自动将 cwd 切换到 workspace.root。
+    
+    Args:
+        workspace: agent 的工作空间
+        
+    Returns:
+        bool: 是否切换了 cwd
+    """
+    from qrclaw.security import security_manager
+    
+    perm = security_manager.get_permission(workspace.agent_id)
+    
+    # 如果权限是 full，不需要切换 cwd
+    if perm.access == "full":
+        return False
+    
+    # 权限不是 full，切换 cwd 到 workspace.root
+    target_cwd = str(workspace.root.resolve())
+    current_cwd = os.getcwd()
+    
+    if current_cwd != target_cwd:
+        os.chdir(target_cwd)
+        return True
+    
+    return False
