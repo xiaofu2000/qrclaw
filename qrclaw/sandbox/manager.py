@@ -47,12 +47,18 @@ class SandboxManager:
     
     _instance = None
     _containers: dict[str, SandboxHandle] = {}
+    _container_mgr: ContainerManager = None
     
     def __new__(cls):
         if cls._instance is None:
             cls._instance = super(SandboxManager, cls).__new__(cls)
-            cls._instance._container_mgr = ContainerManager()
         return cls._instance
+    
+    def _get_container_mgr(self) -> ContainerManager:
+        """延迟初始化 ContainerManager"""
+        if self._container_mgr is None:
+            self._container_mgr = ContainerManager()
+        return self._container_mgr
     
     def create_sandbox(
         self,
@@ -102,9 +108,10 @@ class SandboxManager:
         # 容器名称
         container_name = f"qrclaw-sbx-{agent_id}"
         
-        # 创建容器
+        # 创建容器（此时才初始化 ContainerManager）
         try:
-            container_id = self._container_mgr.create(
+            container_mgr = self._get_container_mgr()
+            container_id = container_mgr.create(
                 name=container_name,
                 workspace=workspace,
                 mounts=effective_mounts,
@@ -124,7 +131,7 @@ class SandboxManager:
             )
             
             # 启动容器
-            self._container_mgr.start(container_id)
+            container_mgr.start(container_id)
             handle._started = True
             
             # 缓存
@@ -168,10 +175,11 @@ class SandboxManager:
             return self._exec_direct(command, cwd, timeout, env)
         
         # 检查容器是否运行
-        if not self._container_mgr.is_running(handle.container_id):
-            self._container_mgr.start(handle.container_id)
+        container_mgr = self._get_container_mgr()
+        if not container_mgr.is_running(handle.container_id):
+            container_mgr.start(handle.container_id)
         
-        return self._container_mgr.exec(
+        return container_mgr.exec(
             container_id=handle.container_id,
             command=command,
             cwd=cwd,
@@ -224,8 +232,9 @@ class SandboxManager:
             return True
         
         try:
-            self._container_mgr.stop(handle.container_id)
-            self._container_mgr.remove(handle.container_id, force=force)
+            container_mgr = self._get_container_mgr()
+            container_mgr.stop(handle.container_id)
+            container_mgr.remove(handle.container_id, force=force)
             del self._containers[agent_id]
             logger.info(f"沙箱已销毁: {agent_id}")
             return True
@@ -247,6 +256,8 @@ class SandboxManager:
     
     def cleanup(self) -> int:
         """清理已退出的容器"""
+        if self._container_mgr is None:
+            return 0
         cleaned = self._container_mgr.cleanup_exited()
         to_remove = [
             aid for aid, h in self._containers.items()

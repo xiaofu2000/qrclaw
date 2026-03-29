@@ -75,14 +75,11 @@ class TestAgentConfig:
     def test_default_config(self):
         """测试默认配置"""
         config = AgentConfig()
-        assert config.access == "scoped"
-        assert config.allow_paths == []
         assert config.sandbox is None
     
     def test_with_sandbox(self):
         """测试带沙箱配置"""
         config = AgentConfig(
-            access="scoped",
             sandbox=SandboxConfig(
                 enabled=True,
                 mounts=[
@@ -106,12 +103,12 @@ class TestValidateMountPath:
     def test_blocked_path(self):
         """测试禁止挂载的敏感路径"""
         for blocked in BLOCKED_HOST_PATHS:
-            with pytest.raises(PathValidationError, match="禁止挂载敏感路径"):
+            with pytest.raises(ValueError, match="禁止挂载敏感路径"):
                 validate_mount_path(blocked)
     
     def test_docker_sock_blocked(self):
         """测试禁止挂载 Docker socket"""
-        with pytest.raises(PathValidationError, match="禁止挂载 Docker socket"):
+        with pytest.raises(ValueError, match="禁止挂载 Docker socket"):
             validate_mount_path("/var/run/docker.sock")
 
 
@@ -170,7 +167,6 @@ class TestConfigManager:
         from qrclaw.sandbox.config import config_manager
         
         config = config_manager.get_agent_config("non-existent-agent")
-        assert config.access == "scoped"
         assert config.sandbox is None
     
     def test_is_sandbox_enabled_default(self):

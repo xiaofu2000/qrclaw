@@ -4,7 +4,6 @@
 每个 agent 有独立的工作空间，所有路径都从这里派生。
 子 agent 共享父 agent 的工作空间（子 agent 是一次性的）。
 """
-import os
 from pathlib import Path
 
 # 所有 agent 的根目录
@@ -36,32 +35,3 @@ def list_agents() -> list[str]:
     if not AGENTS_ROOT.exists():
         return []
     return [d.name for d in sorted(AGENTS_ROOT.iterdir()) if d.is_dir()]
-
-
-def ensure_workspace_cwd(workspace: Workspace) -> bool:
-    """
-    根据 agent 配置自动设置工作目录。
-    
-    如果 agent 启用了沙箱，切换 cwd 到 workspace.root。
-    如果 agent 是 full access，不切换 cwd。
-    
-    Returns:
-        bool: 是否切换了 cwd
-    """
-    from qrclaw.sandbox import is_sandbox_enabled, is_full_access
-    
-    agent_id = workspace.agent_id
-    
-    # 如果是 full access 且未启用沙箱，不需要切换 cwd
-    if is_full_access(agent_id) and not is_sandbox_enabled(agent_id):
-        return False
-    
-    # 切换 cwd 到 workspace.root
-    target_cwd = str(workspace.root.resolve())
-    current_cwd = os.getcwd()
-    
-    if current_cwd != target_cwd:
-        os.chdir(target_cwd)
-        return True
-    
-    return False

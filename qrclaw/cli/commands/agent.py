@@ -4,7 +4,7 @@
 import shutil
 from rich.console import Console
 from rich.table import Table
-from qrclaw.workspace import Workspace, list_agents, AGENTS_ROOT, ensure_workspace_cwd
+from qrclaw.workspace import Workspace, list_agents, AGENTS_ROOT
 from qrclaw.memory.session import Session
 from qrclaw.logger import setup_logger
 from qrclaw.config import LOG_LEVEL, LOG_MAX_DAYS, LOG_TO_FILE, LOG_TO_CONSOLE, LOG_CONSOLE_LEVEL
@@ -109,17 +109,12 @@ def _cmd_delete(agent_id: str, current_workspace: Workspace, current_session: Se
 
 
 def _switch_to(workspace: Workspace, console: Console) -> Session:
-    """切换到指定 workspace，重建日志和 session，并根据权限切换 cwd。"""
-    # 根据 agent 权限自动切换 cwd（非 full 权限强制在 workspace 目录下工作）
-    cwd_changed = ensure_workspace_cwd(workspace)
-    if cwd_changed:
-        console.print(f"[dim]已切换工作目录到: {workspace.root}[/dim]")
-    
+    """切换到指定 workspace，重建日志和 session。"""
     setup_logger(
         session_id="init",
         log_level=LOG_LEVEL,
         log_to_file=LOG_TO_FILE,
-        log_to_console=LOG_TO_CONSOLE,
+        log_to_console=LOG_CONSOLE_LEVEL,
         log_max_days=LOG_MAX_DAYS,
         console_level=LOG_CONSOLE_LEVEL,
         log_dir=workspace.logs_dir,
@@ -130,9 +125,8 @@ def _switch_to(workspace: Workspace, console: Console) -> Session:
         session_id=new_session.session_id,
         log_level=LOG_LEVEL,
         log_to_file=LOG_TO_FILE,
-        log_to_console=LOG_TO_CONSOLE,
+        log_to_console=LOG_CONSOLE_LEVEL,
         log_max_days=LOG_MAX_DAYS,
-        console_level=LOG_CONSOLE_LEVEL,
         log_dir=workspace.logs_dir,
     )
     if new_session.messages:

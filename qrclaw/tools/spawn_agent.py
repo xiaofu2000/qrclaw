@@ -15,6 +15,7 @@ spawn_agent 工具
 
 重要：子 agent 不允许再派生子 agent，防止无限嵌套。
 """
+import os
 import threading
 from rich.console import Console
 from rich.panel import Panel
@@ -60,9 +61,8 @@ class SpawnAgentArgs(BaseModel):
 def spawn_agent(agent_id: str, task: str) -> str:
     """在后台线程启动子 agent"""
     from qrclaw.agent import get_workspace, run_sub_agent, is_sub_agent
-    from qrclaw.workspace import Workspace, ensure_workspace_cwd
+    from qrclaw.workspace import Workspace
     from qrclaw.sandbox import is_sandbox_enabled
-    import os
 
     # 子 agent 不允许再派生子 agent
     if is_sub_agent():
@@ -86,9 +86,6 @@ def spawn_agent(agent_id: str, task: str) -> str:
         sandbox_created = False
         
         try:
-            # 切换到父 agent 的工作目录
-            ensure_workspace_cwd(parent_workspace)
-            
             # 创建沙箱（如果启用）
             if sandbox_enabled:
                 from pathlib import Path

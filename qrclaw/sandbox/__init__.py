@@ -14,7 +14,6 @@ from .config import (
     is_sandbox_enabled,
     get_sandbox_config,
     get_sandbox_mounts,
-    is_full_access,
     BLOCKED_HOST_PATHS,
 )
 from .validator import validate_mount_path, PathValidationError
@@ -38,7 +37,6 @@ __all__ = [
     "is_sandbox_enabled",
     "get_sandbox_config",
     "get_sandbox_mounts",
-    "is_full_access",
     "BLOCKED_HOST_PATHS",
     # 验证
     "validate_mount_path",

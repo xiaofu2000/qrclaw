@@ -1,11 +1,8 @@
 """
-沙箱与权限配置模块
+沙箱配置模块
 
-所有配置存储在 ~/.qrclaw/permissions.yaml 中，包括：
-- 权限配置（access, allow_paths）
-- 沙箱配置（enabled, mounts, image 等）
-
-Docker 沙箱启用时，物理隔离已经解决了安全问题，不需要额外的路径检查。
+所有配置存储在 ~/.qrclaw/permissions.yaml 中。
+Docker 沙箱启用时，物理隔离已经解决了安全问题。
 """
 import yaml
 from pathlib import Path
@@ -40,9 +37,7 @@ class SandboxConfig(BaseModel):
 
 
 class AgentConfig(BaseModel):
-    """Agent 配置（权限 + 沙箱）"""
-    access: Literal["full", "scoped", "readonly"] = "scoped"
-    allow_paths: List[str] = Field(default_factory=list)
+    """Agent 配置"""
     sandbox: Optional[SandboxConfig] = None
 
 
@@ -57,7 +52,6 @@ DEFAULT_CONFIG = {
     "default_policy": "restricted",
     "agents": {
         "default": {
-            "access": "full",
             "sandbox": {
                 "enabled": False
             }
@@ -101,17 +95,12 @@ class ConfigManager:
         """创建默认配置文件"""
         PERMISSIONS_FILE.parent.mkdir(parents=True, exist_ok=True)
         
-        config_content = """# QRClaw 权限与沙箱配置
-#
-# access: 权限级别
-#   - full: 完全信任，不启用沙箱
-#   - scoped: 限制访问（需配置 sandbox）
-#   - readonly: 只读
-#
-# allow_paths: 允许访问的外部路径（沙箱未启用时有效）
+        config_content = """# QRClaw 沙箱配置
 #
 # sandbox: Docker 沙箱配置
 #   - enabled: 是否启用沙箱
+#     - false: 完全信任，无限制
+#     - true: Docker 容器隔离
 #   - image: Docker 镜像
 #   - network: none（无网络）或 bridge（允许网络）
 #   - memory: 内存限制
@@ -126,13 +115,11 @@ default_policy: "restricted"
 agents:
   # 主 Agent：完全信任，不启用沙箱
   default:
-    access: "full"
     sandbox:
       enabled: false
   
-  # 示例：开发 Agent
+  # 示例：开发 Agent（启用沙箱）
   # developer:
-  #   access: "scoped"
   #   sandbox:
   #     enabled: true
   #     mounts:
@@ -170,14 +157,6 @@ agents:
         if config.sandbox and config.sandbox.mounts:
             return config.sandbox.mounts
         return []
-    
-    def get_access(self, agent_id: str) -> str:
-        """获取权限级别"""
-        return self.get_agent_config(agent_id).access
-    
-    def is_full_access(self, agent_id: str) -> bool:
-        """检查是否完全信任"""
-        return self.get_access(agent_id) == "full"
 
 
 # 全局单例
@@ -204,11 +183,6 @@ def get_sandbox_config(agent_id: str) -> Optional[SandboxConfig]:
 def get_sandbox_mounts(agent_id: str) -> List[MountConfig]:
     """获取挂载配置"""
     return config_manager.get_sandbox_mounts(agent_id)
-
-
-def is_full_access(agent_id: str) -> bool:
-    """检查是否完全信任"""
-    return config_manager.is_full_access(agent_id)
 
 
 # ========== 禁止挂载的敏感路径 ==========
