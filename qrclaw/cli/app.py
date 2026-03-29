@@ -42,6 +42,7 @@ def main() -> None:
 
     # 2. 延迟导入各子模块（在 setup_logger 之前不能触发 get_logger）
     import qrclaw.tools               # noqa: E402  触发所有工具注册
+    import qrclaw.sandbox.config      # noqa: E402  触发配置文件创建
     from qrclaw.tools.spawn_agent import set_console as set_spawn_console
     set_spawn_console(console)  # 注入 console，子 agent 完成时直接打印
     from qrclaw.agent import run
