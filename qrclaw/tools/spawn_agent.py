@@ -3,7 +3,11 @@ spawn_agent 工具
 
 允许主 agent 并行创建多个子 agent 执行任务。
 子 agent 在后台线程运行，立即返回，不阻塞主 agent。
-通过 wait_agents 工具等待并收集所有结果。
+
+沙箱支持：
+- 子 agent 根据配置自动创建沙箱
+- 子 agent 完成后自动销毁沙箱
+- 配置从 permissions.yaml 读取
 
 重要：子 agent 不允许再派生子 agent，防止无限嵌套。
 """
@@ -21,17 +25,18 @@ logger = get_logger("qrclaw.tools.spawn_agent")
 _task_pool: dict = {}
 _task_pool_lock = threading.Lock()
 
-# 全局 console，由 app.py 启动时注入
+# 全局 console
 _console: Console = None
 
+
 def set_console(console: Console):
-    """注入全局 console（由 app.py 调用）"""
+    """注入全局 console"""
     global _console
     _console = console
 
 
 def get_task_pool() -> dict:
-    """获取任务池（供 wait_agents 使用）"""
+    """获取任务池"""
     return _task_pool
 
 
@@ -40,7 +45,7 @@ def get_task_pool_lock() -> threading.Lock:
     return _task_pool_lock
 
 
-# 存储子 agent 到父 agent 的映射（用于权限继承）
+# 父子 agent 映射
 _parent_agent_map: dict = {}
 _parent_agent_map_lock = threading.Lock()
 
@@ -51,15 +56,47 @@ def get_parent_agent_id(sub_agent_id: str) -> str | None:
 
 
 def set_parent_agent(sub_agent_id: str, parent_agent_id: str):
-    """设置子 agent 的父 agent ID"""
+    """设置父子关系"""
     with _parent_agent_map_lock:
         _parent_agent_map[sub_agent_id] = parent_agent_id
 
 
 def clear_parent_agent(sub_agent_id: str):
-    """清除子 agent 的父 agent 映射"""
+    """清除父子关系"""
     with _parent_agent_map_lock:
         _parent_agent_map.pop(sub_agent_id, None)
+
+
+def _create_sub_agent_sandbox(agent_id: str, workspace) -> bool:
+    """为子 agent 创建沙箱"""
+    try:
+        from qrclaw.sandbox import create_sandbox
+        from pathlib import Path
+        
+        create_sandbox(
+            agent_id=agent_id,
+            workspace=Path(workspace.root),
+        )
+        
+        logger.info(f"已为子 agent {agent_id} 创建沙箱")
+        return True
+        
+    except Exception as e:
+        logger.warning(f"为子 agent {agent_id} 创建沙箱失败: {e}")
+        return False
+
+
+def _destroy_sub_agent_sandbox(agent_id: str):
+    """销毁子 agent 的沙箱"""
+    try:
+        from qrclaw.sandbox import destroy_sandbox, sandbox_manager
+        
+        if sandbox_manager.has_sandbox(agent_id):
+            destroy_sandbox(agent_id)
+            logger.info(f"已销毁子 agent {agent_id} 的沙箱")
+            
+    except Exception as e:
+        logger.warning(f"销毁子 agent {agent_id} 的沙箱失败: {e}")
 
 
 class SpawnAgentArgs(BaseModel):
@@ -72,53 +109,53 @@ class SpawnAgentArgs(BaseModel):
     args_model=SpawnAgentArgs,
 )
 def spawn_agent(agent_id: str, task: str) -> str:
-    """
-    在后台线程启动子 agent，立即返回。
-
-    Args:
-        agent_id: 子 agent ID
-        task: 子 agent 要执行的任务
-    Returns:
-        str: 启动确认信息
-    """
+    """在后台线程启动子 agent"""
     from qrclaw.agent import get_workspace, run_sub_agent, is_sub_agent
     from qrclaw.workspace import Workspace, ensure_workspace_cwd
+    from qrclaw.sandbox import is_sandbox_enabled
 
-    # 关键检查：子 agent 不允许再派生子 agent，防止无限嵌套
+    # 子 agent 不允许再派生子 agent
     if is_sub_agent():
         return "错误：子 agent 不允许再派生子 agent，这会导致无限嵌套。请直接执行任务，不要使用 spawn_agent。"
 
-    # 如果该 agent_id 已在运行，拒绝重复启动
+    # 检查是否已在运行
     with _task_pool_lock:
         if agent_id in _task_pool and _task_pool[agent_id]["status"] == "running":
             return f"子 agent '{agent_id}' 已在运行中，请等待完成或使用不同的 agent_id"
 
-    # 直接取当前 workspace，不再靠 session 路径反推
-    # 这样无论当前是顶层 agent 还是子 agent，新建的子 agent 都是同级的
+    # 获取工作空间
     main_workspace = get_workspace() or Workspace("default")
     sub_workspace = main_workspace.sub_agent(agent_id)
     
-    # 记录子 agent 的父 agent ID（用于权限继承）
+    # 记录父子关系
     set_parent_agent(agent_id, main_workspace.agent_id)
     
-    logger.info(f"启动子 agent: {agent_id}, 工作空间: {sub_workspace.root}, 父 agent: {main_workspace.agent_id}")
+    # 检查是否需要创建沙箱
+    sandbox_enabled = is_sandbox_enabled(agent_id)
+    
+    logger.info(f"启动子 agent: {agent_id}, 工作空间: {sub_workspace.root}, 沙箱: {sandbox_enabled}")
 
     def _run():
-        # 保存父线程的 cwd，子 agent 完成后恢复
         original_cwd = os.getcwd()
+        sandbox_created = False
         
         try:
-            # 根据 agent 权限自动切换 cwd（非 full 权限强制在 workspace 目录下工作）
             cwd_changed = ensure_workspace_cwd(sub_workspace)
             if cwd_changed:
                 logger.info(f"子 agent {agent_id} 已切换 cwd 到: {sub_workspace.root}")
             
+            # 创建沙箱
+            if sandbox_enabled:
+                sandbox_created = _create_sub_agent_sandbox(agent_id, sub_workspace)
+            
             result = run_sub_agent(task, sub_workspace)
+            
             with _task_pool_lock:
                 _task_pool[agent_id]["status"] = "done"
                 _task_pool[agent_id]["result"] = result
+            
             logger.info(f"子 agent {agent_id} 完成")
-            # 完成后直接打印到控制台，不需要主 agent 主动等待
+            
             if _console:
                 _console.print()
                 _console.print(Panel(
@@ -128,6 +165,7 @@ def spawn_agent(agent_id: str, task: str) -> str:
                     expand=False,
                 ))
                 _console.print()
+                
         except Exception as e:
             logger.error(f"子 agent {agent_id} 出错: {e}", exc_info=True)
             with _task_pool_lock:
@@ -136,9 +174,14 @@ def spawn_agent(agent_id: str, task: str) -> str:
             if _console:
                 _console.print(f"\n[bold red]子 agent '{agent_id}' 执行出错: {e}[/bold red]\n")
         finally:
-            # 清理父 agent 映射
+            # 销毁沙箱
+            if sandbox_created:
+                _destroy_sub_agent_sandbox(agent_id)
+            
+            # 清理父子关系
             clear_parent_agent(agent_id)
-            # 恢复父线程的 cwd
+            
+            # 恢复 cwd
             try:
                 os.chdir(original_cwd)
             except Exception:
@@ -151,7 +194,10 @@ def spawn_agent(agent_id: str, task: str) -> str:
             "status": "running",
             "result": None,
             "thread": thread,
+            "sandbox_enabled": sandbox_enabled,
         }
 
     thread.start()
-    return f"子 agent '{agent_id}' 已在后台启动，任务：{task[:50]}{'...' if len(task) > 50 else ''}"
+    
+    sandbox_hint = " (沙箱已启用)" if sandbox_enabled else ""
+    return f"子 agent '{agent_id}' 已在后台启动{sandbox_hint}，任务：{task[:50]}{'...' if len(task) > 50 else ''}"

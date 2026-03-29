@@ -6,16 +6,11 @@ from qrclaw.logger import get_logger
 logger = get_logger("qrclaw.tools.registry")
 
 # 存所有注册的工具
-# 结构：{ "工具名": {"fn": 函数本身, "model": Pydantic模型, "schema": 给LLM看的描述} }
 _tools: dict = {}
 
 
 def register(description: str, args_model: Type[BaseModel], confirm: bool = False):
-    """
-    装饰器：把函数注册成一个工具。
-
-    confirm=True 表示执行前需要用户确认（高风险工具）
-    """
+    """装饰器：把函数注册成一个工具。confirm=True 表示执行前需要用户确认"""
     def decorator(fn):
         schema = _build_schema(fn.__name__, description, args_model)
         _tools[fn.__name__] = {
@@ -44,7 +39,7 @@ def _resolve_refs(schema: dict, defs: dict) -> dict:
     result = {}
     for k, v in schema.items():
         if k in ("$defs", "title"):
-            continue  # 去掉 $defs 和所有层级的 title
+            continue
         elif isinstance(v, dict):
             result[k] = _resolve_refs(v, defs)
         elif isinstance(v, list):
@@ -59,12 +54,10 @@ def _build_schema(name: str, description: str, args_model: Type[BaseModel]) -> d
     pydantic_schema = args_model.model_json_schema()
     defs = pydantic_schema.get("$defs", {})
 
-    # 展开 $ref，内联所有引用，同时递归清理 title
     resolved = _resolve_refs(pydantic_schema, defs)
-
     properties = dict(resolved.get("properties", {}))
 
-    # 无参数工具：省略 parameters 字段（Gemini 不接受空 properties）
+    # 无参数工具：省略 parameters 字段
     if not properties:
         return {
             "type": "function",
@@ -79,7 +72,6 @@ def _build_schema(name: str, description: str, args_model: Type[BaseModel]) -> d
         "type": "object",
         "properties": properties,
     }
-    # required 为空时省略，避免某些 API 报错
     if required:
         parameters["required"] = required
 
@@ -94,21 +86,14 @@ def _build_schema(name: str, description: str, args_model: Type[BaseModel]) -> d
 
 
 def get_schemas() -> list[dict]:
-    """返回所有工具的 schema 列表，发给 LLM 用"""
+    """返回所有工具的 schema 列表"""
     schemas = [item["schema"] for item in _tools.values()]
     logger.debug(f"获取工具 schemas，共 {len(schemas)} 个工具")
     return schemas
 
 
 def execute(name: str, arguments: str) -> str:
-    """
-    执行工具。
-    用 Pydantic 模型校验参数，不合法直接报错，不会传脏数据给工具函数。
-    同时执行安全切面检查。
-    
-    Raises:
-        PermissionError: 当权限检查失败时抛出，由上层 agent.py 捕获处理
-    """
+    """执行工具，用 Pydantic 模型校验参数"""
     if name not in _tools:
         error_msg = f"错误：找不到工具 {name}"
         logger.error(error_msg)
@@ -123,46 +108,11 @@ def execute(name: str, arguments: str) -> str:
         validated_args = validated.model_dump()
         logger.debug(f"工具 {name} 校验后参数: {validated_args}")
 
-        # === AOP 安全拦截 (Security Hook) ===
-        try:
-            # 局部导入避免循环引用
-            from qrclaw.agent import get_workspace
-            from qrclaw.security import security_manager
-            
-            # 获取当前上下文的工作空间
-            ws = get_workspace()
-            
-            # 仅当在 agent 运行上下文中时才检查
-            # 如果是 CLI 直接调试工具或单元测试，可能没有 workspace，此时视为 Full Access
-            if ws:
-                security_manager.check_access(
-                    agent_id=ws.agent_id,
-                    tool_name=name,
-                    args=validated_args,
-                    workspace_root=ws.root
-                )
-        except PermissionError:
-            # 权限拒绝：透传给上层 agent.py 处理
-            logger.warning(f"工具 {name} 权限检查失败")
-            raise  # 关键：重新抛出异常，而不是返回字符串
-        except ImportError:
-            # 可能是环境问题，忽略
-            pass
-        except Exception as e:
-            # 安全检查本身出错，为了安全起见，选择拦截并报错 (Fail Closed)
-            error_msg = f"系统错误：执行安全检查时发生异常 ({e})"
-            logger.error(error_msg, exc_info=True)
-            return error_msg
-        # ====================================
-
         # 执行工具
         result = _tools[name]["fn"](**validated_args)
         logger.info(f"工具 {name} 执行成功")
 
         return result
-    except PermissionError:
-        # 权限拒绝：透传给上层 agent.py 处理
-        raise
     except json.JSONDecodeError as e:
         error_msg = f"错误：参数不是合法的 JSON: {e}"
         logger.error(error_msg)

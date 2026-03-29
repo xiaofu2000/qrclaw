@@ -33,6 +33,15 @@ dependencies = [
     "google-api-python-client>=2.0.0",
 ]
 
+[project.optional-dependencies]
+sandbox = [
+    "docker>=7.0.0",
+]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+]
+
 [project.scripts]
 qrclaw = "qrclaw.cli:main"
 
