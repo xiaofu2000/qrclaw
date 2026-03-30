@@ -80,19 +80,15 @@ def _make_system_prompt(workspace: Workspace, session: Session) -> dict:
     Router 调用：在 run() 开头调一次，上下文用于路由判断。
     ReAct 循环：每轮调一次，保证 active_plan 始终是最新状态。
     """
-    from qrclaw.skills.registry import SkillRegistry
-    tool_names = [s["function"]["name"] for s in get_schemas()]
-    memory = LongTermMemory(workspace.memory_file)
-    skill_registry = SkillRegistry()
-    skill_registry.load_from_dir(workspace.skills_dir)
     return {
         "role": "system",
         "content": build_system_prompt(
-            tool_names, memory, skill_registry,
             active_plan=session.active_plan,
             heartbeat_file=workspace.heartbeat_file,
             is_sub_agent=is_sub_agent(),
             agent_file=workspace.agent_file,
+            skills_dir=workspace.skills_dir,
+            memory_file=workspace.memory_file,
         )
     }
 

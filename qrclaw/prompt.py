@@ -269,32 +269,40 @@ def _build_plan_section(active_plan: dict | None) -> str:
 
 
 def build_system_prompt(
-    tool_names: list[str] | None = None,
-    memory: LongTermMemory = None,
-    skill_registry: SkillRegistry | None = None,
     active_plan: dict | None = None,
     heartbeat_file: Path | None = None,
     is_sub_agent: bool = False,
     agent_file: Path | None = None,
+    skills_dir: Path | None = None,
+    memory_file: Path | None = None,
 ) -> str:
-    """构建完整的 system prompt
+    """构建完整的 system prompt。
+
+    工具列表、记忆、技能注册表在内部自动获取，
+    只需传入因 agent 实例而异的上下文参数。
 
     Args:
-        tool_names: 可用工具列表
-        memory: 长期记忆实例
-        skill_registry: 技能注册表
-        active_plan: 当前执行计划
+        active_plan:    当前执行计划（来自 session）
         heartbeat_file: 心跳任务文件路径
-        is_sub_agent: 是否是子 agent（影响行为准则）
+        is_sub_agent:   是否是子 agent
+        agent_file:     AGENT.md 路径（agent 身份定义）
+        skills_dir:     技能目录路径
+        memory_file:    记忆文件路径
     """
+    from qrclaw.skills.registry import SkillRegistry
+    tool_names = [s["function"]["name"] for s in get_schemas()]
+    memory = LongTermMemory(memory_file) if memory_file else None
+    skill_registry = SkillRegistry()
+    if skills_dir:
+        skill_registry.load_from_dir(skills_dir)
     sections = [
         f"你是 {AGENT_NAME}，一个运行在用户本地的自主 AI Agent。",
         "",
         _build_identity_section(agent_file),
         "",
-        _build_tooling_section(tool_names or []),
+        _build_tooling_section(tool_names),
         "",
-        _build_skills_section(skill_registry or SkillRegistry()),
+        _build_skills_section(skill_registry),
         "",
         _build_behavior_section(is_sub_agent=is_sub_agent),
         "",
