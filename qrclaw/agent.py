@@ -75,7 +75,11 @@ def _dump_assistant_msg(response: LLMResponse) -> dict:
 
 
 def _make_system_prompt(workspace: Workspace, session: Session) -> dict:
-    """构建 system prompt，整个 run() 生命周期只调一次，Router 和 ReAct 共享同一份。"""
+    """
+    构建 system prompt。
+    Router 调用：在 run() 开头调一次，上下文用于路由判断。
+    ReAct 循环：每轮调一次，保证 active_plan 始终是最新状态。
+    """
     from qrclaw.skills.registry import SkillRegistry
     tool_names = [s["function"]["name"] for s in get_schemas()]
     memory = LongTermMemory(workspace.memory_file)
@@ -113,7 +117,7 @@ def run(user_input: str, session: Session, console: Console, workspace: Workspac
         )
         if route_result.route == "plan":
             logger.info(f"Router 判断需要规划，进入 Planner 节点，原因: {route_result.reason}")
-            return _run_with_plan(user_input, session, console, workspace, auto_confirm, system_prompt)
+            return _run_with_plan(user_input, session, console, workspace, auto_confirm)
 
     # 简单任务或子 agent：直接走 ReAct 循环
     return _react_loop(session, console, workspace, auto_confirm, system_prompt)
@@ -175,7 +179,6 @@ def _run_with_plan(
     console: Console,
     workspace: Workspace,
     auto_confirm: bool = False,
-    system_prompt: dict | None = None,
 ) -> str:
     """
     规划路径：Planner 生成 Plan → 拓扑排序执行引擎执行 → 汇总结果回 ReAct 做最终整合。
@@ -234,7 +237,7 @@ def _run_with_plan(
 
     # 走一次 ReAct 做最终整合（此时 session 里已有所有步骤结果）
     logger.info("所有步骤执行完毕，进入最终整合 ReAct")
-    return _react_loop(session, console, workspace, auto_confirm, system_prompt)
+    return _react_loop(session, console, workspace, auto_confirm)
 
 
 def _react_loop(
@@ -242,21 +245,19 @@ def _react_loop(
     console: Console,
     workspace: Workspace,
     auto_confirm: bool = False,
-    system_prompt: dict | None = None,
 ) -> str:
     """
     纯 ReAct 循环，不做路由判断。
-    system_prompt 由调用方传入（run() 构建一次，复用），
-    不传时自行构建（兼容子 agent 直接调用的情况）。
+    每轮重新构建 system prompt，保证 active_plan 始终反映最新状态。
     """
-    if system_prompt is None:
-        system_prompt = _make_system_prompt(workspace, session)
 
     permission_denied_count = 0
     MAX_PERMISSION_DENIED = 2
 
     for iteration in range(MAX_ITERATIONS):
         logger.debug(f"ReAct 第 {iteration + 1} 轮")
+        # 每轮重建，active_plan 随 complete_step 更新后能立即反映在 prompt 里
+        system_prompt = _make_system_prompt(workspace, session)
         messages = [system_prompt, *session.messages]
 
         with console.status("[bold yellow]思考中...[/bold yellow]", spinner="dots"):
