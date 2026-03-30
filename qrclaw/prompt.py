@@ -53,18 +53,46 @@ def _build_tooling_section(tool_names: list[str]) -> str:
         logger.warning(f"获取工具 schema 失败: {e}")
 
     lines = ["## 可用工具", "工具名称区分大小写，按名称精确调用："]
-    
+
     for name in tool_names:
         # 2. 优先用动态描述，没有则用硬编码的备用
         desc = dynamic_descriptions.get(name) or _TOOL_DESCRIPTIONS.get(name, "")
-        
+
         if desc:
             lines.append(f"- {name}: {desc}")
         else:
             # 如果真的都没有，只显示名字
             lines.append(f"- {name}")
-            
+
     return "\n".join(lines)
+
+
+def _build_identity_section(agent_file: Path) -> str:
+    """
+    从 AGENT.md 加载 agent 身份定义。
+    支持可选的 YAML frontmatter，正文直接注入 system prompt。
+    文件不存在时返回空字符串，不影响默认行为。
+    """
+    if agent_file is None or not agent_file.exists():
+        return ""
+    try:
+        content = agent_file.read_text(encoding="utf-8").strip()
+        if not content:
+            return ""
+        # 去掉 YAML frontmatter，只取 markdown 正文
+        if content.startswith("---"):
+            parts = content.split("---", 2)
+            content = parts[2].strip() if len(parts) >= 3 else content
+        if not content:
+            return ""
+        logger.info(f"注入 AGENT.md 身份定义: {agent_file}")
+        return "\n".join([
+            "## Agent 身份",
+            content,
+        ])
+    except Exception as e:
+        logger.warning(f"读取 AGENT.md 失败: {e}")
+        return ""
 
 
 def _build_safety_section() -> str:
@@ -102,7 +130,7 @@ def _build_behavior_section(is_sub_agent: bool = False) -> str:
         "- 只在以下情况才先说明：删除等敏感操作、用户明确要求时",
         "- 当有专用工具可以完成某个操作时，直接用工具，不要让用户自己去跑命令",
     ]
-    
+
     if is_sub_agent:
         # 子 agent 专用：汇报压缩规则
         lines.extend([
@@ -148,7 +176,7 @@ def _build_behavior_section(is_sub_agent: bool = False) -> str:
             "- 子 agent 只返回摘要，如需详情用 read_file 查看日志文件",
             "- 简单任务、单一任务不需要子 agent，直接自己完成",
         ])
-    
+
     return "\n".join(lines)
 
 
@@ -176,12 +204,12 @@ def _build_heartbeat_section(heartbeat_file: Path = None) -> str:
     """构建心跳任务部分"""
     if heartbeat_file is None or not heartbeat_file.exists():
         return ""
-    
+
     try:
         content = heartbeat_file.read_text(encoding="utf-8")
         if not content.strip():
             return ""
-        
+
         logger.info("注入心跳任务到 system prompt")
         return "\n".join([
             "## 心跳任务",
@@ -255,9 +283,10 @@ def build_system_prompt(
     active_plan: dict | None = None,
     heartbeat_file: Path | None = None,
     is_sub_agent: bool = False,
+    agent_file: Path | None = None,
 ) -> str:
     """构建完整的 system prompt
-    
+
     Args:
         tool_names: 可用工具列表
         memory: 长期记忆实例
@@ -268,6 +297,8 @@ def build_system_prompt(
     """
     sections = [
         f"你是 {AGENT_NAME}，一个运行在用户本地的自主 AI Agent。",
+        "",
+        _build_identity_section(agent_file),
         "",
         _build_tooling_section(tool_names or []),
         "",

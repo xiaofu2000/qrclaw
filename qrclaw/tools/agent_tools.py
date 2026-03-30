@@ -35,32 +35,32 @@ def _add_agent_permissions(name: str, sandbox_enabled: bool = True):
     if not PERMISSIONS_FILE.exists():
         PERMISSIONS_FILE.parent.mkdir(parents=True, exist_ok=True)
         PERMISSIONS_FILE.write_text("default_policy: \"restricted\"\n\nagents:\n", encoding="utf-8")
-    
+
     try:
         with open(PERMISSIONS_FILE, "r", encoding="utf-8") as f:
             config = yaml.safe_load(f) or {}
-        
+
         # 确保 agents 节点存在
         if "agents" not in config:
             config["agents"] = {}
-        
+
         # 如果已存在配置，不覆盖
         if name in config["agents"]:
             logger.info(f"agent '{name}' 已有权限配置，跳过")
             return
-        
+
         # 添加默认配置
         config["agents"][name] = {
             "sandbox": {
                 "enabled": sandbox_enabled
             }
         }
-        
+
         with open(PERMISSIONS_FILE, "w", encoding="utf-8") as f:
             yaml.dump(config, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
-        
+
         logger.info(f"已为 agent '{name}' 添加默认权限配置")
-    
+
     except Exception as e:
         logger.warning(f"添加权限配置失败: {e}")
 
@@ -69,22 +69,22 @@ def _remove_agent_permissions(name: str):
     """从 permissions.yaml 中移除 agent 的权限配置"""
     if not PERMISSIONS_FILE.exists():
         return
-    
+
     try:
         with open(PERMISSIONS_FILE, "r", encoding="utf-8") as f:
             config = yaml.safe_load(f) or {}
-        
+
         if "agents" not in config or name not in config["agents"]:
             return
-        
+
         # 移除该 agent 的配置
         del config["agents"][name]
-        
+
         with open(PERMISSIONS_FILE, "w", encoding="utf-8") as f:
             yaml.dump(config, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
-        
+
         logger.info(f"已从 permissions.yaml 中移除 agent '{name}' 的权限配置")
-    
+
     except Exception as e:
         logger.warning(f"清理权限配置失败: {e}")
 
@@ -100,7 +100,7 @@ def create_agent(name: str) -> str:
     ├── logs/        # 日志文件
     ├── skills/      # 技能脚本
     └── MEMORY.md    # 中期记忆
-    
+
     新创建的 Agent 默认启用沙箱（Docker 隔离）。
     如需完全信任，请在 ~/.qrclaw/permissions.yaml 中设置 sandbox.enabled: false。
     """
@@ -128,6 +128,16 @@ def create_agent(name: str) -> str:
         # 创建 MEMORY.md
         memory_file = agent_dir / "MEMORY.md"
         memory_file.write_text(f"# {name} 中期记忆\n\n", encoding="utf-8")
+
+        # 创建 AGENT.md 模板
+        agent_file = agent_dir / "AGENT.md"
+        agent_file.write_text(
+            f"---\nname: {name}\n---\n\n"
+            f"## 身份\n你是 {name} Agent。\n\n"
+            "## 职责\n在此描述这个 Agent 的专属职责和行为约束。\n\n"
+            "## 背景\n在此补充用户背景、业务上下文等信息。\n",
+            encoding="utf-8",
+        )
 
         # 添加默认权限配置（新 agent 默认启用沙箱）
         _add_agent_permissions(name, sandbox_enabled=True)
@@ -166,10 +176,10 @@ def delete_agent(name: str) -> str:
     try:
         # 删除整个目录
         shutil.rmtree(agent_dir)
-        
+
         # 清理权限配置
         _remove_agent_permissions(name)
-        
+
         logger.info(f"Agent '{name}' 已删除: {agent_dir}")
         return f"✅ Agent '{name}' 已删除\n\n已移除:\n- 工作目录: {agent_dir}\n- 权限配置: ~/.qrclaw/permissions.yaml\n\n⚠️ 所有数据（会话、日志、技能、记忆）已永久删除。"
 

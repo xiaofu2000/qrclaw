@@ -23,6 +23,7 @@ class Workspace:
         self.skills_dir = self.root / "skills"
         self.memory_file = self.root / "MEMORY.md"
         self.heartbeat_file = self.root / "HEARTBEAT.md"
+        self.agent_file = self.root / "AGENT.md"
 
         # 确保目录都存在
         self.sessions_dir.mkdir(parents=True, exist_ok=True)
