@@ -261,10 +261,9 @@ def _build_plan_section(active_plan: dict | None) -> str:
     lines.extend([
         "",
         "执行规则：",
-        "1. 有依赖关系的步骤必须串行执行（前置步骤完成后再执行下一步）",
-        "2. 无依赖关系的步骤可以用 spawn_agent 并行执行，再用 wait_agents 等待结果，效率更高",
-        "3. 每完成一步调用 complete_step 标记完成后再继续",
-        "4. 最终整合步骤必须等所有子任务完成后再执行",
+        "1. 按步骤顺序执行，有依赖的步骤等前置步骤完成后再执行",
+        "2. 每完成一步调用 complete_step 标记完成后再继续下一步",
+        "3. 所有步骤完成后给出整体总结",
     ])
     return "\n".join(lines)
 
