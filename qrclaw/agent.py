@@ -171,10 +171,23 @@ def _run_with_plan(
 
     # 定义单步执行函数：每个步骤作为子 agent 跑一次 ReAct 循环
     def run_step(step, plan_obj) -> str:
-        # 构造步骤任务描述，附上计划上下文
+        # 把前置步骤的结果拼入 task，解决子 agent 间上下文断裂问题
+        context = ""
+        if step.depends_on:
+            prior = []
+            for dep_id in step.depends_on:
+                dep_result = results.get(dep_id, "")
+                if dep_result:
+                    # 结果太长截断，避免 token 爆炸
+                    snippet = dep_result[:800] + "\n...(已截断)" if len(dep_result) > 800 else dep_result
+                    prior.append(f"Step {dep_id} 结果：\n{snippet}")
+            if prior:
+                context = "\n\n【前置步骤结果】\n" + "\n---\n".join(prior)
+
         task = (
             f"【计划目标】{plan_obj.goal}\n"
-            f"【当前步骤】Step {step.id}: {step.description}\n"
+            f"【当前步骤】Step {step.id}: {step.description}"
+            f"{context}\n\n"
             f"【要求】只完成当前步骤，完成后返回结果摘要。"
         )
         return run_sub_agent(task, workspace, f"step-{step.id}")
