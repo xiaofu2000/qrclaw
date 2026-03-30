@@ -187,13 +187,19 @@ def _run_with_plan(
     from qrclaw.graph.planner import plan as make_plan
     from qrclaw.graph.executor import execute_plan, format_results
 
-    # Planner：生成执行计划
-    p = make_plan(user_input)
+    # Planner：生成执行计划，传入主 session 历史保证上下文完整
+    p = make_plan(user_input, history=session.messages)
     console.print(f"\n[bold cyan]📋 执行计划：{p.goal}[/bold cyan]")
     for step in p.steps:
         dep = f"  [dim]依赖 Step {step.depends_on}[/dim]" if step.depends_on else "  [dim]可并行[/dim]"
         console.print(f"  [yellow]Step {step.id}[/yellow] {step.description}{dep}")
     console.print()
+
+    # 提取主会话中用户侧的背景信息（最近3条user消息），注入子 agent task
+    user_context = "\n".join([
+        m["content"] for m in session.messages
+        if m.get("role") == "user" and m.get("content")
+    ][-3:])
 
     # 定义单步执行函数：每个步骤作为子 agent 跑一次 ReAct 循环
     def run_step(step, plan_obj) -> str:
@@ -204,13 +210,13 @@ def _run_with_plan(
             for dep_id in step.depends_on:
                 dep_result = results.get(dep_id, "")
                 if dep_result:
-                    # 结果太长截断，避免 token 爆炸
                     snippet = dep_result[:800] + "\n...(已截断)" if len(dep_result) > 800 else dep_result
                     prior.append(f"Step {dep_id} 结果：\n{snippet}")
             if prior:
                 context = "\n\n【前置步骤结果】\n" + "\n---\n".join(prior)
 
         task = (
+            f"【用户背景】\n{user_context}\n\n"
             f"【计划目标】{plan_obj.goal}\n"
             f"【当前步骤】Step {step.id}: {step.description}"
             f"{context}\n\n"

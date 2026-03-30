@@ -60,21 +60,28 @@ class Plan:
         return all(s.done for s in self.steps)
 
 
-def plan(user_input: str) -> Plan:
+def plan(
+    user_input: str,
+    history: list[dict] | None = None,
+) -> Plan:
     """
     为复杂任务生成带依赖关系的执行计划。
 
     Args:
-        user_input: 用户原始输入
+        user_input: 用户原始输入（仅用于日志和兜底）
+        history:    主 session 完整消息列表，传入后 Planner 能感知多轮上下文
     Returns:
         Plan 对象
     """
     logger.info(f"Planner 生成计划: {user_input[:80]}...")
 
-    messages = [
+    messages: list[dict] = [
         {"role": "system", "content": _PLANNER_SYSTEM},
-        {"role": "user", "content": user_input},
     ]
+    if history:
+        messages.extend(history)
+    else:
+        messages.append({"role": "user", "content": user_input})
 
     try:
         response = provider.chat(messages, tools=None, json_mode=True)
