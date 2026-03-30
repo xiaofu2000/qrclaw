@@ -6,6 +6,7 @@ Planner 节点
 由执行引擎（executor.py）负责解析依赖、决定串行还是并行。
 """
 import json
+import re
 from dataclasses import dataclass, field
 from qrclaw.providers import provider
 from qrclaw.logger import get_logger
@@ -76,17 +77,18 @@ def plan(user_input: str) -> Plan:
     ]
 
     try:
-        response = provider.chat(messages, tools=None)
+        response = provider.chat(messages, tools=None, json_mode=True)
         raw = response.content.strip()
 
-        # 从 markdown 代码块提取 JSON
-        if "```" in raw:
-            raw = raw.split("```")[1]
-            if raw.startswith("json"):
-                raw = raw[4:]
-            raw = raw.strip()
-
-        data = json.loads(raw)
+        # 正则兜底提取 JSON 对象（Vertex AI 等不支持 json_mode 时）
+        try:
+            data = json.loads(raw)
+        except json.JSONDecodeError:
+            match = re.search(r'\{.*\}', raw, re.DOTALL)
+            if match:
+                data = json.loads(match.group())
+            else:
+                raise ValueError(f"无法提取 JSON: {raw[:100]}")
         goal = data.get("goal", user_input[:50])
         steps = [
             PlanStep(

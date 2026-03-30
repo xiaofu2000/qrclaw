@@ -24,6 +24,19 @@ class LLMResponse:
 class LLMProvider(ABC):
 
     @abstractmethod
-    def chat(self, messages: list[dict], tools: list[dict] | None = None) -> LLMResponse:
-        """发送消息，返回统一格式的响应。"""
+    def chat(
+        self,
+        messages: list[dict],
+        tools: list[dict] | None = None,
+        json_mode: bool = False,
+    ) -> LLMResponse:
+        """
+        发送消息，返回统一格式的响应。
+
+        Args:
+            messages:  消息列表
+            tools:     工具 schema 列表
+            json_mode: 为 True 时强制 LLM 输出合法 JSON（OpenAI response_format）
+                       不支持的 provider 忽略此参数，由调用方自行做正则兜底
+        """
         ...

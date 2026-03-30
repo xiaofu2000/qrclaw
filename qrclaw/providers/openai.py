@@ -27,10 +27,12 @@ class OpenAIProvider(LLMProvider):
             result.append(cleaned)
         return result
 
-    def chat(self, messages: list[dict], tools: list[dict] | None = None) -> LLMResponse:
+    def chat(self, messages: list[dict], tools: list[dict] | None = None, json_mode: bool = False) -> LLMResponse:
         kwargs = {"model": OPENAI_MODEL, "messages": self._sanitize(messages)}
         if tools:
             kwargs["tools"] = tools
+        if json_mode:
+            kwargs["response_format"] = {"type": "json_object"}
 
         response = self._client.chat.completions.create(**kwargs)
         usage = response.usage

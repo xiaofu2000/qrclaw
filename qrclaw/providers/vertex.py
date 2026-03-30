@@ -40,7 +40,8 @@ class VertexProvider(LLMProvider):
         )
         logger.info("Vertex AI 渠道已初始化")
 
-    def chat(self, messages: list[dict], tools: list[dict] | None = None) -> LLMResponse:
+    def chat(self, messages: list[dict], tools: list[dict] | None = None, json_mode: bool = False) -> LLMResponse:
+        # Vertex AI 不支持 json_mode，由调用方用正则兜底
         contents = []
         system_parts = []
 

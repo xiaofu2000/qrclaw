@@ -5,18 +5,22 @@ Router 节点
 直接复用主 session 的完整消息历史 + system prompt，
 LLM 在完整上下文下判断，结果最准确。
 
+JSON 可靠性保障（双重防御）：
+  1. json_mode=True：OpenAI 协议层强制输出合法 JSON（根本解法）
+  2. 正则提取兜底：Vertex AI 等不支持 json_mode 的 provider 靠正则容错
+
 判断结果：
   - "direct"  : 简单任务，直接走 ReAct 循环
   - "plan"    : 复杂任务，先走 Planner 节点生成 Plan，再执行
 """
 import json
+import re
 from dataclasses import dataclass
 from qrclaw.providers import provider
 from qrclaw.logger import get_logger
 
 logger = get_logger("qrclaw.graph.router")
 
-# 追加在完整会话末尾的分类指令，轻量、明确
 _ROUTE_QUESTION = (
     "【系统指令】根据以上对话，判断最新一条用户消息的任务是否需要制定执行计划。\n"
     "需要计划：任务含 3 个及以上步骤、涉及多个文件/模块、需先探索环境、或明确要求分阶段完成。\n"
@@ -29,7 +33,25 @@ _ROUTE_QUESTION = (
 @dataclass
 class RouteResult:
     route: str          # "direct" | "plan"
-    reason: str = ""    # route=plan 时说明原因，便于日志追踪
+    reason: str = ""
+
+
+def _parse_json(raw: str) -> dict:
+    """
+    从 LLM 输出中提取 JSON，双重容错：
+    1. 直接解析（json_mode 下 LLM 保证输出合法 JSON）
+    2. 正则提取第一个 {...}（Vertex AI 等不支持 json_mode 时的兜底）
+    """
+    raw = raw.strip()
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        pass
+    # 正则提取第一个 JSON 对象，容忍 LLM 在 JSON 前后加废话
+    match = re.search(r'\{.*?\}', raw, re.DOTALL)
+    if match:
+        return json.loads(match.group())
+    raise ValueError(f"无法从输出中提取 JSON: {raw[:100]}")
 
 
 def route(
@@ -39,9 +61,6 @@ def route(
 ) -> RouteResult:
     """
     判断任务走直接执行还是规划节点。
-
-    复用主 session 的 system_prompt + 完整 history，
-    在末尾追加分类指令让 LLM 判断，上下文最完整，判断最准确。
 
     Args:
         user_input:    用户原始输入（仅用于日志）
@@ -53,30 +72,18 @@ def route(
     logger.info(f"Router 判断任务类型: {user_input[:80]}...")
 
     messages: list[dict] = []
-
-    # 用主 system prompt，让 LLM 在完整身份和工具上下文下判断
     if system_prompt:
         messages.append({"role": "system", "content": system_prompt})
-
-    # 带入完整会话历史（已包含当前 user 消息）
     if history:
         messages.extend(history)
-
-    # 在末尾追加分类指令
     messages.append({"role": "user", "content": _ROUTE_QUESTION})
 
     try:
-        response = provider.chat(messages, tools=None)
-        raw = response.content.strip()
+        # json_mode=True：OpenAI 协议层保证输出合法 JSON
+        # Vertex AI 不支持此参数，忽略，靠 _parse_json 正则兜底
+        response = provider.chat(messages, tools=None, json_mode=True)
+        data = _parse_json(response.content)
 
-        # 从 markdown 代码块提取 JSON
-        if "```" in raw:
-            raw = raw.split("```")[1]
-            if raw.startswith("json"):
-                raw = raw[4:]
-            raw = raw.strip()
-
-        data = json.loads(raw)
         route_val = data.get("route", "direct")
         reason = data.get("reason", "")
 
@@ -90,4 +97,5 @@ def route(
     except Exception as e:
         logger.warning(f"Router 解析失败: {e}，降级为 direct")
         return RouteResult(route="direct", reason=f"router error: {e}")
+
 
