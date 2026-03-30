@@ -49,6 +49,11 @@ def is_sub_agent() -> bool:
     """判断当前是否是子 agent"""
     return get_agent_depth() > 0
 
+def get_agent_id() -> str | None:
+    """获取当前线程的 agent ID"""
+    ws = get_workspace()
+    return ws.agent_id if ws else None
+
 
 def _dump_assistant_msg(response: LLMResponse) -> dict:
     """把 LLMResponse 转成可存入 session 的 assistant 消息 dict"""
@@ -199,7 +204,7 @@ def run(user_input: str, session: Session, console: Console, workspace: Workspac
                 permission_denied_count += 1
                 result = str(e)
                 logger.warning(f"权限拒绝 ({permission_denied_count}/{MAX_PERMISSION_DENIED}): {name}, 原因: {e}")
-                
+
                 # 检查是否达到上限
                 if permission_denied_count >= MAX_PERMISSION_DENIED:
                     console.print(Panel(
@@ -271,7 +276,7 @@ def run_sub_agent(task: str, workspace: Workspace, agent_id: str) -> str:
 
     buffer = StringIO()
     sub_console = RichConsole(file=buffer, highlight=False)
-    
+
     # 子 agent 使用独立的 session 文件（但共享工作空间）
     # 使用 uuid 区分不同子 agent 的 session
     session_id = f"sub-{agent_id}-{uuid.uuid4().hex[:8]}"

@@ -19,12 +19,15 @@ class RunShellArgs(BaseModel):
 
 
 def _get_current_agent_id() -> str:
-    """获取当前 Agent ID"""
+    """获取当前 Agent ID，从 workspace 取，保证和沙箱配置的 agent_id 一致"""
     try:
-        from qrclaw.agent import get_agent_id
-        return get_agent_id() or "default"
+        from qrclaw.agent import get_workspace
+        ws = get_workspace()
+        if ws:
+            return ws.agent_id
     except Exception:
-        return "default"
+        pass
+    return "default"
 
 
 def _get_workspace_root() -> str:
@@ -52,9 +55,9 @@ def _is_sandbox_enabled() -> bool:
 def _exec_in_sandbox(command: str, cwd: str, timeout: int = 1800) -> str:
     """在沙箱中执行命令"""
     from qrclaw.sandbox import sandbox_manager, ContainerError
-    
+
     agent_id = _get_current_agent_id()
-    
+
     # 检查沙箱是否已创建
     if not sandbox_manager.has_sandbox(agent_id):
         try:
@@ -65,7 +68,7 @@ def _exec_in_sandbox(command: str, cwd: str, timeout: int = 1800) -> str:
         except Exception as e:
             logger.warning(f"创建沙箱失败，降级为直接执行: {e}")
             return _exec_direct(command, cwd, timeout)
-    
+
     # 在沙箱中执行
     try:
         result = sandbox_manager.exec(
@@ -74,18 +77,18 @@ def _exec_in_sandbox(command: str, cwd: str, timeout: int = 1800) -> str:
             cwd="/workspace",
             timeout=timeout,
         )
-        
+
         output = result.stdout
         if result.stderr:
             output += f"\n[stderr] {result.stderr}"
-        
+
         if result.exit_code == 0:
             logger.info(f"沙箱命令执行成功: {command[:100]}")
         else:
             logger.warning(f"沙箱命令执行失败 (exit code {result.exit_code}): {command[:100]}")
-        
+
         return output or "(无输出)"
-        
+
     except ContainerError as e:
         logger.error(f"沙箱执行失败: {e}")
         logger.warning("降级为直接执行模式")
@@ -102,11 +105,11 @@ def _exec_direct(command: str, cwd: str, timeout: int = 1800) -> str:
             timeout=timeout,
             cwd=cwd,
         )
-        
+
         encoding = "gbk" if os.name == "nt" else "utf-8"
         stdout = result.stdout.decode(encoding, errors="replace").strip()
         stderr = result.stderr.decode(encoding, errors="replace").strip()
-        
+
         output = stdout
         if stderr:
             output += f"\n[stderr] {stderr}"
@@ -117,7 +120,7 @@ def _exec_direct(command: str, cwd: str, timeout: int = 1800) -> str:
             logger.warning(f"命令执行失败 (exit code {result.returncode}): {command[:100]}")
 
         return output or "(无输出)"
-        
+
     except subprocess.TimeoutExpired:
         error_msg = "错误：命令执行超时（30分钟）"
         logger.warning(f"命令超时: {command[:100]}")
@@ -132,12 +135,12 @@ def _exec_direct(command: str, cwd: str, timeout: int = 1800) -> str:
 def run_shell(command: str) -> str:
     """执行 shell 命令，自动检测是否启用沙箱"""
     logger.debug(f"执行 shell 命令: {command[:100]}")
-    
+
     cwd = _get_workspace_root()
-    
+
     if cwd:
         logger.debug(f"Shell 命令将在目录下执行: {cwd}")
-    
+
     if _is_sandbox_enabled():
         logger.info(f"在沙箱中执行命令: {command[:100]}")
         return _exec_in_sandbox(command, cwd)
