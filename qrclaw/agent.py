@@ -84,7 +84,7 @@ def run(user_input: str, session: Session, console: Console, workspace: Workspac
     # 子 agent 跳过路由，直接走 ReAct，避免递归调用 LLM 浪费 token
     if not is_sub_agent():
         from qrclaw.graph.router import route
-        route_result = route(user_input)
+        route_result = route(user_input, history=session.messages)
         if route_result.route == "plan":
             logger.info(f"Router 判断需要规划，进入 Planner 节点，原因: {route_result.reason}")
             return _run_with_plan(user_input, session, console, workspace, auto_confirm)

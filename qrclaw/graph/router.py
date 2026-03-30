@@ -7,6 +7,10 @@ Router 节点
 判断结果：
   - "direct"  : 简单任务，直接走 ReAct 循环
   - "plan"    : 复杂任务，先走 Planner 节点生成 Plan，再执行
+
+上下文传递：
+  把主 session 最近 N 条历史消息带入，Router 能感知多轮对话上下文，
+  避免"然后再帮我写测试"这类指代上文的请求被误判。
 """
 import json
 from dataclasses import dataclass
@@ -15,8 +19,12 @@ from qrclaw.logger import get_logger
 
 logger = get_logger("qrclaw.graph.router")
 
+# 带入的历史消息条数，只取最近几条保持轻量
+_HISTORY_WINDOW = 6
+
 # Router 的 system prompt，极简，只做分类
-_ROUTER_SYSTEM = """你是一个任务分类器，判断用户的任务是否需要制定执行计划。
+_ROUTER_SYSTEM = """判断用户最新一条消息的任务是否需要制定执行计划。
+如果有历史对话，结合上下文理解用户意图再判断。
 
 需要制定计划的情况（返回 "plan"）：
 1. 任务包含 3 个及以上明确的步骤
@@ -42,19 +50,35 @@ class RouteResult:
     reason: str = ""    # route=plan 时说明原因，便于日志追踪
 
 
-def route(user_input: str) -> RouteResult:
+def route(user_input: str, history: list[dict] | None = None) -> RouteResult:
     """
     判断任务走直接执行还是规划节点。
 
     Args:
         user_input: 用户原始输入
+        history:    主 session 的历史消息列表，传入后取最近 _HISTORY_WINDOW 条
+                    用于感知多轮对话上下文，避免指代上文的请求被误判
     Returns:
         RouteResult
     """
     logger.info(f"Router 判断任务类型: {user_input[:80]}...")
 
+    # 取最近 N 条历史（过滤掉 tool 消息，只保留 user/assistant，减少噪音）
+    context_msgs: list[dict] = []
+    if history:
+        recent = [
+            m for m in history
+            if m.get("role") in ("user", "assistant")
+        ][-_HISTORY_WINDOW:]
+        # 只保留 role 和 content，去掉 tool_calls 等字段，保持轻量
+        context_msgs = [
+            {"role": m["role"], "content": m.get("content") or ""}
+            for m in recent
+        ]
+
     messages = [
         {"role": "system", "content": _ROUTER_SYSTEM},
+        *context_msgs,
         {"role": "user", "content": user_input},
     ]
 
