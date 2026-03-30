@@ -74,6 +74,25 @@ def _dump_assistant_msg(response: LLMResponse) -> dict:
     return msg
 
 
+def _make_system_prompt(workspace: Workspace, session: Session) -> dict:
+    """构建 system prompt，整个 run() 生命周期只调一次，Router 和 ReAct 共享同一份。"""
+    from qrclaw.skills.registry import SkillRegistry
+    tool_names = [s["function"]["name"] for s in get_schemas()]
+    memory = LongTermMemory(workspace.memory_file)
+    skill_registry = SkillRegistry()
+    skill_registry.load_from_dir(workspace.skills_dir)
+    return {
+        "role": "system",
+        "content": build_system_prompt(
+            tool_names, memory, skill_registry,
+            active_plan=session.active_plan,
+            heartbeat_file=workspace.heartbeat_file,
+            is_sub_agent=is_sub_agent(),
+            agent_file=workspace.agent_file,
+        )
+    }
+
+
 def run(user_input: str, session: Session, console: Console, workspace: Workspace, auto_confirm: bool = False):
     logger.info(f"收到用户输入: {user_input[:100]}...")
 
@@ -81,32 +100,23 @@ def run(user_input: str, session: Session, console: Console, workspace: Workspac
     set_workspace(workspace)
     session.add({"role": "user", "content": user_input})
 
+    # system prompt 构建一次，Router 和 ReAct 共享
+    system_prompt = _make_system_prompt(workspace, session)
+
     # 子 agent 跳过路由，直接走 ReAct，避免递归调用 LLM 浪费 token
     if not is_sub_agent():
         from qrclaw.graph.router import route
-        from qrclaw.skills.registry import SkillRegistry
-        _tool_names = [s["function"]["name"] for s in get_schemas()]
-        _memory = LongTermMemory(workspace.memory_file)
-        _skill_registry = SkillRegistry()
-        _skill_registry.load_from_dir(workspace.skills_dir)
-        _system_prompt = build_system_prompt(
-            _tool_names, _memory, _skill_registry,
-            active_plan=session.active_plan,
-            heartbeat_file=workspace.heartbeat_file,
-            is_sub_agent=False,
-            agent_file=workspace.agent_file,
-        )
         route_result = route(
             user_input,
-            system_prompt=_system_prompt,
+            system_prompt=system_prompt["content"],
             history=session.messages,
         )
         if route_result.route == "plan":
             logger.info(f"Router 判断需要规划，进入 Planner 节点，原因: {route_result.reason}")
-            return _run_with_plan(user_input, session, console, workspace, auto_confirm)
+            return _run_with_plan(user_input, session, console, workspace, auto_confirm, system_prompt)
 
     # 简单任务或子 agent：直接走 ReAct 循环
-    return _react_loop(session, console, workspace, auto_confirm)
+    return _react_loop(session, console, workspace, auto_confirm, system_prompt)
 
 
 def run_sub_agent(task: str, workspace: Workspace, agent_id: str) -> str:
@@ -165,6 +175,7 @@ def _run_with_plan(
     console: Console,
     workspace: Workspace,
     auto_confirm: bool = False,
+    system_prompt: dict | None = None,
 ) -> str:
     """
     规划路径：Planner 生成 Plan → 拓扑排序执行引擎执行 → 汇总结果回 ReAct 做最终整合。
@@ -223,7 +234,7 @@ def _run_with_plan(
 
     # 走一次 ReAct 做最终整合（此时 session 里已有所有步骤结果）
     logger.info("所有步骤执行完毕，进入最终整合 ReAct")
-    return _react_loop(session, console, workspace, auto_confirm)
+    return _react_loop(session, console, workspace, auto_confirm, system_prompt)
 
 
 def _react_loop(
@@ -231,29 +242,15 @@ def _react_loop(
     console: Console,
     workspace: Workspace,
     auto_confirm: bool = False,
+    system_prompt: dict | None = None,
 ) -> str:
     """
     纯 ReAct 循环，不做路由判断。
-    供 run() 直接路径和 _run_with_plan() 最终整合复用。
+    system_prompt 由调用方传入（run() 构建一次，复用），
+    不传时自行构建（兼容子 agent 直接调用的情况）。
     """
-    from qrclaw.skills.registry import SkillRegistry
-
-    tool_names = [s["function"]["name"] for s in get_schemas()]
-    memory = LongTermMemory(workspace.memory_file)
-    skill_registry = SkillRegistry()
-    skill_registry.load_from_dir(workspace.skills_dir)
-    system_prompt = {
-        "role": "system",
-        "content": build_system_prompt(
-            tool_names,
-            memory,
-            skill_registry,
-            active_plan=session.active_plan,
-            heartbeat_file=workspace.heartbeat_file,
-            is_sub_agent=is_sub_agent(),
-            agent_file=workspace.agent_file,
-        )
-    }
+    if system_prompt is None:
+        system_prompt = _make_system_prompt(workspace, session)
 
     permission_denied_count = 0
     MAX_PERMISSION_DENIED = 2
