@@ -105,18 +105,18 @@ def run(user_input: str, session: Session, console: Console, workspace: Workspac
 
     # 子 agent 跳过路由，直接走 ReAct，避免递归调用 LLM 浪费 token
     if not is_sub_agent():
-        from qrclaw.graph.router import route
-        route_result = route(
+        from qrclaw.graph.router_planner import route_and_plan
+        result = route_and_plan(
             user_input,
             system_prompt=system_prompt["content"],
             history=session.messages,
         )
-        if route_result.route == "plan":
-            logger.info(f"Router 判断需要规划，进入 Planner 节点，原因: {route_result.reason}")
-            return _run_with_plan(user_input, session, console, workspace, auto_confirm)
+        if result.route == "plan" and result.plan:
+            logger.info(f"RouterPlanner 判断需要规划: {result.plan.goal}")
+            return _run_with_plan(result.plan, session, console, workspace, auto_confirm)
 
     # 简单任务或子 agent：直接走 ReAct 循环
-    return _react_loop(session, console, workspace, auto_confirm, system_prompt)
+    return _react_loop(session, console, workspace, auto_confirm)
 
 
 def run_sub_agent(task: str, workspace: Workspace, agent_id: str) -> str:
@@ -170,25 +170,21 @@ def run_sub_agent(task: str, workspace: Workspace, agent_id: str) -> str:
 
 
 def _run_with_plan(
-    user_input: str,
+    p,
     session: Session,
     console: Console,
     workspace: Workspace,
     auto_confirm: bool = False,
 ) -> str:
     """
-    规划路径：Planner 生成 Plan → 拓扑排序执行引擎执行 → 汇总结果回 ReAct 做最终整合。
+    规划路径：接收已生成的 Plan → 拓扑排序执行引擎执行 → 汇总结果回 ReAct 做最终整合。
 
     执行流程：
-      1. Planner 生成带 depends_on 的 Plan
+      1. RouterPlanner 已生成 Plan（在 run() 中完成）
       2. Executor 拓扑分层：同层并行 spawn 子 agent，跨层串行等待
       3. 所有步骤完成后，把结果汇总注入 session，让主 ReAct 做最终回复
     """
-    from qrclaw.graph.planner import plan as make_plan
     from qrclaw.graph.executor import execute_plan, format_results
-
-    # Planner：生成执行计划，传入主 session 历史保证上下文完整
-    p = make_plan(user_input, history=session.messages)
     console.print(f"\n[bold cyan]📋 执行计划：{p.goal}[/bold cyan]")
     for step in p.steps:
         dep = f"  [dim]依赖 Step {step.depends_on}[/dim]" if step.depends_on else "  [dim]可并行[/dim]"
