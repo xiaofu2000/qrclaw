@@ -98,14 +98,14 @@ def run_sub_agent(
     task: str,
     workspace: Workspace,
     agent_id: str,
-    inherit_working_memory=None,
+    inherit_messages: list[dict] | None = None,
     console: Console | None = None,
 ) -> tuple[str, Session]:
     """
     启动子 agent，返回 (结果字符串, 子session)。
 
-    - 串行步骤传入 inherit_working_memory，继承父 session 的上下文
-    - 并行步骤不传，各自独立运行
+    - 串行步骤传入 inherit_messages，子 session 以主 session 的消息历史为起点
+    - 并行步骤不传，各自完全独立运行
     - 串行步骤传入 console，实时输出到终端；并行步骤不传，静默运行
     """
     from io import StringIO
@@ -130,9 +130,10 @@ def run_sub_agent(
         resume=False,
     )
 
-    if inherit_working_memory is not None:
-        sub_session.working_memory = inherit_working_memory.copy()
-        logger.info(f"子 agent {agent_id} 继承 working_memory")
+    if inherit_messages is not None:
+        # 串行：以主 session 的消息历史为起点，子 agent 能看到完整上下文
+        sub_session.messages = list(inherit_messages)
+        logger.info(f"子 agent {agent_id} 继承 {len(inherit_messages)} 条消息")
 
     try:
         result = run(task, sub_session, sub_console, workspace, auto_confirm=True)

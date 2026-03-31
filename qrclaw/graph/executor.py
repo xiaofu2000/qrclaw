@@ -37,27 +37,19 @@ def _topological_layers(steps: list[PlanStep]) -> list[list[PlanStep]]:
         ValueError: 存在循环依赖时
     """
     step_map = {s.id: s for s in steps}
-    # 计算每个步骤的入度
     in_degree = {s.id: len(s.depends_on) for s in steps}
     layers = []
-
     remaining = set(s.id for s in steps)
 
     while remaining:
-        # 当前可执行的步骤：在 remaining 里且入度为 0
         ready_ids = [sid for sid in remaining if in_degree[sid] == 0]
-
         if not ready_ids:
-            # 有步骤剩余但没有可执行的 → 循环依赖
             raise ValueError(
                 f"Plan 存在循环依赖，无法执行的步骤: "
                 f"{[step_map[sid].description for sid in remaining]}"
             )
-
         layer = [step_map[sid] for sid in sorted(ready_ids)]
         layers.append(layer)
-
-        # 从 remaining 移除这一层，并更新入度
         for sid in ready_ids:
             remaining.remove(sid)
             for other_id in remaining:
@@ -79,7 +71,7 @@ def execute_plan(
         plan: Planner 生成的 Plan 对象
         console: Rich console，用于打印进度
         run_step_fn: 执行单个步骤的函数
-            签名: (step: PlanStep, plan: Plan) -> str
+            签名: (step: PlanStep, plan: Plan, is_serial: bool) -> str
             返回步骤的执行结果字符串
     Returns:
         dict[step_id, result_str]: 每个步骤的执行结果
@@ -101,38 +93,34 @@ def execute_plan(
 
     for layer_idx, layer in enumerate(layers):
         if len(layer) == 1:
-            # 单个步骤，直接执行，不需要线程
+            # 单步，串行执行
             step = layer[0]
-            # 标记为串行，run_step 闭包里据此决定是否继承 working_memory
-            step._is_serial = True
             console.print(
                 f"[yellow]→ Step {step.id}[/yellow] {step.description} "
                 f"[dim](串行)[/dim]"
             )
-            result = run_step_fn(step, plan)
+            result = run_step_fn(step, plan, True)
             plan.mark_done(step.id)
             with lock:
                 results[step.id] = result
             logger.info(f"Step {step.id} 完成")
 
         else:
-            # 多个步骤，并行执行
+            # 多步，并行执行
             console.print(
                 f"[yellow]→ 第 {layer_idx + 1} 层并行[/yellow] "
                 f"({len(layer)} 个步骤同时执行)"
             )
             for step in layer:
-                step._is_serial = False
                 console.print(f"  [dim]Step {step.id}:[/dim] {step.description}")
 
             threads = []
             errors = {}
-            # 用队列收集子线程的完成通知，主线程统一打印（避免Rich多线程冲突）
             notify_queue: queue.Queue = queue.Queue()
 
             def _run(step: PlanStep):
                 try:
-                    result = run_step_fn(step, plan)
+                    result = run_step_fn(step, plan, False)
                     plan.mark_done(step.id)
                     with lock:
                         results[step.id] = result
@@ -148,21 +136,21 @@ def execute_plan(
             for step in layer:
                 t = threading.Thread(
                     target=_run,
-                    args=(step,),  # step 通过 args 传入，避免闭包变量捕获 bug
+                    args=(step,),
                     name=f"plan-step-{step.id}",
                     daemon=True,
                 )
                 threads.append(t)
                 t.start()
 
-            # 先 join 所有线程，再统一打印（避免和线程内 console 冲突）
             for t in threads:
                 t.join()
+
             while not notify_queue.empty():
                 item = notify_queue.get()
                 if item[0] == "ok":
                     _, sid, desc, result = item
-                    short_desc = desc[:40] + ('...' if len(desc) > 40 else '')
+                    short_desc = desc[:40] + ("..." if len(desc) > 40 else "")
                     console.print(f"[bold green]✅ Step {sid} 完成[/bold green] {short_desc}")
                     console.print(Panel(
                         result,

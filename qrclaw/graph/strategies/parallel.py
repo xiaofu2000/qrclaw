@@ -1,8 +1,8 @@
 """
-纯并行策略
+并行策略
 
-只有一层且多步，所有步骤同时执行。
-全部跑完后结果是散的，需要主 agent 做最终整合。
+所有步骤同时执行，子 session 完全独立。
+全部完成后把各步骤结果汇总，追加一条消息到主 session，交主 agent 整合。
 """
 import logging
 from .base import PlanExecutionStrategy
@@ -13,13 +13,12 @@ logger = logging.getLogger(__name__)
 
 class ParallelStrategy(PlanExecutionStrategy):
 
-    def execute(self, plan, session, console, workspace, auto_confirm, run_step_fn, react_loop_fn) -> str:
+    def execute(self, plan, console, run_step_fn, react_loop_fn, session) -> str:
         logger.info(f"并行策略执行计划: {plan.goal}")
 
         results = execute_plan(plan, console, run_step_fn)
 
         summary = format_results(plan, results)
-        # 并行结果散落，主 agent 没参与过程，需要汇总后整合
         session.add({
             "role": "user",
             "content": (

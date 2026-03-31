@@ -11,9 +11,8 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from rich.console import Console
-    from qrclaw.graph.planner import Plan
+    from qrclaw.graph.nodes.router import Plan
     from qrclaw.memory.session import Session
-    from qrclaw.workspace import Workspace
 
 
 class PlanExecutionStrategy(ABC):
@@ -22,12 +21,10 @@ class PlanExecutionStrategy(ABC):
     def execute(
         self,
         plan: "Plan",
-        session: "Session",
         console: "Console",
-        workspace: "Workspace",
-        auto_confirm: bool,
         run_step_fn,
         react_loop_fn,
+        session: "Session",
     ) -> str:
         """执行计划，返回最终回复字符串"""
         ...
