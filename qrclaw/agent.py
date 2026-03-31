@@ -78,20 +78,54 @@ def _dump_assistant_msg(response: LLMResponse) -> dict:
 def _make_system_prompt(workspace: Workspace, session: Session) -> dict:
     """
     构建 system prompt。
-    Router 调用：在 run() 开头调一次，上下文用于路由判断。
-    ReAct 循环：每轮调一次，保证 active_plan 始终是最新状态。
+    ReAct 循环每轮调一次，保证 active_plan 和 working_memory 始终是最新状态。
     """
-    return {
-        "role": "system",
-        "content": build_system_prompt(
-            active_plan=session.active_plan,
-            heartbeat_file=workspace.heartbeat_file,
-            is_sub_agent=is_sub_agent(),
-            agent_file=workspace.agent_file,
-            skills_dir=workspace.skills_dir,
-            memory_file=workspace.memory_file,
-        )
-    }
+    content = build_system_prompt(
+        active_plan=session.active_plan,
+        heartbeat_file=workspace.heartbeat_file,
+        is_sub_agent=is_sub_agent(),
+        agent_file=workspace.agent_file,
+        skills_dir=workspace.skills_dir,
+        memory_file=workspace.memory_file,
+    )
+    # 把工作记忆注入 system prompt，LLM 才能看到跨步骤积累的信息
+    wm_prompt = session.working_memory.to_prompt()
+    if wm_prompt:
+        content += "\n\n" + wm_prompt
+    return {"role": "system", "content": content}
+
+
+def _extract_working_memory(sub_session: Session, step_id: int, output: str):
+    """
+    从子 session 的消息历史中自动提取工具调用信息，填充 working_memory。
+    - read_file  → relevant_files
+    - write_file → created_files（新文件）或 modified_files（已有文件）
+    - 子 agent 最终输出 → key_findings
+    """
+    wm = sub_session.working_memory
+    for msg in sub_session.messages:
+        if msg.get("role") != "assistant":
+            continue
+        for tc in msg.get("tool_calls", []):
+            name = tc["function"]["name"]
+            try:
+                args = json.loads(tc["function"]["arguments"])
+            except Exception:
+                continue
+            path = args.get("path", "")
+            if not path:
+                continue
+            if name == "read_file":
+                wm.add_relevant_file(path)
+            elif name == "write_file":
+                # 判断是新建还是修改：relevant_files 里有的说明之前读过，算修改
+                if path in wm.relevant_files:
+                    wm.add_modified_file(path)
+                else:
+                    wm.add_created_file(path)
+    # 把子 agent 最终输出的前200字作为关键发现
+    if output:
+        wm.add_finding(f"Step {step_id}: {output[:200]}")
 
 
 def run(user_input: str, session: Session, console: Console, workspace: Workspace, auto_confirm: bool = False):
@@ -193,12 +227,6 @@ def _run_with_plan(
         console.print(f"  [yellow]Step {step.id}[/yellow] {step.description}{dep}")
     console.print()
 
-    # 提取主会话中用户侧的背景信息（最近3条user消息），注入子 agent task
-    user_context = "\n".join([
-        m["content"] for m in session.messages
-        if m.get("role") == "user" and m.get("content")
-    ][-3:])
-
     # 并行层结束后需要 merge 的 working_memory 队列（线程安全）
     import threading
     _pending_merge_wms = []
@@ -224,17 +252,26 @@ def _run_with_plan(
             if prior:
                 context = "\n\n【前置步骤结果】\n" + "\n---\n".join(prior)
 
-        task = (
-            f"【用户背景】\n{user_context}\n\n"
-            f"【计划目标】{plan_obj.goal}\n"
-            f"【当前步骤】Step {step.id}: {step.description}"
-            f"{context}\n\n"
-            f"【要求】只完成当前步骤，完成后返回结果摘要。"
-        )
+        if is_serial:
+            task = (
+                f"【计划目标】{plan_obj.goal}\n"
+                f"【当前步骤】Step {step.id}: {step.description}"
+                f"{context}\n\n"
+                f"【要求】只完成当前步骤，完成后返回结果摘要。"
+            )
+        else:
+            task = (
+                f"{step.description}"
+                f"{context}\n\n"
+                f"【要求】完成后返回结果摘要。"
+            )
 
         # 串行步骤继承 working_memory，并行步骤不继承
         inherit_wm = session.working_memory if is_serial else None
         result, sub_session = run_sub_agent(task, workspace, f"step-{step.id}", inherit_working_memory=inherit_wm)
+
+        # 自动从子 session 消息历史提取工具调用，填充 working_memory
+        _extract_working_memory(sub_session, step.id, result)
 
         # 保存 StepResult 到父 session
         step_result = StepResult(
