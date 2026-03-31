@@ -18,7 +18,7 @@
 import threading
 from rich.console import Console
 from qrclaw.logger import get_logger
-from .planner import Plan, PlanStep
+from .router_planner import Plan, PlanStep
 
 logger = get_logger("qrclaw.graph.executor")
 
@@ -101,6 +101,8 @@ def execute_plan(
         if len(layer) == 1:
             # 单个步骤，直接执行，不需要线程
             step = layer[0]
+            # 标记为串行，run_step 闭包里据此决定是否继承 working_memory
+            step._is_serial = True
             console.print(
                 f"[yellow]→ Step {step.id}[/yellow] {step.description} "
                 f"[dim](串行)[/dim]"
@@ -118,6 +120,8 @@ def execute_plan(
                 f"({len(layer)} 个步骤同时执行)"
             )
             for step in layer:
+                # 标记为并行，run_step 闭包里不继承 working_memory
+                step._is_serial = False
                 console.print(
                     f"  [dim]Step {step.id}:[/dim] {step.description}"
                 )

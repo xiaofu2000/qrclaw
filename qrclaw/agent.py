@@ -7,6 +7,7 @@ from qrclaw.providers import provider
 from qrclaw.providers.base import LLMResponse
 from qrclaw.tools.registry import get_schemas, execute, need_confirm
 from qrclaw.memory.session import Session
+from qrclaw.memory.step_result import StepResult
 from qrclaw.memory import compressor, LongTermMemory
 from qrclaw.prompt import build_system_prompt
 from qrclaw.cli.display import show_plan_progress
@@ -119,9 +120,9 @@ def run(user_input: str, session: Session, console: Console, workspace: Workspac
     return _react_loop(session, console, workspace, auto_confirm)
 
 
-def run_sub_agent(task: str, workspace: Workspace, agent_id: str) -> str:
+def run_sub_agent(task: str, workspace: Workspace, agent_id: str, inherit_working_memory=None) -> tuple[str, Session]:
     """
-    以静默模式运行子 agent，返回结果字符串。
+    以静默模式运行子 agent，返回 (结果字符串, 子session)。
     子 agent 不打印到用户终端，结果直接返回给调用方（主 agent）。
     子 agent 共享父 agent 的工作空间，不创建独立目录。
 
@@ -131,8 +132,9 @@ def run_sub_agent(task: str, workspace: Workspace, agent_id: str) -> str:
         task: 子 agent 要执行的任务描述
         workspace: 父 agent 的工作空间（共享）
         agent_id: 子 agent 的 ID（用于日志标识）
+        inherit_working_memory: 继承的 WorkingMemory（串行时传入，并行时为 None）
     Returns:
-        str: 子 agent 的最终回复
+        tuple[str, Session]: (子 agent 的最终回复, 子 session)
     """
     from io import StringIO
     from rich.console import Console as RichConsole
@@ -150,13 +152,17 @@ def run_sub_agent(task: str, workspace: Workspace, agent_id: str) -> str:
     sub_console = RichConsole(file=buffer, highlight=False)
 
     # 子 agent 使用独立的 session 文件（但共享工作空间）
-    # 使用 uuid 区分不同子 agent 的 session
     session_id = f"sub-{agent_id}-{uuid.uuid4().hex[:8]}"
     sub_session = Session(
         sessions_dir=workspace.sessions_dir,
         session_id=session_id,
         resume=False,
     )
+
+    # 串行时继承父 session 的 working_memory，并行时保持空白
+    if inherit_working_memory is not None:
+        sub_session.working_memory = inherit_working_memory.copy()
+        logger.info(f"子 agent {agent_id} 继承 working_memory: goal={inherit_working_memory.goal}")
 
     try:
         result = run(task, sub_session, sub_console, workspace, auto_confirm=True)
@@ -166,7 +172,7 @@ def run_sub_agent(task: str, workspace: Workspace, agent_id: str) -> str:
         # 恢复深度
         set_agent_depth(current_depth)
 
-    return result
+    return result, sub_session
 
 
 def _run_with_plan(
@@ -197,17 +203,28 @@ def _run_with_plan(
         if m.get("role") == "user" and m.get("content")
     ][-3:])
 
-    # 定义单步执行函数：每个步骤作为子 agent 跑一次 ReAct 循环
+    # 并行层结束后需要 merge 的 working_memory 队列（线程安全）
+    import threading
+    _pending_merge_wms = []
+    _merge_lock = threading.Lock()
+
     def run_step(step, plan_obj) -> str:
-        # 把前置步骤的结果拼入 task，解决子 agent 间上下文断裂问题
+        """
+        执行单个步骤：
+        - 串行步骤（单步层）：继承父 session 的 working_memory，完成后同步回去
+        - 并行步骤（多步层）：不继承 working_memory，各自独立，完成后加入 merge 队列
+        """
+        # 判断是否是串行步骤（由 executor 在调用时通过 step._is_serial 标记）
+        is_serial = getattr(step, "_is_serial", False)
+
+        # 构建前置步骤上下文（从父 session 的 step_results 读取，修复作用域 bug）
         context = ""
         if step.depends_on:
             prior = []
             for dep_id in step.depends_on:
-                dep_result = results.get(dep_id, "")
+                dep_result = session.step_results.get(dep_id)
                 if dep_result:
-                    snippet = dep_result[:800] + "\n...(已截断)" if len(dep_result) > 800 else dep_result
-                    prior.append(f"Step {dep_id} 结果：\n{snippet}")
+                    prior.append(dep_result.to_context_prompt())
             if prior:
                 context = "\n\n【前置步骤结果】\n" + "\n---\n".join(prior)
 
@@ -218,10 +235,42 @@ def _run_with_plan(
             f"{context}\n\n"
             f"【要求】只完成当前步骤，完成后返回结果摘要。"
         )
-        return run_sub_agent(task, workspace, f"step-{step.id}")
+
+        # 串行步骤继承 working_memory，并行步骤不继承
+        inherit_wm = session.working_memory if is_serial else None
+        result, sub_session = run_sub_agent(task, workspace, f"step-{step.id}", inherit_working_memory=inherit_wm)
+
+        # 保存 StepResult 到父 session
+        step_result = StepResult(
+            step_id=step.id,
+            description=step.description,
+            status="success",
+            output=result,
+            summary=result[:300] + "..." if len(result) > 300 else result,
+            messages=sub_session.messages,
+        )
+        session.step_results[step.id] = step_result
+
+        if is_serial:
+            # 串行步骤：把子 session 的 working_memory 同步回父 session
+            session.working_memory = sub_session.working_memory
+            logger.info(f"Step {step.id} 串行执行完毕，同步 working_memory 到父 session")
+        else:
+            # 并行步骤：把子 session 的 working_memory 加入 merge 队列
+            with _merge_lock:
+                _pending_merge_wms.append(sub_session.working_memory)
+            logger.info(f"Step {step.id} 并行执行完毕，working_memory 加入 merge 队列")
+
+        return result
 
     # Executor：拓扑排序执行
     results = execute_plan(p, console, run_step)
+
+    # 并行步骤结束后，merge 所有子 session 的 working_memory 到父 session
+    if _pending_merge_wms:
+        for wm in _pending_merge_wms:
+            session.working_memory.merge(wm)
+        logger.info(f"合并 {len(_pending_merge_wms)} 个并行步骤的 working_memory")
 
     # 把所有步骤结果汇总注入 session，让主 ReAct 做最终整合回复
     summary = format_results(p, results)

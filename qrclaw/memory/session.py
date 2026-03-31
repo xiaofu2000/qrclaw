@@ -4,6 +4,8 @@ from datetime import datetime
 from pathlib import Path
 from qrclaw.logger import get_logger
 from qrclaw.config import OPENAI_MODEL
+from qrclaw.memory.working_memory import WorkingMemory
+from qrclaw.memory.step_result import StepResult
 
 logger = get_logger("qrclaw.memory.session")
 
@@ -128,6 +130,12 @@ class Session:
 
         # 当前活跃计划
         self.active_plan: dict | None = None
+
+        # 工作记忆：存储当前任务关键信息，跨步骤共享
+        self.working_memory: WorkingMemory = WorkingMemory()
+
+        # 步骤结果：存储每个已执行步骤的结果 {step_id: StepResult}
+        self.step_results: dict[int, StepResult] = {}
 
         # 会话文件路径（由 Workspace 提供的目录决定）
         sessions_dir.mkdir(parents=True, exist_ok=True)
