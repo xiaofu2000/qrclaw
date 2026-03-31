@@ -50,7 +50,6 @@ class PlanExecutorNode:
 
         remaining = list(plan.steps)
         past_steps: list[tuple[str, str]] = []  # (步骤描述, 执行结果)
-        final_result = ""
 
         while remaining:
             layer = get_next_layer(remaining)
@@ -67,7 +66,6 @@ class PlanExecutorNode:
                 result = self._run_serial(step, plan, past_steps, workspace, run_sub_agent_fn, console)
                 plan.mark_done(step.id)
                 past_steps.append((step.description, result))
-                final_result = result
             else:
                 console.print(f"[yellow]→ 并行执行 {len(layer)} 个步骤[/yellow]")
                 for step in layer:
@@ -77,7 +75,6 @@ class PlanExecutorNode:
                     plan.mark_done(step.id)
                     r = results.get(step.id, "")
                     past_steps.append((step.description, r))
-                    final_result = r
 
             # 从剩余步骤中移除已完成的这一层
             done_ids = {s.id for s in layer}
