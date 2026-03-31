@@ -5,12 +5,12 @@ from rich.markdown import Markdown
 from qrclaw.config import MAX_ITERATIONS, COMPRESS_THRESHOLD
 from qrclaw.providers import provider
 from qrclaw.providers.base import LLMResponse
-from qrclaw.tools.registry import get_schemas, execute, need_confirm
+from qrclaw.tools.registry import get_schemas, get_schemas_for_sub_agent, execute, need_confirm
 from qrclaw.memory.session import Session
 from qrclaw.memory.step_result import StepResult
 from qrclaw.memory import compressor, LongTermMemory
 from qrclaw.prompt import build_system_prompt
-from qrclaw.cli.display import show_plan_progress
+from qrclaw.cli.display import show_context_usage
 from qrclaw.workspace import Workspace
 from qrclaw.logger import get_logger
 
@@ -78,10 +78,9 @@ def _dump_assistant_msg(response: LLMResponse) -> dict:
 def _make_system_prompt(workspace: Workspace, session: Session) -> dict:
     """
     构建 system prompt。
-    ReAct 循环每轮调一次，保证 active_plan 和 working_memory 始终是最新状态。
+    ReAct 循环每轮调一次，保证 working_memory 始终是最新状态。
     """
     content = build_system_prompt(
-        active_plan=session.active_plan,
         heartbeat_file=workspace.heartbeat_file,
         is_sub_agent=is_sub_agent(),
         agent_file=workspace.agent_file,
@@ -328,21 +327,20 @@ def _react_loop(
 ) -> str:
     """
     纯 ReAct 循环，不做路由判断。
-    每轮重新构建 system prompt，保证 active_plan 始终反映最新状态。
     """
-
+    system_prompt = _make_system_prompt(workspace, session)
     permission_denied_count = 0
     MAX_PERMISSION_DENIED = 2
 
     for iteration in range(MAX_ITERATIONS):
         logger.debug(f"ReAct 第 {iteration + 1} 轮")
-        # 每轮重建，active_plan 随 complete_step 更新后能立即反映在 prompt 里
-        system_prompt = _make_system_prompt(workspace, session)
         messages = [system_prompt, *session.messages]
+        # 子 agent 不允许调用规划工具，避免重复规划
+        tools = get_schemas_for_sub_agent() if is_sub_agent() else get_schemas()
 
         with console.status("[bold yellow]思考中...[/bold yellow]", spinner="dots"):
             try:
-                response = provider.chat(messages, tools=get_schemas())
+                response = provider.chat(messages, tools=tools)
                 session.update_tokens(
                     prompt_tokens=response.prompt_tokens,
                     completion_tokens=response.completion_tokens,
@@ -436,12 +434,6 @@ def _react_loop(
             console.print()
 
             session.add({"role": "tool", "tool_call_id": tc.id, "content": result})
-
-            if permission_denied_count >= MAX_PERMISSION_DENIED:
-                break
-
-            if name in ("create_plan", "complete_step"):
-                show_plan_progress(console, session)
 
     logger.warning("达到最大迭代次数")
     return "错误：达到最大迭代次数"

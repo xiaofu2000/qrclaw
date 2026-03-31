@@ -14,7 +14,7 @@ from qrclaw.logger import setup_logger
 from qrclaw.workspace import Workspace
 from qrclaw.config import LOG_LEVEL, LOG_MAX_DAYS, LOG_TO_FILE, LOG_TO_CONSOLE, LOG_CONSOLE_LEVEL
 from qrclaw.cli.input import get_input
-from qrclaw.cli.display import show_context_usage, show_plan_progress
+from qrclaw.cli.display import show_context_usage
 from qrclaw.cli.commands import session as session_cmd
 from qrclaw.cli.commands import skill as skill_cmd
 from qrclaw.cli.commands import agent as agent_cmd
@@ -75,7 +75,7 @@ def main() -> None:
     if not args.no_heartbeat:
         from qrclaw.heartbeat import start_heartbeat
         from qrclaw.config import HEARTBEAT_ENABLED, HEARTBEAT_INTERVAL
-        
+
         if HEARTBEAT_ENABLED:
             def on_heartbeat():
                 """心跳触发时，后台执行维护任务"""
@@ -85,13 +85,13 @@ def main() -> None:
                     console.print(f"\n[bold green]✅ 心跳任务完成[/bold green]\n[dim]{result[:200]}{'...' if len(result) > 200 else ''}[/dim]\n")
                 except Exception as e:
                     console.print(f"\n[bold red]❌ 心跳任务失败[/bold red]: {e}\n")
-            
+
             start_heartbeat(interval=HEARTBEAT_INTERVAL, on_trigger=on_heartbeat)
 
     # 启动提示
     is_resumed = len(session.messages) > 0
     session_status = "[dim]恢复会话[/dim]" if is_resumed else "[dim]新会话[/dim]"
-    
+
     console.print(
         f"[bold cyan]QRClaw Agent[/bold cyan] 启动  "
         f"[dim]agent: [/dim][bold cyan]{workspace.agent_id}[/bold cyan]  "
@@ -105,7 +105,6 @@ def main() -> None:
 
     while True:
         try:
-            show_plan_progress(console, session)
             show_context_usage(console, session)
             user_input = get_input(session.session_id)
         except (KeyboardInterrupt, EOFError):

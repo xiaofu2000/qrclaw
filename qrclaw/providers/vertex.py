@@ -41,7 +41,7 @@ class VertexProvider(LLMProvider):
         logger.info("Vertex AI 渠道已初始化")
 
     def chat(self, messages: list[dict], tools: list[dict] | None = None, json_mode: bool = False) -> LLMResponse:
-        # Vertex AI 不支持 json_mode，由调用方用正则兜底
+        # json_mode=True 时设置 response_mime_type="application/json"，强制输出合法 JSON
         contents = []
         system_parts = []
 
@@ -121,6 +121,8 @@ class VertexProvider(LLMProvider):
         vertex_tools = _build_vertex_tools(tools)
         if vertex_tools:
             config_kwargs["tools"] = vertex_tools
+        if json_mode:
+            config_kwargs["response_mime_type"] = "application/json"
 
         config = types.GenerateContentConfig(**config_kwargs) if config_kwargs else None
 

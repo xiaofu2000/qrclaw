@@ -24,7 +24,6 @@ _TOOL_DESCRIPTIONS = {
     "read_memory":     "读取中期记忆，查看之前记录的用户偏好或配置信息",
     "review_memory":   "审查中期记忆，识别过时、重复内容，支持分析和清理操作。建议定期调用维护记忆质量",
     "use_skill":       "使用指定的技能（Skill）来完成复杂任务，技能是预定义的工作流",
-    "create_plan":     "为复杂任务创建执行计划，拆解步骤时标注依赖关系，无依赖的步骤可用 spawn_agent 并行执行",
     "spawn_agent":     "在后台启动子 agent 并行执行独立子任务，任务可拆分时批量调用，子 agent 完成后结果自动打印",
     "wait_agents":     "等待所有后台子 agent 完成，返回各子 agent 的结构化摘要，再根据摘要决定是否用 read_file 查看详情",
 }
@@ -151,24 +150,6 @@ def _build_behavior_section(is_sub_agent: bool = False) -> str:
             "3. 禁止包含：详细日志、代码片段、长篇解释",
             "4. 控制在 500 字以内",
         ])
-    else:
-        # 主 agent 专用：create_plan 适用于当前步骤内的轻量分步规划
-        lines.extend([
-            "",
-            "## 何时使用 create_plan",
-            "",
-            "当前步骤内部需要明确分步执行时，使用 create_plan 做轻量规划：",
-            "1. 当前任务需要 3 个及以上有序子步骤",
-            "2. 任务需要探索未知环境后才能决定后续步骤",
-            "3. 任务失败需要回滚或重试",
-            "",
-            "注意：是否并行、是否派发子 agent 由外层图结构自动决定，无需在此处手动 spawn_agent。",
-            "",
-            "**示例**：当前步骤是「分析项目结构」，可先 create_plan 拆解：",
-            "  Step 1: list_directory 获取目录树",
-            "  Step 2: 读取核心配置文件",
-            "  Step 3: 汇总分析结果",
-        ])
 
     return "\n".join(lines)
 
@@ -245,31 +226,7 @@ def _build_skills_section(skill_registry: SkillRegistry) -> str:
     return "\n".join(lines)
 
 
-def _build_plan_section(active_plan: dict | None) -> str:
-    """构建当前执行计划部分"""
-    if not active_plan:
-        return ""
-    lines = [
-        "## 当前执行计划",
-        f"目标：{active_plan['goal']}",
-        "",
-        "步骤状态：",
-    ]
-    for step in active_plan["steps"]:
-        status = "✅ 已完成" if step["done"] else "⬜ 待执行"
-        lines.append(f"- Step {step['id']}: {step['description']} [{status}]")
-    lines.extend([
-        "",
-        "执行规则：",
-        "1. 按步骤顺序执行，有依赖的步骤等前置步骤完成后再执行",
-        "2. 每完成一步调用 complete_step 标记完成后再继续下一步",
-        "3. 所有步骤完成后给出整体总结",
-    ])
-    return "\n".join(lines)
-
-
 def build_system_prompt(
-    active_plan: dict | None = None,
     heartbeat_file: Path | None = None,
     is_sub_agent: bool = False,
     agent_file: Path | None = None,
@@ -282,7 +239,6 @@ def build_system_prompt(
     只需传入因 agent 实例而异的上下文参数。
 
     Args:
-        active_plan:    当前执行计划（来自 session）
         heartbeat_file: 心跳任务文件路径
         is_sub_agent:   是否是子 agent
         agent_file:     AGENT.md 路径（agent 身份定义）
@@ -313,7 +269,5 @@ def build_system_prompt(
         _build_memory_section(memory),
         "",
         _build_heartbeat_section(heartbeat_file),
-        "",
-        _build_plan_section(active_plan),
     ]
     return "\n".join(sections)

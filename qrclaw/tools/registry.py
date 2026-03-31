@@ -92,6 +92,10 @@ def get_schemas() -> list[dict]:
     return schemas
 
 
+# 子 agent 与主 agent 使用相同工具集
+get_schemas_for_sub_agent = get_schemas
+
+
 def execute(name: str, arguments: str) -> str:
     """执行工具，用 Pydantic 模型校验参数"""
     if name not in _tools:
