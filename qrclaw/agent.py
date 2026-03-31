@@ -101,15 +101,11 @@ def run(user_input: str, session: Session, console: Console, workspace: Workspac
     set_workspace(workspace)
     session.add({"role": "user", "content": user_input})
 
-    # system prompt 构建一次，Router 和 ReAct 共享
-    system_prompt = _make_system_prompt(workspace, session)
-
     # 子 agent 跳过路由，直接走 ReAct，避免递归调用 LLM 浪费 token
     if not is_sub_agent():
         from qrclaw.graph.router_planner import route_and_plan
         result = route_and_plan(
             user_input,
-            system_prompt=system_prompt["content"],
             history=session.messages,
         )
         if result.route == "plan" and result.plan:

@@ -124,7 +124,6 @@ def _parse_plan(data: dict, fallback_input: str) -> Plan:
 
 def route_and_plan(
     user_input: str,
-    system_prompt: str | None = None,
     history: list[dict] | None = None,
 ) -> RouteResult:
     """
@@ -134,9 +133,8 @@ def route_and_plan(
     复杂任务：返回 RouteResult(route="plan", plan=Plan(...))
 
     Args:
-        user_input:    用户原始输入（用于日志和兜底）
-        system_prompt: 主 agent 的 system prompt，让 LLM 在完整身份下判断
-        history:       主 session 完整消息列表（含当前 user 消息）
+        user_input: 用户原始输入（用于日志和兜底）
+        history:    主 session 完整消息列表（含当前 user 消息）
     Returns:
         RouteResult
     """
