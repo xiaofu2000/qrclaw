@@ -246,9 +246,17 @@ def _run_with_plan(
         # 判断是否是串行步骤（由 executor 在调用时通过 step._is_serial 标记）
         is_serial = getattr(step, "_is_serial", False)
 
-        # 构建前置步骤上下文（从父 session 的 step_results 读取，修复作用域 bug）
+        # 构建前置步骤上下文
+        # 串行步骤：注入所有已完成步骤的结果（不依赖 depends_on 是否填写正确）
+        # 并行步骤：只注入显式依赖的结果（避免读到并发中的脏数据）
         context = ""
-        if step.depends_on:
+        if is_serial:
+            prior = []
+            for sid, dep_result in sorted(session.step_results.items()):
+                prior.append(dep_result.to_context_prompt())
+            if prior:
+                context = "\n\n【已完成步骤结果】\n" + "\n---\n".join(prior)
+        elif step.depends_on:
             prior = []
             for dep_id in step.depends_on:
                 dep_result = session.step_results.get(dep_id)
@@ -304,7 +312,6 @@ def _run_with_plan(
             with _merge_lock:
                 _pending_merge_wms.append(sub_session.working_memory)
             logger.info(f"Step {step.id} 并行执行完毕，working_memory 加入 merge 队列")
-            console.print(f"[bold green]✅ Step {step.id} 完成[/bold green] {step.description[:40]}{'...' if len(step.description) > 40 else ''}")
 
         return result
 
@@ -319,6 +326,12 @@ def _run_with_plan(
 
     # 把所有步骤结果汇总注入 session，让主 ReAct 做最终整合回复
     summary = format_results(p, results)
+    console.print(Panel(
+        summary,
+        title="[bold cyan]📊 所有步骤执行完毕[/bold cyan]",
+        border_style="cyan",
+        expand=False,
+    ))
     session.add({
         "role": "user",
         "content": (

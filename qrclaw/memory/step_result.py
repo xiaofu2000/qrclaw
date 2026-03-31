@@ -31,11 +31,7 @@ class StepResult:
             f"**状态**: {self.status}",
         ]
         if self.output:
-            # 截断过长的输出，避免 token 爆炸
-            output = self.output
-            if len(output) > 1500:
-                output = output[:1500] + "\n...(已截断)"
-            lines.append(f"**输出**:\n{output}")
+            lines.append(f"**输出**:\n{self.output}")
         if self.created_files:
             lines.append(f"**创建文件**: {', '.join(self.created_files)}")
         if self.modified_files:

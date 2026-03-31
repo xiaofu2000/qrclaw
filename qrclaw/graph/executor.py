@@ -16,7 +16,9 @@
   step5（依赖2,3,4）── 第2层：等第1层全完成后跑
 """
 import threading
+import queue
 from rich.console import Console
+from rich.panel import Panel
 from qrclaw.logger import get_logger
 from .router_planner import Plan, PlanStep
 
@@ -120,14 +122,13 @@ def execute_plan(
                 f"({len(layer)} 个步骤同时执行)"
             )
             for step in layer:
-                # 标记为并行，run_step 闭包里不继承 working_memory
                 step._is_serial = False
-                console.print(
-                    f"  [dim]Step {step.id}:[/dim] {step.description}"
-                )
+                console.print(f"  [dim]Step {step.id}:[/dim] {step.description}")
 
             threads = []
             errors = {}
+            # 用队列收集子线程的完成通知，主线程统一打印（避免Rich多线程冲突）
+            notify_queue: queue.Queue = queue.Queue()
 
             def _run(step: PlanStep):
                 try:
@@ -136,25 +137,42 @@ def execute_plan(
                     with lock:
                         results[step.id] = result
                     logger.info(f"Step {step.id} 并行完成")
+                    notify_queue.put(("ok", step.id, step.description, result))
                 except Exception as e:
                     logger.error(f"Step {step.id} 执行失败: {e}", exc_info=True)
                     with lock:
                         errors[step.id] = str(e)
                         results[step.id] = f"执行失败: {e}"
+                    notify_queue.put(("err", step.id, step.description, str(e)))
 
             for step in layer:
                 t = threading.Thread(
                     target=_run,
-                    args=(step,),
+                    args=(step,),  # step 通过 args 传入，避免闭包变量捕获 bug
                     name=f"plan-step-{step.id}",
                     daemon=True,
                 )
                 threads.append(t)
                 t.start()
 
-            # 等待这一层全部完成
+            # 先 join 所有线程，再统一打印（避免和线程内 console 冲突）
             for t in threads:
                 t.join()
+            while not notify_queue.empty():
+                item = notify_queue.get()
+                if item[0] == "ok":
+                    _, sid, desc, result = item
+                    short_desc = desc[:40] + ('...' if len(desc) > 40 else '')
+                    console.print(f"[bold green]✅ Step {sid} 完成[/bold green] {short_desc}")
+                    console.print(Panel(
+                        result,
+                        title=f"[bold green]Step {sid} 汇报[/bold green]",
+                        border_style="green",
+                        expand=False,
+                    ))
+                else:
+                    _, sid, desc, err = item
+                    console.print(f"[bold red]❌ Step {sid} 失败[/bold red]: {err}")
 
             if errors:
                 failed = [f"Step {sid}" for sid in errors]
@@ -173,10 +191,6 @@ def format_results(plan: Plan, results: dict[int, str]) -> str:
     for step in plan.steps:
         status = "✅" if step.done else "❌"
         lines.append(f"### {status} Step {step.id}: {step.description}")
-        result = results.get(step.id, "无结果")
-        # 结果太长时截断，避免 token 爆炸
-        if len(result) > 500:
-            result = result[:500] + "\n...(已截断，详情见日志)"
-        lines.append(result)
+        lines.append(results.get(step.id, "无结果"))
         lines.append("")
     return "\n".join(lines)
