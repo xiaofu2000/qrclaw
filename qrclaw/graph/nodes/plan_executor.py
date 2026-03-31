@@ -56,7 +56,7 @@ class PlanExecutorNode:
                 task = (
                     f"【计划目标】{plan_obj.goal}\n"
                     f"【当前步骤】Step {step.id}: {step.description}\n\n"
-                    f"【要求】只完成当前步骤，完成后返回结果摘要。"
+                    f"【要求】只完成当前步骤。完成后返回详细的结果摘要，包括：做了什么、发现了什么、产出了哪些文件。"
                 )
                 # 记录当前主 session 长度，用于后续切出子 session 新增的消息
                 inherited_count = len(session.messages)
@@ -75,7 +75,7 @@ class PlanExecutorNode:
                 task = (
                     f"【计划目标】{plan_obj.goal}\n"
                     f"【步骤】{step.description}\n\n"
-                    f"【要求】完成后返回结果摘要。"
+                    f"【要求】完成上述步骤。完成后返回详细的结果摘要，包括：做了什么、发现了什么、产出了哪些文件。"
                 )
                 result, _ = run_sub_agent_fn(
                     task, workspace, f"step-{step.id}",
