@@ -91,10 +91,11 @@ class ReplannerNode:
             f"- Step {s.id}: {s.description}" for s in remaining_steps
         ) or "（无剩余步骤）"
 
-        prompt = _REPLANNER_PROMPT.format(
-            goal=goal,
-            past_steps=past_text,
-            remaining_steps=remaining_text,
+        prompt = (
+            _REPLANNER_PROMPT
+            .replace("{goal}", goal)
+            .replace("{past_steps}", past_text)
+            .replace("{remaining_steps}", remaining_text)
         )
 
         try:
