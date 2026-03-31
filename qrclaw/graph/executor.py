@@ -1,26 +1,12 @@
 """
-执行引擎
+执行引擎工具函数
 
-用拓扑排序解析 Plan 的依赖关系，自动决定哪些步骤并行、哪些串行。
-
-执行规则：
-  - 同一层（in_degree 为 0 且前置步骤全完成）的步骤并行 spawn 子 agent
-  - 每层全部完成后，才解锁下一层
-  - 串行链按层顺序执行
-
-示例 Plan：
-  step1（无依赖）─┐
-  step3（无依赖）─┼─ 第0层：并行跑 step1/step3/step4
-  step4（无依赖）─┘
-  step2（依赖1）  ─── 第1层：等step1完成后跑
-  step5（依赖2,3,4）── 第2层：等第1层全完成后跑
+提供拓扑排序相关工具：
+- _topological_layers: 一次性计算所有层（调试用）
+- get_next_layer: 从剩余步骤中取出当前可执行的一层（供 Replanner 循环使用）
 """
-import threading
-import queue
-from rich.console import Console
-from rich.panel import Panel
 from qrclaw.logger import get_logger
-from .nodes.router import Plan, PlanStep
+from .nodes.router import PlanStep
 
 logger = get_logger("qrclaw.graph.executor")
 
@@ -59,126 +45,14 @@ def _topological_layers(steps: list[PlanStep]) -> list[list[PlanStep]]:
     return layers
 
 
-def execute_plan(
-    plan: Plan,
-    console: Console,
-    run_step_fn,
-) -> dict[int, str]:
+def get_next_layer(steps: list[PlanStep]) -> list[PlanStep]:
     """
-    按拓扑顺序执行 Plan：同层并行，跨层串行。
-
-    Args:
-        plan: Planner 生成的 Plan 对象
-        console: Rich console，用于打印进度
-        run_step_fn: 执行单个步骤的函数
-            签名: (step: PlanStep, plan: Plan, is_serial: bool) -> str
-            返回步骤的执行结果字符串
-    Returns:
-        dict[step_id, result_str]: 每个步骤的执行结果
+    从剩余步骤中取出当前可执行的一层（in_degree 为 0 的步骤）。
+    供 Replanner 循环按需调用，每次只算一层。
     """
-    logger.info(f"开始执行计划: {plan.goal}，共 {len(plan.steps)} 步")
-
-    try:
-        layers = _topological_layers(plan.steps)
-    except ValueError as e:
-        logger.error(f"拓扑排序失败: {e}")
-        console.print(f"[red]计划执行失败: {e}[/red]")
-        return {}
-
-    results: dict[int, str] = {}
-    lock = threading.Lock()
-
-    console.print(f"\n[bold cyan]执行计划：{plan.goal}[/bold cyan]")
-    console.print(f"[dim]共 {len(plan.steps)} 步，分 {len(layers)} 层执行[/dim]\n")
-
-    for layer_idx, layer in enumerate(layers):
-        if len(layer) == 1:
-            # 单步，串行执行
-            step = layer[0]
-            console.print(
-                f"[yellow]→ Step {step.id}[/yellow] {step.description} "
-                f"[dim](串行)[/dim]"
-            )
-            result = run_step_fn(step, plan, True)
-            plan.mark_done(step.id)
-            with lock:
-                results[step.id] = result
-            logger.info(f"Step {step.id} 完成")
-
-        else:
-            # 多步，并行执行
-            console.print(
-                f"[yellow]→ 第 {layer_idx + 1} 层并行[/yellow] "
-                f"({len(layer)} 个步骤同时执行)"
-            )
-            for step in layer:
-                console.print(f"  [dim]Step {step.id}:[/dim] {step.description}")
-
-            threads = []
-            errors = {}
-            notify_queue: queue.Queue = queue.Queue()
-
-            def _run(step: PlanStep):
-                try:
-                    result = run_step_fn(step, plan, False)
-                    plan.mark_done(step.id)
-                    with lock:
-                        results[step.id] = result
-                    logger.info(f"Step {step.id} 并行完成")
-                    notify_queue.put(("ok", step.id, step.description, result))
-                except Exception as e:
-                    logger.error(f"Step {step.id} 执行失败: {e}", exc_info=True)
-                    with lock:
-                        errors[step.id] = str(e)
-                        results[step.id] = f"执行失败: {e}"
-                    notify_queue.put(("err", step.id, step.description, str(e)))
-
-            for step in layer:
-                t = threading.Thread(
-                    target=_run,
-                    args=(step,),
-                    name=f"plan-step-{step.id}",
-                    daemon=True,
-                )
-                threads.append(t)
-                t.start()
-
-            for t in threads:
-                t.join()
-
-            while not notify_queue.empty():
-                item = notify_queue.get()
-                if item[0] == "ok":
-                    _, sid, desc, result = item
-                    short_desc = desc[:40] + ("..." if len(desc) > 40 else "")
-                    console.print(f"[bold green]✅ Step {sid} 完成[/bold green] {short_desc}")
-                    console.print(Panel(
-                        result,
-                        title=f"[bold green]Step {sid} 汇报[/bold green]",
-                        border_style="green",
-                        expand=False,
-                    ))
-                else:
-                    _, sid, desc, err = item
-                    console.print(f"[bold red]❌ Step {sid} 失败[/bold red]: {err}")
-
-            if errors:
-                failed = [f"Step {sid}" for sid in errors]
-                console.print(f"[red]以下步骤执行失败: {', '.join(failed)}[/red]")
-                logger.warning(f"层 {layer_idx + 1} 有步骤失败: {errors}")
-
-        console.print()
-
-    logger.info(f"计划执行完成: {plan.goal}")
-    return results
-
-
-def format_results(plan: Plan, results: dict[int, str]) -> str:
-    """把执行结果格式化成 LLM 可读的汇总字符串"""
-    lines = [f"## 计划执行完成：{plan.goal}", ""]
-    for step in plan.steps:
-        status = "✅" if step.done else "❌"
-        lines.append(f"### {status} Step {step.id}: {step.description}")
-        lines.append(results.get(step.id, "无结果"))
-        lines.append("")
-    return "\n".join(lines)
+    if not steps:
+        return []
+    step_ids = {s.id for s in steps}
+    # 只考虑剩余步骤内部的依赖，忽略已完成步骤的 id
+    ready = [s for s in steps if all(dep not in step_ids for dep in s.depends_on)]
+    return sorted(ready, key=lambda s: s.id)
