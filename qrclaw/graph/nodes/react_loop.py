@@ -68,6 +68,13 @@ class ReactLoopNode:
 
             messages = [system_prompt, *session.messages]
 
+            # 调用前检查 token 数，超限提前压缩，避免调用失败
+            from qrclaw.memory.session import count_tokens
+            if count_tokens(messages) > COMPRESS_THRESHOLD:
+                logger.info("调用前 token 超限，提前压缩")
+                compressor.summarize(session)
+                messages = [system_prompt, *session.messages]
+
             tools = get_schemas_for_sub_agent() if is_sub_agent else get_schemas()
 
             with console.status("[bold yellow]思考中...[/bold yellow]", spinner="dots"):
