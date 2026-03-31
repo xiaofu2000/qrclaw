@@ -78,7 +78,8 @@ def _dump_assistant_msg(response: LLMResponse) -> dict:
 def _make_system_prompt(workspace: Workspace, session: Session) -> dict:
     """
     构建 system prompt。
-    ReAct 循环每轮调一次，保证 working_memory 始终是最新状态。
+    ReAct 循环每轮调一次，保证内容始终是最新状态。
+    working_memory 不在此注入，由 _react_loop 作为对话末尾 user 消息动态插入。
     """
     content = build_system_prompt(
         heartbeat_file=workspace.heartbeat_file,
@@ -87,10 +88,6 @@ def _make_system_prompt(workspace: Workspace, session: Session) -> dict:
         skills_dir=workspace.skills_dir,
         memory_file=workspace.memory_file,
     )
-    # 把工作记忆注入 system prompt，LLM 才能看到跨步骤积累的信息
-    wm_prompt = session.working_memory.to_prompt()
-    if wm_prompt:
-        content += "\n\n" + wm_prompt
     return {"role": "system", "content": content}
 
 
@@ -360,7 +357,10 @@ def _react_loop(
 
     for iteration in range(MAX_ITERATIONS):
         logger.debug(f"ReAct 第 {iteration + 1} 轮")
-        messages = [system_prompt, *session.messages]
+        # working_memory 作为最后一条 user 消息动态插入，LLM 对对话末尾注意力最强
+        wm_prompt = session.working_memory.to_prompt()
+        wm_msg = [{"role": "user", "content": wm_prompt}] if wm_prompt else []
+        messages = [system_prompt, *session.messages, *wm_msg]
         # 子 agent 不允许调用规划工具，避免重复规划
         tools = get_schemas_for_sub_agent() if is_sub_agent() else get_schemas()
 
