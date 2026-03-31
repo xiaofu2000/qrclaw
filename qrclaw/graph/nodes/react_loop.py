@@ -66,10 +66,7 @@ class ReactLoopNode:
         for iteration in range(MAX_ITERATIONS):
             logger.debug(f"ReAct 第 {iteration + 1} 轮")
 
-            # working_memory 作为最后一条 user 消息插入，LLM 对对话末尾注意力最强
-            wm_prompt = session.working_memory.to_prompt()
-            wm_msg = [{"role": "user", "content": wm_prompt}] if wm_prompt else []
-            messages = [system_prompt, *session.messages, *wm_msg]
+            messages = [system_prompt, *session.messages]
 
             tools = get_schemas_for_sub_agent() if is_sub_agent else get_schemas()
 
