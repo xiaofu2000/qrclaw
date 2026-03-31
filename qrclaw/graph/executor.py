@@ -20,7 +20,7 @@ import queue
 from rich.console import Console
 from rich.panel import Panel
 from qrclaw.logger import get_logger
-from .router_planner import Plan, PlanStep
+from .nodes.router import Plan, PlanStep
 
 logger = get_logger("qrclaw.graph.executor")
 

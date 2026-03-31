@@ -1,10 +1,9 @@
 """
-RouterPlanner 节点
+Router 节点
 
-原 Router + Planner 合并为一次 LLM 调用：
-- 简单任务：返回 {"route": "direct"}，不生成 Plan，零额外开销
-- 复杂任务：返回 {"route": "plan", "goal": "...", "steps": [...]}，
-           直接携带完整 Plan，省去第二次 LLM 调用
+一次 LLM 调用完成路由判断 + 计划生成：
+- 简单任务：返回 RouteResult(route="direct")
+- 复杂任务：返回 RouteResult(route="plan", plan=Plan(...))
 
 JSON 可靠性保障（双重防御）：
   1. json_mode=True：OpenAI 协议层强制输出合法 JSON
@@ -16,7 +15,7 @@ from dataclasses import dataclass, field
 from qrclaw.providers import provider
 from qrclaw.logger import get_logger
 
-logger = get_logger("qrclaw.graph.router_planner")
+logger = get_logger("qrclaw.graph.nodes.router")
 
 _SYSTEM = """你是一个任务路由和规划器，判断用户最新任务是否需要制定执行计划。
 如果有历史对话，结合上下文理解用户意图再判断。
@@ -92,12 +91,11 @@ class Plan:
 
 @dataclass
 class RouteResult:
-    route: str              # "direct" | "plan"
+    route: str               # "direct" | "plan"
     plan: Plan | None = None  # route=plan 时携带完整 Plan
 
 
 def _parse_json(raw: str) -> dict:
-    """双重容错：直接解析 → 正则提取 {...}"""
     raw = raw.strip()
     try:
         return json.loads(raw)
@@ -110,7 +108,6 @@ def _parse_json(raw: str) -> dict:
 
 
 def _parse_plan(data: dict, fallback_input: str) -> Plan:
-    """从 JSON dict 解析 Plan 对象"""
     goal = data.get("goal", fallback_input[:50])
     steps = [
         PlanStep(
@@ -123,55 +120,41 @@ def _parse_plan(data: dict, fallback_input: str) -> Plan:
     return Plan(goal=goal, steps=steps)
 
 
-def route_and_plan(
-    user_input: str,
-    history: list[dict] | None = None,
-) -> RouteResult:
-    """
-    一次 LLM 调用完成路由判断 + 计划生成。
+class RouterNode:
 
-    简单任务：返回 RouteResult(route="direct", plan=None)
-    复杂任务：返回 RouteResult(route="plan", plan=Plan(...))
+    def run(self, user_input: str, history: list) -> RouteResult:
+        logger.info(f"Router 判断路由: {user_input[:60]}...")
 
-    Args:
-        user_input: 用户原始输入（用于日志和兜底）
-        history:    主 session 完整消息列表（含当前 user 消息）
-    Returns:
-        RouteResult
-    """
-    logger.info(f"RouterPlanner 判断: {user_input[:80]}...")
+        messages: list[dict] = [{"role": "system", "content": _SYSTEM}]
+        if history:
+            messages.extend(history)
+        else:
+            messages.append({"role": "user", "content": user_input})
+        messages.append({"role": "user", "content": _ROUTE_INSTRUCTION})
 
-    messages: list[dict] = [{"role": "system", "content": _SYSTEM}]
-    if history:
-        messages.extend(history)
-    else:
-        messages.append({"role": "user", "content": user_input})
-    messages.append({"role": "user", "content": _ROUTE_INSTRUCTION})
+        try:
+            response = provider.chat(messages, tools=None, json_mode=True)
+            data = _parse_json(response.content)
 
-    try:
-        response = provider.chat(messages, tools=None, json_mode=True)
-        data = _parse_json(response.content)
+            route_val = data.get("route", "direct")
+            if route_val not in ("direct", "plan"):
+                logger.warning(f"Router 返回未知 route: {route_val}，降级为 direct")
+                route_val = "direct"
 
-        route_val = data.get("route", "direct")
-        if route_val not in ("direct", "plan"):
-            logger.warning(f"RouterPlanner 返回未知 route: {route_val}，降级为 direct")
-            route_val = "direct"
+            if route_val == "plan":
+                if not data.get("steps"):
+                    logger.warning("Router 返回 plan 但 steps 为空，降级为 direct")
+                    return RouteResult(route="direct")
+                p = _parse_plan(data, user_input)
+                logger.info(f"路由结果: plan，目标: {p.goal}，共 {len(p.steps)} 步")
+                for s in p.steps:
+                    dep_str = f"依赖 {s.depends_on}" if s.depends_on else "可并行"
+                    logger.debug(f"  Step {s.id}: {s.description} [{dep_str}]")
+                return RouteResult(route="plan", plan=p)
 
-        if route_val == "plan":
-            if not data.get("steps"):
-                # 返回了 plan 但没有 steps，降级为 direct
-                logger.warning("RouterPlanner 返回 plan 但 steps 为空，降级为 direct")
-                return RouteResult(route="direct")
-            p = _parse_plan(data, user_input)
-            logger.info(f"RouterPlanner 结果: plan，目标: {p.goal}，共 {len(p.steps)} 步")
-            for s in p.steps:
-                dep_str = f"依赖 {s.depends_on}" if s.depends_on else "可并行"
-                logger.debug(f"  Step {s.id}: {s.description} [{dep_str}]")
-            return RouteResult(route="plan", plan=p)
+            logger.info("路由结果: direct")
+            return RouteResult(route="direct")
 
-        logger.info("RouterPlanner 结果: direct")
-        return RouteResult(route="direct")
-
-    except Exception as e:
-        logger.warning(f"RouterPlanner 解析失败: {e}，降级为 direct")
-        return RouteResult(route="direct")
+        except Exception as e:
+            logger.warning(f"Router 解析失败: {e}，降级为 direct")
+            return RouteResult(route="direct")

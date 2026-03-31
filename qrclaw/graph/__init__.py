@@ -1,14 +1,23 @@
 """
 Graph 模块
 
-为 QRClaw 提供图结构执行能力：
-- RouterPlanner：一次 LLM 调用完成路由判断 + 计划生成
-- Executor：拓扑排序，自动串行/并行执行
+图结构执行能力：
+- nodes/router.py：路由判断 + 计划生成
+- nodes/react_loop.py：主 agent ReAct 循环
+- nodes/plan_executor.py：计划执行（串行/并行/混合策略）
+- runner.py：图入口，节点编排 + 条件边路由
+- executor.py：拓扑排序执行引擎
+- strategies/：串行/并行/混合执行策略
 """
-from .router_planner import route_and_plan, RouteResult, Plan, PlanStep
+from .nodes.router import RouterNode, RouteResult, Plan, PlanStep
+from .nodes.react_loop import ReactLoopNode
+from .nodes.plan_executor import PlanExecutorNode
 from .executor import execute_plan, format_results
+from .runner import GraphRunner
 
 __all__ = [
-    "route_and_plan", "RouteResult", "Plan", "PlanStep",
+    "RouterNode", "RouteResult", "Plan", "PlanStep",
+    "ReactLoopNode", "PlanExecutorNode",
     "execute_plan", "format_results",
+    "GraphRunner",
 ]
