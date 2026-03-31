@@ -149,19 +149,22 @@ def run(user_input: str, session: Session, console: Console, workspace: Workspac
     return _react_loop(session, console, workspace, auto_confirm)
 
 
-def run_sub_agent(task: str, workspace: Workspace, agent_id: str, inherit_working_memory=None) -> tuple[str, Session]:
+def run_sub_agent(
+    task: str,
+    workspace: Workspace,
+    agent_id: str,
+    inherit_working_memory=None,
+    console: Console | None = None,
+) -> tuple[str, Session]:
     """
-    以静默模式运行子 agent，返回 (结果字符串, 子session)。
-    子 agent 不打印到用户终端，结果直接返回给调用方（主 agent）。
-    子 agent 共享父 agent 的工作空间，不创建独立目录。
-
-    重要：子 agent 不允许再派生子 agent，防止无限嵌套。
+    运行子 agent，返回 (结果字符串, 子session)。
 
     Args:
         task: 子 agent 要执行的任务描述
         workspace: 父 agent 的工作空间（共享）
         agent_id: 子 agent 的 ID（用于日志标识）
         inherit_working_memory: 继承的 WorkingMemory（串行时传入，并行时为 None）
+        console: 传入则实时输出到终端（串行用），不传则静默（并行用）
     Returns:
         tuple[str, Session]: (子 agent 的最终回复, 子 session)
     """
@@ -177,8 +180,11 @@ def run_sub_agent(task: str, workspace: Workspace, agent_id: str, inherit_workin
     set_agent_depth(current_depth + 1)
     logger.info(f"子 agent 深度: {current_depth + 1}")
 
-    buffer = StringIO()
-    sub_console = RichConsole(file=buffer, highlight=False)
+    if console is not None:
+        sub_console = console
+    else:
+        from io import StringIO
+        sub_console = RichConsole(file=StringIO(), highlight=False)
 
     # 子 agent 使用独立的 session 文件（但共享工作空间）
     session_id = f"sub-{agent_id}-{uuid.uuid4().hex[:8]}"
@@ -266,8 +272,14 @@ def _run_with_plan(
             )
 
         # 串行步骤继承 working_memory，并行步骤不继承
+        # 串行步骤实时输出到终端，并行步骤静默
         inherit_wm = session.working_memory if is_serial else None
-        result, sub_session = run_sub_agent(task, workspace, f"step-{step.id}", inherit_working_memory=inherit_wm)
+        step_console = console if is_serial else None
+        result, sub_session = run_sub_agent(
+            task, workspace, f"step-{step.id}",
+            inherit_working_memory=inherit_wm,
+            console=step_console,
+        )
 
         # 自动从子 session 消息历史提取工具调用，填充 working_memory
         _extract_working_memory(sub_session, step.id, result)
@@ -292,6 +304,7 @@ def _run_with_plan(
             with _merge_lock:
                 _pending_merge_wms.append(sub_session.working_memory)
             logger.info(f"Step {step.id} 并行执行完毕，working_memory 加入 merge 队列")
+            console.print(f"[bold green]✅ Step {step.id} 完成[/bold green] {step.description[:40]}{'...' if len(step.description) > 40 else ''}")
 
         return result
 
