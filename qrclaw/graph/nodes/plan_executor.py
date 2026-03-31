@@ -72,7 +72,7 @@ class PlanExecutorNode:
                 console.print(f"[yellow]→ 并行执行 {len(layer)} 个步骤[/yellow]")
                 for step in layer:
                     console.print(f"  [dim]Step {step.id}:[/dim] {step.description}")
-                results = self._run_parallel(layer, plan, session, past_steps, workspace, run_sub_agent_fn, console)
+                results = self._run_parallel(layer, plan, past_steps, workspace, run_sub_agent_fn, console)
                 for step in layer:
                     plan.mark_done(step.id)
                     r = results.get(step.id, "")
@@ -136,7 +136,7 @@ class PlanExecutorNode:
         logger.info(f"Step {step.id} 串行完成")
         return result
 
-    def _run_parallel(self, layer, plan, session, past_steps, workspace, run_sub_agent_fn, console) -> dict[int, str]:
+    def _run_parallel(self, layer, plan, past_steps, workspace, run_sub_agent_fn, console) -> dict[int, str]:
         results: dict[int, str] = {}
         lock = threading.Lock()
         notify_queue: queue.Queue = queue.Queue()
@@ -179,7 +179,7 @@ class PlanExecutorNode:
         for t in threads:
             t.join()
 
-        # 打印结果并追加到主 session
+        # 打印结果
         while not notify_queue.empty():
             item = notify_queue.get()
             if item[0] == "ok":
@@ -187,10 +187,8 @@ class PlanExecutorNode:
                 short_desc = desc[:40] + ("..." if len(desc) > 40 else "")
                 console.print(f"[bold green]✅ Step {sid} 完成[/bold green] {short_desc}")
                 console.print(Panel(result, title=f"[bold green]Step {sid} 汇报[/bold green]", border_style="green", expand=False))
-                session.add({"role": "assistant", "content": f"Step {sid} 完成：{result}"})
             else:
                 _, sid, desc, err = item
                 console.print(f"[bold red]❌ Step {sid} 失败[/bold red]: {err}")
 
-        session._save()
         return results
