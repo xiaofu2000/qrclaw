@@ -41,7 +41,7 @@ class GraphRunner:
             return self.react_loop.run(session, console, workspace, auto_confirm, is_sub_agent=True)
 
         # 条件边：Router 判断路由
-        route_result = self.router.run(user_input, history=session.messages, workspace_dir=str(workspace.root))
+        route_result = self.router.run(user_input, history=session.messages, workspace=workspace)
 
         if route_result.route == "plan" and route_result.plan:
             logger.info(f"路由 → PlanExecutor: {route_result.plan.goal}")

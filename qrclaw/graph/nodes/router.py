@@ -5,6 +5,11 @@ Router 节点
 - 简单任务：返回 RouteResult(route="direct")
 - 复杂任务：返回 RouteResult(route="plan", plan=Plan(...))
 
+消息结构：
+  [system] 主 agent 完整 system prompt（工作目录、工具、行为准则全有）
+  [history] 主 session 的历史对话
+  [user]   路由指令 + 判断规则 + JSON 格式要求
+
 JSON 可靠性保障（双重防御）：
   1. json_mode=True：OpenAI 协议层强制输出合法 JSON
   2. 正则提取兜底：Vertex AI 等不支持 json_mode 的 provider 使用
@@ -17,12 +22,7 @@ from qrclaw.logger import get_logger
 
 logger = get_logger("qrclaw.graph.nodes.router")
 
-_SYSTEM_TEMPLATE = """你是一个任务路由和规划器，判断用户最新任务是否需要制定执行计划。
-如果有历史对话，结合上下文理解用户意图再判断。
-
-【当前工作环境】
-工作目录：{workspace_dir}
-代码/文件已在本地，无需克隆或下载。
+_ROUTE_INSTRUCTION = """【系统指令】根据以上对话，判断最新一条用户消息是否需要制定执行计划，只返回 JSON，不要其他内容。
 
 【判断规则】
 需要计划（route=plan）的情况：
@@ -53,26 +53,14 @@ _SYSTEM_TEMPLATE = """你是一个任务路由和规划器，判断用户最新�
   ]
 }
 
-规划规则：
+【规划规则】
 - 每个步骤具体、可执行，一步只做一件事
 - depends_on 填前置步骤 id，没有依赖填空数组
 - 无依赖的步骤会被并行执行，有依赖的步骤串行等待
 - 步骤数量控制在 2~10 个
-- 需要汇总或综合分析前置步骤结果的步骤，必须在 depends_on 中列出所有它依赖的步骤 id，否则它执行时拿不到前置结果
-- 步骤描述必须自包含：将执行所需的关键信息（文件路径、目录、参数、约束条件等）直接写入描述中，因为执行该步骤的子 agent 看不到对话历史
-- 步骤描述要足够详细，相当于给一个全新的 agent 下达完整任务指令：包括做什么、怎么做、目标是什么、输出什么结果，不能只写一句话标题
-
-只返回 JSON，不要其他内容。"""
-
-
-def _build_system(workspace_dir: str) -> str:
-    return _SYSTEM_TEMPLATE.replace("{workspace_dir}", workspace_dir)
-
-
-_ROUTE_INSTRUCTION = (
-    "【系统指令】根据以上对话，判断最新一条用户消息是否需要制定执行计划，"
-    "按格式返回 JSON。"
-)
+- 需要汇总或综合分析前置步骤结果的步骤，必须在 depends_on 中列出所有它依赖的步骤 id
+- 步骤描述必须自包含：将执行所需的关键信息（文件路径、目录、参数等）直接写入描述中，因为执行该步骤的子 agent 看不到对话历史
+- 步骤描述要足够详细，相当于给一个全新的 agent 下达完整任务指令：包括做什么、怎么做、目标是什么、输出什么"""
 
 
 @dataclass
@@ -133,10 +121,17 @@ def _parse_plan(data: dict, fallback_input: str) -> Plan:
 
 class RouterNode:
 
-    def run(self, user_input: str, history: list, workspace_dir: str = "") -> RouteResult:
+    def run(self, user_input: str, history: list, workspace=None) -> RouteResult:
         logger.info(f"Router 判断路由: {user_input[:60]}...")
 
-        messages: list[dict] = [{"role": "system", "content": _build_system(workspace_dir)}]
+        from qrclaw.prompt import build_system_prompt
+        system_content = build_system_prompt(
+            agent_file=workspace.agent_file if workspace else None,
+            skills_dir=workspace.skills_dir if workspace else None,
+            memory_file=workspace.memory_file if workspace else None,
+        )
+
+        messages: list[dict] = [{"role": "system", "content": system_content}]
         if history:
             messages.extend(history)
         else:
