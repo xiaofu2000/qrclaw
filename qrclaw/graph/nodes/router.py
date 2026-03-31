@@ -17,8 +17,12 @@ from qrclaw.logger import get_logger
 
 logger = get_logger("qrclaw.graph.nodes.router")
 
-_SYSTEM = """你是一个任务路由和规划器，判断用户最新任务是否需要制定执行计划。
+_SYSTEM_TEMPLATE = """你是一个任务路由和规划器，判断用户最新任务是否需要制定执行计划。
 如果有历史对话，结合上下文理解用户意图再判断。
+
+【当前工作环境】
+工作目录：{workspace_dir}
+代码/文件已在本地，无需克隆或下载。
 
 【判断规则】
 需要计划（route=plan）的情况：
@@ -58,6 +62,11 @@ _SYSTEM = """你是一个任务路由和规划器，判断用户最新任务是�
 - 步骤描述必须自包含：将执行所需的关键信息（文件路径、目录、参数、约束条件等）直接写入描述中，因为执行该步骤的子 agent 看不到对话历史
 
 只返回 JSON，不要其他内容。"""
+
+
+def _build_system(workspace_dir: str) -> str:
+    return _SYSTEM_TEMPLATE.replace("{workspace_dir}", workspace_dir)
+
 
 _ROUTE_INSTRUCTION = (
     "【系统指令】根据以上对话，判断最新一条用户消息是否需要制定执行计划，"
@@ -123,10 +132,10 @@ def _parse_plan(data: dict, fallback_input: str) -> Plan:
 
 class RouterNode:
 
-    def run(self, user_input: str, history: list) -> RouteResult:
+    def run(self, user_input: str, history: list, workspace_dir: str = "") -> RouteResult:
         logger.info(f"Router 判断路由: {user_input[:60]}...")
 
-        messages: list[dict] = [{"role": "system", "content": _SYSTEM}]
+        messages: list[dict] = [{"role": "system", "content": _build_system(workspace_dir)}]
         if history:
             messages.extend(history)
         else:
