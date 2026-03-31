@@ -28,7 +28,11 @@ def list_sessions(sessions_dir: Path) -> list[dict]:
     """
     sessions_dir.mkdir(parents=True, exist_ok=True)
     sessions = []
-    for path in sorted(sessions_dir.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True):
+    for path in sorted(
+        [p for p in sessions_dir.glob("*.json") if not p.stem.startswith("sub-")],
+        key=lambda p: p.stat().st_mtime,
+        reverse=True,
+    ):
         try:
             data = json.loads(path.read_text(encoding="utf-8"))
             msg_count = len([m for m in data if m.get("role") != "system"])
@@ -46,6 +50,7 @@ def list_sessions(sessions_dir: Path) -> list[dict]:
 def get_last_session_id(sessions_dir: Path) -> str | None:
     """
     获取最近使用的会话 ID（按修改时间排序，取最新的）。
+    过滤掉子 agent 产生的临时 session（sub- 开头）。
 
     Args:
         sessions_dir: 会话文件目录
@@ -53,7 +58,11 @@ def get_last_session_id(sessions_dir: Path) -> str | None:
         str | None: 会话 ID，如果没有会话则返回 None
     """
     sessions_dir.mkdir(parents=True, exist_ok=True)
-    sessions = sorted(sessions_dir.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True)
+    sessions = sorted(
+        [p for p in sessions_dir.glob("*.json") if not p.stem.startswith("sub-")],
+        key=lambda p: p.stat().st_mtime,
+        reverse=True,
+    )
     if sessions:
         return sessions[0].stem
     return None
