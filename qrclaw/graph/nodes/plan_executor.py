@@ -64,7 +64,7 @@ class PlanExecutorNode:
             if is_serial:
                 step = layer[0]
                 console.print(f"[yellow]→ Step {step.id}[/yellow] {step.description} [dim](串行)[/dim]")
-                result = self._run_serial(step, plan, session, workspace, run_sub_agent_fn, console)
+                result = self._run_serial(step, plan, past_steps, workspace, run_sub_agent_fn, console)
                 plan.mark_done(step.id)
                 past_steps.append((step.description, result))
                 final_result = result
@@ -115,23 +115,25 @@ class PlanExecutorNode:
         })
         return react_loop_fn()
 
-    def _run_serial(self, step, plan, session, workspace, run_sub_agent_fn, console) -> str:
+    def _run_serial(self, step, plan, past_steps, workspace, run_sub_agent_fn, console) -> str:
+        prior_context = ""
+        if past_steps:
+            prior_context = "\n\n【前置步骤结果】\n" + "\n---\n".join(
+                f"{desc}\n结果：{result}" for desc, result in past_steps
+            )
+
         task = (
-            f"【计划目标】{plan.goal}\n"
-            f"【当前步骤】Step {step.id}: {step.description}\n\n"
-            f"【要求】只完成当前步骤。完成后返回详细的结果摘要，包括：做了什么、发现了什么、产出了哪些文件。"
+            f"【计划目标】{plan.goal}"
+            f"{prior_context}\n\n"
+            f"【当前任务】{step.description}\n\n"
+            f"【要求】只完成当前任务。完成后返回详细的结果摘要，包括：做了什么、发现了什么、产出了哪些文件。"
         )
-        inherited_count = len(session.messages)
-        result, sub_session = run_sub_agent_fn(
+        result, _ = run_sub_agent_fn(
             task, workspace, f"step-{step.id}",
-            inherit_messages=list(session.messages),
+            inherit_messages=None,
             console=console,
         )
-        new_messages = sub_session.messages[inherited_count:]
-        for msg in new_messages:
-            session.messages.append(msg)
-        session._save()
-        logger.info(f"Step {step.id} 串行完成，追加 {len(new_messages)} 条消息回主 session")
+        logger.info(f"Step {step.id} 串行完成")
         return result
 
     def _run_parallel(self, layer, plan, session, past_steps, workspace, run_sub_agent_fn, console) -> dict[int, str]:
