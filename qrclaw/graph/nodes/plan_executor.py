@@ -71,10 +71,23 @@ class PlanExecutorNode:
                 session._save()
                 logger.info(f"Step {step.id} 串行完成，追加 {len(new_messages)} 条消息回主 session")
             else:
-                # 并行：完全独立，只把最终结果追加一条消息
+                # 并行：子 session 独立，但注入前置步骤的结果摘要
+                prior_context = ""
+                if step.depends_on:
+                    # 从主 session 尾部找前置步骤的 assistant 摘要消息
+                    prior_results = []
+                    for msg in reversed(session.messages):
+                        if msg.get("role") == "assistant" and msg.get("content"):
+                            prior_results.insert(0, msg["content"])
+                        if len(prior_results) >= len(step.depends_on):
+                            break
+                    if prior_results:
+                        prior_context = "\n\n【前置步骤结果】\n" + "\n---\n".join(prior_results)
+
                 task = (
                     f"【计划目标】{plan_obj.goal}\n"
-                    f"【步骤】{step.description}\n\n"
+                    f"【步骤】{step.description}"
+                    f"{prior_context}\n\n"
                     f"【要求】完成上述步骤。完成后返回详细的结果摘要，包括：做了什么、发现了什么、产出了哪些文件。"
                 )
                 result, _ = run_sub_agent_fn(
