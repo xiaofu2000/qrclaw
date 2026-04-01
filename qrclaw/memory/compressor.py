@@ -83,6 +83,7 @@ SUMMARIZE_PROMPT = """请把下面的对话内容整理成结构化摘要，要�
 def _pick_recent(messages: list[dict], max_tokens: int = None) -> tuple[list[dict], list[dict]]:
     """
     从最新消息往前选，只限制 tokens（不限制条数）。
+    保证 tool_calls(assistant) 和对应的 tool 消息不被拆分。
 
     返回 (recent, old)：recent 是保留的，old 是要压缩的。
     """
@@ -98,6 +99,12 @@ def _pick_recent(messages: list[dict], max_tokens: int = None) -> tuple[list[dic
             break
         recent.insert(0, msg)
         token_count += t
+
+    # 确保不在 tool_calls 组中间截断：
+    # 如果 recent 的第一条是 role=tool，说明对应的 assistant(tool_calls) 被切到 old 里了
+    # 需要把这些孤立的 tool 消息也移到 old
+    while recent and recent[0].get("role") == "tool":
+        recent.pop(0)
 
     old = messages[:len(messages) - len(recent)]
     logger.debug(f"保留窗口: {len(recent)} 条, {token_count} tokens; 待压缩: {len(old)} 条")
