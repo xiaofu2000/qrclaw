@@ -34,10 +34,22 @@ class OpenAIProvider(LLMProvider):
         if json_mode:
             kwargs["response_format"] = {"type": "json_object"}
 
-        response = self._client.chat.completions.create(**kwargs)
-        usage = response.usage
-        if not response.choices:
-            raise RuntimeError(f"LLM 返回空 choices，原始响应: {response}")
+        import time
+
+        # MiniMax 等 API 过载时会静默返回 choices=None，自动重试
+        max_retries = 3
+        for attempt in range(max_retries):
+            response = self._client.chat.completions.create(**kwargs)
+            usage = response.usage
+            if response.choices:
+                break
+            if attempt < max_retries - 1:
+                wait = 2 ** attempt  # 1s, 2s
+                logger.warning(f"LLM 返回空 choices，第 {attempt + 1} 次重试，等待 {wait}s...")
+                time.sleep(wait)
+        else:
+            raise RuntimeError(f"LLM 连续 {max_retries} 次返回空 choices，原始响应: {response}")
+
         choice = response.choices[0]
         message = choice.message
 
