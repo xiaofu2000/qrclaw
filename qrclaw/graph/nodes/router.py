@@ -135,7 +135,7 @@ class RouterNode:
         messages = ctx.build_messages("router", route_instruction=_ROUTE_INSTRUCTION)
 
         try:
-            response = provider.chat(messages, tools=None, json_mode=False)
+            response = provider.chat(messages, tools=None, json_mode=True)
             data = _parse_json(response.content)
 
             route_val = data.get("route", "direct")
