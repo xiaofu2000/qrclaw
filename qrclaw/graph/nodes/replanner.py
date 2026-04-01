@@ -93,7 +93,7 @@ class ReplannerNode:
             response = provider.chat(
                 messages,
                 tools=None,
-                json_mode=True,
+                json_mode=False,
             )
             data = _parse_json(response.content)
         except Exception as e:
