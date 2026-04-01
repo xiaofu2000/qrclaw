@@ -145,7 +145,8 @@ def run_sub_agent(
         set_agent_depth(current_depth)
         # 恢复主线程的 ContextManager
         if saved_ctx is not None:
-            _thread_local.context_manager = saved_ctx
+            from qrclaw.memory.context_manager import _thread_local as _ctx_thread_local
+            _ctx_thread_local.ctx = saved_ctx
             logger.debug(f"子 agent {agent_id} 执行完毕，已恢复主线程 ContextManager")
 
     return result, sub_session
