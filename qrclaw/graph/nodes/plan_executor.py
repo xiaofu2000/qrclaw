@@ -113,7 +113,7 @@ class PlanExecutorNode:
         ctx.clear_plan()
         return react_loop_fn()
 
-    def _run_serial(self, step, plan, past_steps: list[StepResult], workspace, run_sub_agent_fn, console) -> str:
+    def _run_serial(self, step, goal: str, past_steps: list[StepResult], workspace, run_sub_agent_fn, console) -> str:
         prior_context = ""
         if past_steps:
             prior_context = "\n\n【前置步骤结果】\n" + "\n---\n".join(
@@ -121,7 +121,7 @@ class PlanExecutorNode:
             )
 
         task = (
-            f"【计划目标】{plan.goal}"
+            f"【计划目标】{goal}"
             f"{prior_context}\n\n"
             f"【当前任务】{step.description}\n\n"
             f"【要求】只完成当前任务。完成后返回详细的结果摘要，包括：做了什么、发现了什么、产出了哪些文件。"
