@@ -25,6 +25,8 @@ logger = get_logger("qrclaw.graph.nodes.router")
 
 _ROUTE_INSTRUCTION = """【系统指令】根据以上对话，判断最新一条用户消息是否需要制定执行计划，只返回 JSON，不要其他内容。
 
+⚠️ 重要：你的输出必须是且仅是一个 JSON 对象，禁止输出任何自然语言、解释或 Markdown。不要回答用户的问题，只做路由判断。
+
 【判断规则】
 需要计划（route="plan"）的情况：
 1. 任务含 3 个及以上明确步骤
