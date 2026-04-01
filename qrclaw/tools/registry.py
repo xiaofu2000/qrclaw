@@ -57,13 +57,14 @@ def _build_schema(name: str, description: str, args_model: Type[BaseModel]) -> d
     resolved = _resolve_refs(pydantic_schema, defs)
     properties = dict(resolved.get("properties", {}))
 
-    # 无参数工具：省略 parameters 字段
+    # 无参数工具：给一个空 parameters，兼容 MiniMax 等要求 parameters 必填的 API
     if not properties:
         return {
             "type": "function",
             "function": {
                 "name": name,
                 "description": description,
+                "parameters": {"type": "object", "properties": {}},
             },
         }
 
