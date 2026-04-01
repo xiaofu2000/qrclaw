@@ -55,10 +55,10 @@ _ROUTE_INSTRUCTION = """【系统指令】根据以上对话，判断最新一�
   "route": "plan",
   "goal": "任务目标的简短描述",
   "steps": [
-    {"id": 1, "description": "步骤描述，如果有路径必须是绝对路径", "depends_on": []},
-    {"id": 2, "description": "步骤描述，如果有路径必须是绝对路径", "depends_on": [1]},
-    {"id": 3, "description": "步骤描述，如果有路径必须是绝对路径", "depends_on": []},
-    {"id": 4, "description": "步骤描述，如果有路径必须是绝对路径", "depends_on": [2, 3]}
+    {"id": 1, "description": "步骤描述，如果有文件，路径必须是绝对路径", "depends_on": []},
+    {"id": 2, "description": "步骤描述，如果有文件，路径必须是绝对路径", "depends_on": [1]},
+    {"id": 3, "description": "步骤描述，如果有文件，路径必须是绝对路径", "depends_on": []},
+    {"id": 4, "description": "步骤描述，如果有文件，路径必须是绝对路径", "depends_on": [2, 3]}
   ]
 }
 

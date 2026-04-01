@@ -57,8 +57,8 @@ _REPLANNER_PROMPT = """你是一个高级智能体任务重规划器 (Replanner)
   "thought": "分析战报发现... 步骤 X 报错了。我发现新线索 Y，因此调整策略。我已严格检查下方步骤，所有文件引用均已使用完整的绝对路径。",
   "status": "continue",
   "steps": [
-    {"id": 1, "description": "动作描述，必须包含具体的真实绝对路径参数和明确的处理要求", "depends_on": []},
-    {"id": 2, "description": "动作描述，必须包含具体的真实绝对路径参数和明确的处理要求", "depends_on": [1]}
+    {"id": 1, "description": "动作描述，如果有文件引用，必须包含具体的真实绝对路径参数和明确的处理要求", "depends_on": []},
+    {"id": 2, "description": "动作描述，如果有文件引用，必须包含具体的真实绝对路径参数和明确的处理要求", "depends_on": [1]}
   ]
 }
 

@@ -190,8 +190,9 @@ class MemoryIndex:
     type: MemoryType
     
     def to_line(self) -> str:
-        """生成索引行"""
-        return f"- [{self.name}]({self.filename}) — {self.description}"
+        """生成索引行，包含类型子目录路径"""
+        relative_path = f"{self.type.value}/{self.filename}"
+        return f"- [{self.name}]({relative_path}) — {self.description}"
     
     @classmethod
     def from_memory_file(cls, memory: MemoryFile) -> "MemoryIndex":
