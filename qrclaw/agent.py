@@ -118,9 +118,12 @@ def run_sub_agent(
     set_agent_depth(current_depth + 1)
     logger.info(f"子 agent 深度: {current_depth + 1}")
 
-    # 保存主线程的 ContextManager，子 agent 执行完后恢复
+    # 保存当前线程的 ContextManager，子 agent 执行完后恢复
     from qrclaw.memory.context_manager import get_context_manager, init_context_manager
-    saved_ctx = get_context_manager() if current_depth > 0 or hasattr(_thread_local, "context_manager") else None
+    try:
+        saved_ctx = get_context_manager()
+    except RuntimeError:
+        saved_ctx = None
 
     if console is not None:
         sub_console = console
