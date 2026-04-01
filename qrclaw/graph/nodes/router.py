@@ -104,6 +104,8 @@ class RouteResult:
 
 def _parse_json(raw: str) -> dict:
     raw = raw.strip()
+    # 剥掉 <think>...</think> 标签（MiniMax 等 thinking 模型会返回）
+    raw = re.sub(r'<think>.*?</think>', '', raw, flags=re.DOTALL).strip()
     try:
         return json.loads(raw)
     except json.JSONDecodeError:
