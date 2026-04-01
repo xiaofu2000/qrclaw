@@ -9,7 +9,7 @@ agent.py —— agent 入口 + 工具函数
 import json
 from rich.console import Console
 from qrclaw.providers.base import LLMResponse
-from qrclaw.memory.session import Session
+from qrclaw.memory.context.session import Session
 from qrclaw.workspace import Workspace
 from qrclaw.logger import get_logger
 
@@ -82,7 +82,7 @@ def run(
     session.add({"role": "user", "content": user_input})
 
     # 主 agent 初始化 ContextManager 单例
-    from qrclaw.memory.context_manager import init_context_manager
+    from qrclaw.memory.context.context_manager import init_context_manager
     init_context_manager(session, workspace, is_sub_agent=is_sub_agent())
 
     from qrclaw.graph.runner import GraphRunner
@@ -119,7 +119,7 @@ def run_sub_agent(
     logger.info(f"子 agent 深度: {current_depth + 1}")
 
     # 保存当前线程的 ContextManager，子 agent 执行完后恢复
-    from qrclaw.memory.context_manager import get_context_manager, init_context_manager
+    from qrclaw.memory.context.context_manager import get_context_manager, init_context_manager
     try:
         saved_ctx = get_context_manager()
     except RuntimeError:
@@ -145,7 +145,7 @@ def run_sub_agent(
         set_agent_depth(current_depth)
         # 恢复主线程的 ContextManager
         if saved_ctx is not None:
-            from qrclaw.memory.context_manager import _thread_local as _ctx_thread_local
+            from qrclaw.memory.context.context_manager import _thread_local as _ctx_thread_local
             _ctx_thread_local.ctx = saved_ctx
             logger.debug(f"子 agent {agent_id} 执行完毕，已恢复主线程 ContextManager")
 

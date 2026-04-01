@@ -5,7 +5,7 @@ import shutil
 from rich.console import Console
 from rich.table import Table
 from qrclaw.workspace import Workspace, list_agents, AGENTS_ROOT
-from qrclaw.memory.session import Session
+from qrclaw.memory.context.session import Session
 from qrclaw.logger import setup_logger
 from qrclaw.config import LOG_LEVEL, LOG_MAX_DAYS, LOG_TO_FILE, LOG_TO_CONSOLE, LOG_CONSOLE_LEVEL
 from qrclaw.tools.agent_tools import create_agent as _create_agent, delete_agent as _delete_agent

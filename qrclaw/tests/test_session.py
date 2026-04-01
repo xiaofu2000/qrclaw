@@ -10,7 +10,7 @@ Session 会话管理模块测试
 import pytest
 import json
 from pathlib import Path
-from qrclaw.memory.session import (
+from qrclaw.memory.context.session import (
     Session,
     list_sessions,
     get_last_session_id,

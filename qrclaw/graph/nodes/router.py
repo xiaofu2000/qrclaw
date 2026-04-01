@@ -18,7 +18,7 @@ import json
 import re
 from dataclasses import dataclass, field
 from qrclaw.providers import provider
-from qrclaw.memory.context_manager import get_context_manager
+from qrclaw.memory.context.context_manager import get_context_manager
 from qrclaw.logger import get_logger
 
 logger = get_logger("qrclaw.graph.nodes.router")
@@ -51,14 +51,14 @@ _ROUTE_INSTRUCTION = """【系统指令】根据以上对话，判断最新一�
 
 复杂任务返回（同时生成执行计划）：
 {
-  "thought": "分析任务的复杂度和包含的物理步骤，梳理出需要并行的模块和依赖关系。",
+  "thought": "分析任务的复杂度和包含的物理步骤，梳理出需要并行的模块和依赖关系。分析当前用户的目标路径。强制自我审查：目标路径是否是一个全新的目录？如果是，必须要写绝对路径！",
   "route": "plan",
   "goal": "任务目标的简短描述",
   "steps": [
-    {"id": 1, "description": "步骤描述", "depends_on": []},
-    {"id": 2, "description": "步骤描述", "depends_on": [1]},
-    {"id": 3, "description": "步骤描述", "depends_on": []},
-    {"id": 4, "description": "步骤描述", "depends_on": [2, 3]}
+    {"id": 1, "description": "步骤描述，如果有路径必须是绝对路径", "depends_on": []},
+    {"id": 2, "description": "步骤描述，如果有路径必须是绝对路径", "depends_on": [1]},
+    {"id": 3, "description": "步骤描述，如果有路径必须是绝对路径", "depends_on": []},
+    {"id": 4, "description": "步骤描述，如果有路径必须是绝对路径", "depends_on": [2, 3]}
   ]
 }
 

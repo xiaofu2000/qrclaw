@@ -3,7 +3,7 @@
 """
 from rich.console import Console
 from rich.table import Table
-from qrclaw.memory.session import Session, list_sessions, delete_session
+from qrclaw.memory.context.session import Session, list_sessions, delete_session
 from qrclaw.workspace import Workspace
 from qrclaw.logger import setup_logger
 from qrclaw.config import LOG_LEVEL, LOG_MAX_DAYS, LOG_TO_FILE, LOG_TO_CONSOLE, LOG_CONSOLE_LEVEL

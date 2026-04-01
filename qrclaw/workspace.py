@@ -21,7 +21,10 @@ class Workspace:
         self.sessions_dir = self.root / "sessions"
         self.logs_dir = self.root / "logs"
         self.skills_dir = self.root / "skills"
-        self.memory_file = self.root / "MEMORY.md"
+        
+        # 记忆系统路径
+        self.memory_dir = self.root / "memory"  # 增强版：目录结构
+        self.memory_file = self.root / "MEMORY.md"  # 兼容旧接口：单个文件
         self.heartbeat_file = self.root / "HEARTBEAT.md"
         self.agent_file = self.root / "AGENT.md"
 
@@ -29,6 +32,17 @@ class Workspace:
         self.sessions_dir.mkdir(parents=True, exist_ok=True)
         self.logs_dir.mkdir(parents=True, exist_ok=True)
         self.skills_dir.mkdir(parents=True, exist_ok=True)
+        self.memory_dir.mkdir(parents=True, exist_ok=True)
+
+    def get_memory_manager(self):
+        """
+        获取 MemoryManager 实例
+        
+        Returns:
+            MemoryManager: 增强版记忆管理器
+        """
+        from qrclaw.memory import MemoryManager
+        return MemoryManager(self.memory_dir)
 
 
 def list_agents() -> list[str]:

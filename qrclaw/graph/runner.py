@@ -8,7 +8,7 @@ GraphRunner —图的入口
                    └─→ ReactLoop （并行计划完成后整合，由策略决定）
 """
 from rich.console import Console
-from qrclaw.memory.session import Session
+from qrclaw.memory.context.session import Session
 from qrclaw.workspace import Workspace
 from qrclaw.graph.nodes.router import RouterNode
 from qrclaw.graph.nodes.react_loop import ReactLoopNode
@@ -47,7 +47,7 @@ class GraphRunner:
             logger.info(f"路由 → PlanExecutor: {route_result.plan.goal}")
 
             # Router 生成 plan 后直接写入 ctx，下游不需再传递 plan 对象
-            from qrclaw.memory.context_manager import get_context_manager
+            from qrclaw.memory.context.context_manager import get_context_manager
             get_context_manager().set_plan(route_result.plan.goal, route_result.plan.steps)
 
             def react_loop_fn():

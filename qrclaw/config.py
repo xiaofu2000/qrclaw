@@ -17,7 +17,7 @@ LLM_PROVIDER = os.getenv("LLM_PROVIDER", "openai")
 # Vertex AI 配置（Express API Key 方式）
 VERTEX_API_KEY = os.getenv("VERTEX_API_KEY", "")
 
-MAX_ITERATIONS = int(os.getenv("MAX_ITERATIONS", "50"))
+MAX_ITERATIONS = int(os.getenv("MAX_ITERATIONS", "100"))
 
 # 模型最大上下文窗口（token数）
 _MODEL_MAX_TOKENS = int(os.getenv("MODEL_MAX_TOKENS", "128000"))

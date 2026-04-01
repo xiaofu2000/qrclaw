@@ -18,8 +18,8 @@ ContextManager —— 统一上下文管理中心
 """
 import threading
 from dataclasses import dataclass, field
-from qrclaw.memory.session import Session, count_tokens
-from qrclaw.memory import compressor
+from qrclaw.memory.context.session import Session, count_tokens
+from qrclaw.memory.compression.compressor import summarize
 from qrclaw.config import COMPRESS_THRESHOLD
 from qrclaw.workspace import Workspace
 from qrclaw.prompt import build_system_prompt
@@ -130,7 +130,7 @@ class ContextManager:
         messages = [self._make_system_prompt(), *self.session.messages]
         if count_tokens(messages) > COMPRESS_THRESHOLD:
             logger.info("token 超限，触发压缩")
-            compressor.summarize(self.session)
+            summarize(self.session)
 
     # ── 私有组装方法 ──────────────────────────────────────────────────
 

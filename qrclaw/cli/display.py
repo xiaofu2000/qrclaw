@@ -5,7 +5,7 @@
 """
 from rich.console import Console
 from rich.text import Text
-from qrclaw.memory.session import Session
+from qrclaw.memory.context.session import Session
 from qrclaw.config import _MODEL_MAX_TOKENS, COMPRESS_THRESHOLD
 
 

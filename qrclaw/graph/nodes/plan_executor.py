@@ -18,9 +18,9 @@ import threading
 import queue
 from rich.console import Console
 from rich.panel import Panel
-from qrclaw.memory.session import Session
-from qrclaw.memory.step_result import StepResult
-from qrclaw.memory.context_manager import get_context_manager
+from qrclaw.memory.context.session import Session
+from qrclaw.memory.context.step_result import StepResult
+from qrclaw.memory.context.context_manager import get_context_manager
 from qrclaw.workspace import Workspace
 from qrclaw.graph.executor import get_next_layer
 from qrclaw.graph.nodes.replanner import ReplannerNode

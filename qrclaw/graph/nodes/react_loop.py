@@ -12,8 +12,8 @@ from qrclaw.config import MAX_ITERATIONS, COMPRESS_THRESHOLD
 from qrclaw.providers import provider
 from qrclaw.providers.base import LLMResponse
 from qrclaw.tools.registry import get_schemas, get_schemas_for_sub_agent, execute, need_confirm
-from qrclaw.memory.session import Session
-from qrclaw.memory.context_manager import get_context_manager
+from qrclaw.memory.context.session import Session
+from qrclaw.memory.context.context_manager import get_context_manager
 from qrclaw.workspace import Workspace
 from qrclaw.logger import get_logger
 

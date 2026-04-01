@@ -46,7 +46,7 @@ def main() -> None:
     from qrclaw.tools.spawn_agent import set_console as set_spawn_console
     set_spawn_console(console)  # 注入 console，子 agent 完成时直接打印
     from qrclaw.agent import run
-    from qrclaw.memory.session import Session
+    from qrclaw.memory.context.session import Session
     from qrclaw.heartbeat import get_default_heartbeat_content, execute_heartbeat_tasks
 
     # 3. 创建 Session（路径由 workspace 决定）
