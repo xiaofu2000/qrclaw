@@ -41,19 +41,23 @@ class ReactLoopNode:
 
     def __init__(self):
         # 延迟导入，避免循环依赖
-        self._memory_extractor = None
+        self._memory_integration = None
 
-    def _get_memory_extractor(self, workspace: Workspace):
-        """懒加载 MemoryExtractionNode"""
-        if self._memory_extractor is None:
-            from qrclaw.graph.nodes.memory_extraction import MemoryExtractionNode
+    def _get_memory_integration(self, workspace: Workspace):
+        """懒加载 MemoryExtractionIntegration（仅主 agent）"""
+        if self._memory_integration is None:
+            from qrclaw.graph.nodes.memory_extraction import (
+                MemoryExtractionNode,
+                MemoryExtractionIntegration,
+            )
             from qrclaw.memory import LongTermMemory
 
             if workspace:
                 memory = LongTermMemory(workspace.memory_file, workspace.memory_dir)
-                self._memory_extractor = MemoryExtractionNode(memory)
-                logger.debug("MemoryExtractionNode 已初始化")
-        return self._memory_extractor
+                extractor = MemoryExtractionNode(memory)
+                self._memory_integration = MemoryExtractionIntegration(extractor)
+                logger.debug("MemoryExtractionIntegration 已初始化")
+        return self._memory_integration
 
     def run(
         self,
@@ -67,8 +71,8 @@ class ReactLoopNode:
         permission_denied_count = 0
         MAX_PERMISSION_DENIED = 2
 
-        # 获取 memory extractor
-        memory_extractor = self._get_memory_extractor(workspace)
+        # 仅主 agent 启用记忆提取
+        memory_integration = self._get_memory_integration(workspace) if not is_sub_agent else None
 
         for iteration in range(MAX_ITERATIONS):
             logger.debug(f"ReAct 第 {iteration + 1} 轮")
@@ -105,8 +109,9 @@ class ReactLoopNode:
                 ))
                 console.print()
 
-                # 循环结束时触发记忆提取
-                self._on_loop_end(session, memory_extractor)
+                # 循环结束时触发记忆提取（仅主 agent）
+                if memory_integration:
+                    memory_integration.on_react_loop_end(session, iteration)
 
                 return response.content
 
@@ -180,28 +185,11 @@ class ReactLoopNode:
 
                 session.add({"role": "tool", "tool_call_id": tc.id, "content": result})
 
-            # 每轮循环结束后也触发检查（可选）
-            self._on_loop_end(session, memory_extractor, iteration=iteration)
 
         logger.warning("达到最大迭代次数")
 
-        # 达到最大迭代次数后也触发一次提取
-        self._on_loop_end(session, memory_extractor)
+        # 达到最大迭代次数后也触发一次提取（仅主 agent）
+        if memory_integration:
+            memory_integration.on_react_loop_end(session, iteration)
 
         return "错误：达到最大迭代次数"
-
-    def _on_loop_end(self, session: Session, memory_extractor, iteration: int = None):
-        """循环结束时触发记忆提取"""
-        if memory_extractor is None:
-            return
-
-        try:
-            messages = session.messages
-            token_count = memory_extractor._estimate_tokens(messages)
-            memory_extractor.check_and_extract(messages, token_count, iteration or 0)
-
-            # 如果队列满了，批量写入
-            if memory_extractor.get_pending_count() >= memory_extractor.config.max_pending:
-                memory_extractor.flush_pending()
-        except Exception as e:
-            logger.warning(f"记忆提取失败: {e}")
