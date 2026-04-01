@@ -36,6 +36,8 @@ class OpenAIProvider(LLMProvider):
 
         response = self._client.chat.completions.create(**kwargs)
         usage = response.usage
+        if not response.choices:
+            raise RuntimeError(f"LLM 返回空 choices，原始响应: {response}")
         choice = response.choices[0]
         message = choice.message
 
