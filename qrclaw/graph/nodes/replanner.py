@@ -10,6 +10,8 @@ import json
 import re
 from qrclaw.providers import provider
 from qrclaw.graph.nodes.router import PlanStep
+from qrclaw.memory.step_result import StepResult
+from qrclaw.memory.context_manager import get_context_manager
 from qrclaw.logger import get_logger
 
 logger = get_logger("qrclaw.graph.nodes.replanner")
@@ -73,51 +75,30 @@ def _parse_json(raw: str) -> dict:
 
 class ReplannerNode:
 
-    def run(
-        self,
-        goal: str,
-        past_steps: list[tuple[str, str]],
-        remaining_steps: list[PlanStep],
-    ) -> list[PlanStep] | None:
+    def run(self) -> list[PlanStep] | None:
         """
-        评估并重规划。
-
-        Args:
-            goal: 用户的终极目标
-            past_steps: 已完成步骤列表，每项为 (步骤描述, 执行结果)
-            remaining_steps: 当前剩余步骤
+        评估并重规划。状态全部从 get_context_manager().plan_state 读取。
 
         Returns:
             None: 目标已达成（DONE）
-            list[PlanStep]: 新的剩余步骤（可能与原来相同，也可能已调整）
+            list[PlanStep]: 新的剩余步骤
         """
-        logger.info(f"Replanner 评估，已完成 {len(past_steps)} 步，剩余 {len(remaining_steps)} 步")
+        ctx = get_context_manager()
+        ps = ctx.plan_state
+        logger.info(f"Replanner 评估，已完成 {len(ps.past_steps)} 步，剩余 {len(ps.remaining)} 步")
 
-        past_text = "\n".join(
-            f"- {desc}\n  结果：{result}" for desc, result in past_steps
-        ) or "（无）"
-
-        remaining_text = "\n".join(
-            f"- Step {s.id}: {s.description}" for s in remaining_steps
-        ) or "（无剩余步骤）"
-
-        prompt = (
-            _REPLANNER_PROMPT
-            .replace("{goal}", goal)
-            .replace("{past_steps}", past_text)
-            .replace("{remaining_steps}", remaining_text)
-        )
+        messages = ctx.build_messages("replanner")
 
         try:
             response = provider.chat(
-                [{"role": "user", "content": prompt}],
+                messages,
                 tools=None,
                 json_mode=True,
             )
             data = _parse_json(response.content)
         except Exception as e:
             logger.warning(f"Replanner 调用失败: {e}，保持原计划继续")
-            return remaining_steps
+            return ctx.plan_state.remaining
 
         status = data.get("status", "continue")
 
@@ -139,8 +120,8 @@ class ReplannerNode:
             for s in new_steps_data
         ]
 
-        if len(new_steps) != len(remaining_steps) or any(
-            n.description != o.description for n, o in zip(new_steps, remaining_steps)
+        if len(new_steps) != len(ps.remaining) or any(
+            n.description != o.description for n, o in zip(new_steps, ps.remaining)
         ):
             logger.info(f"Replanner 调整了计划，新剩余步骤数: {len(new_steps)}")
         else:

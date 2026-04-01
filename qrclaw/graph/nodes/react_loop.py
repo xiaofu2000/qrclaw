@@ -13,23 +13,11 @@ from qrclaw.providers import provider
 from qrclaw.providers.base import LLMResponse
 from qrclaw.tools.registry import get_schemas, get_schemas_for_sub_agent, execute, need_confirm
 from qrclaw.memory.session import Session
-from qrclaw.memory import compressor
-from qrclaw.prompt import build_system_prompt
+from qrclaw.memory.context_manager import get_context_manager
 from qrclaw.workspace import Workspace
 from qrclaw.logger import get_logger
 
 logger = get_logger("qrclaw.graph.nodes.react_loop")
-
-
-def _make_system_prompt(workspace: Workspace, session: Session, is_sub: bool) -> dict:
-    content = build_system_prompt(
-        heartbeat_file=workspace.heartbeat_file,
-        is_sub_agent=is_sub,
-        agent_file=workspace.agent_file,
-        skills_dir=workspace.skills_dir,
-        memory_file=workspace.memory_file,
-    )
-    return {"role": "system", "content": content}
 
 
 def _dump_assistant_msg(response: LLMResponse) -> dict:
@@ -59,21 +47,16 @@ class ReactLoopNode:
         auto_confirm: bool = False,
         is_sub_agent: bool = False,
     ) -> str:
-        system_prompt = _make_system_prompt(workspace, session, is_sub_agent)
+        ctx = get_context_manager()
         permission_denied_count = 0
         MAX_PERMISSION_DENIED = 2
 
         for iteration in range(MAX_ITERATIONS):
             logger.debug(f"ReAct 第 {iteration + 1} 轮")
 
-            messages = [system_prompt, *session.messages]
-
-            # 调用前检查 token 数，超限提前压缩，避免调用失败
-            from qrclaw.memory.session import count_tokens
-            if count_tokens(messages) > COMPRESS_THRESHOLD:
-                logger.info("调用前 token 超限，提前压缩")
-                compressor.summarize(session)
-                messages = [system_prompt, *session.messages]
+            # 调用前检查 token 数，超限提前压缩
+            ctx.compress_if_needed()
+            messages = ctx.build_messages("react")
 
             tools = get_schemas_for_sub_agent() if is_sub_agent else get_schemas()
 
@@ -90,7 +73,7 @@ class ReactLoopNode:
                     raise
 
             if response.prompt_tokens > COMPRESS_THRESHOLD:
-                compressor.summarize(session)
+                ctx.compress_if_needed()
 
             if response.finish_reason == "stop":
                 session.add({"role": "assistant", "content": response.content})

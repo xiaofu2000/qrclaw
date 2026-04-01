@@ -18,6 +18,7 @@ import json
 import re
 from dataclasses import dataclass, field
 from qrclaw.providers import provider
+from qrclaw.memory.context_manager import get_context_manager
 from qrclaw.logger import get_logger
 
 logger = get_logger("qrclaw.graph.nodes.router")
@@ -128,22 +129,10 @@ def _parse_plan(data: dict, fallback_input: str) -> Plan:
 
 class RouterNode:
 
-    def run(self, user_input: str, history: list, workspace=None) -> RouteResult:
+    def run(self, user_input: str) -> RouteResult:
         logger.info(f"Router 判断路由: {user_input[:60]}...")
-
-        from qrclaw.prompt import build_system_prompt
-        system_content = build_system_prompt(
-            agent_file=workspace.agent_file if workspace else None,
-            skills_dir=workspace.skills_dir if workspace else None,
-            memory_file=workspace.memory_file if workspace else None,
-        )
-
-        messages: list[dict] = [{"role": "system", "content": system_content}]
-        if history:
-            messages.extend(history)
-        else:
-            messages.append({"role": "user", "content": user_input})
-        messages.append({"role": "user", "content": _ROUTE_INSTRUCTION})
+        ctx = get_context_manager()
+        messages = ctx.build_messages("router", route_instruction=_ROUTE_INSTRUCTION)
 
         try:
             response = provider.chat(messages, tools=None, json_mode=True)

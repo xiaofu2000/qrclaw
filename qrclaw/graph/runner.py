@@ -41,16 +41,19 @@ class GraphRunner:
             return self.react_loop.run(session, console, workspace, auto_confirm, is_sub_agent=True)
 
         # 条件边：Router 判断路由
-        route_result = self.router.run(user_input, history=session.messages, workspace=workspace)
+        route_result = self.router.run(user_input)
 
         if route_result.route == "plan" and route_result.plan:
             logger.info(f"路由 → PlanExecutor: {route_result.plan.goal}")
+
+            # Router 生成 plan 后直接写入 ctx，下游不需再传递 plan 对象
+            from qrclaw.memory.context_manager import get_context_manager
+            get_context_manager().set_plan(route_result.plan.goal, route_result.plan.steps)
 
             def react_loop_fn():
                 return self.react_loop.run(session, console, workspace, auto_confirm, is_sub_agent=False)
 
             return self.plan_executor.run(
-                plan=route_result.plan,
                 session=session,
                 console=console,
                 workspace=workspace,

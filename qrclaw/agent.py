@@ -81,6 +81,10 @@ def run(
     set_workspace(workspace)
     session.add({"role": "user", "content": user_input})
 
+    # 主 agent 初始化 ContextManager 单例
+    from qrclaw.memory.context_manager import init_context_manager
+    init_context_manager(session, workspace, is_sub_agent=is_sub_agent())
+
     from qrclaw.graph.runner import GraphRunner
     runner = GraphRunner()
     return runner.run(
@@ -98,15 +102,11 @@ def run_sub_agent(
     task: str,
     workspace: Workspace,
     agent_id: str,
-    inherit_messages: list[dict] | None = None,
     console: Console | None = None,
 ) -> tuple[str, Session]:
     """
     启动子 agent，返回 (结果字符串, 子session)。
-
-    - 串行步骤传入 inherit_messages，子 session 以主 session 的消息历史为起点
-    - 并行步骤不传，各自完全独立运行
-    - 串行步骤传入 console，实时输出到终端；并行步骤不传，静默运行
+    子 agent 的任务与前置步骤上下文通过 task 字符串传递。
     """
     from io import StringIO
     from rich.console import Console as RichConsole
@@ -129,11 +129,6 @@ def run_sub_agent(
         session_id=session_id,
         resume=False,
     )
-
-    if inherit_messages is not None:
-        # 串行：以主 session 的消息历史为起点，子 agent 能看到完整上下文
-        sub_session.messages = list(inherit_messages)
-        logger.info(f"子 agent {agent_id} 继承 {len(inherit_messages)} 条消息")
 
     try:
         result = run(task, sub_session, sub_console, workspace, auto_confirm=True)
