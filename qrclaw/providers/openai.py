@@ -52,13 +52,13 @@ class OpenAIProvider(LLMProvider):
         if tool_calls and finish_reason not in ("tool_calls", "stop"):
             finish_reason = "tool_calls"
 
-        logger.info(f"LLM 响应成功，使用 {usage.total_tokens} tokens")
+        logger.info(f"LLM 响应成功，使用 {usage.total_tokens if usage else '?'} tokens")
         return LLMResponse(
             content=message.content or "",
             tool_calls=tool_calls,
             finish_reason=finish_reason,
-            prompt_tokens=usage.prompt_tokens,
-            completion_tokens=usage.completion_tokens,
-            total_tokens=usage.total_tokens,
+            prompt_tokens=usage.prompt_tokens if usage else 0,
+            completion_tokens=usage.completion_tokens if usage else 0,
+            total_tokens=usage.total_tokens if usage else 0,
             raw=response,
         )
