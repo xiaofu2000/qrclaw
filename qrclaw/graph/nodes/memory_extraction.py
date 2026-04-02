@@ -291,7 +291,7 @@ class MemoryExtractionNode:
         lines = []
         for msg in messages[-20:]:  # 最近20条
             role = getattr(msg, 'type', 'unknown') or getattr(msg, 'role', 'unknown')
-            content = getattr(msg, 'content', '') or ''
+            content = msg.get('content', '') if isinstance(msg, dict) else getattr(msg, 'content', '')
             if isinstance(content, list):
                 content = '\n'.join(
                     b.get('text', '') or b.get('content', '')
@@ -453,7 +453,13 @@ class MemoryExtractionNode:
         """
         total = 0
         for msg in messages:
-            content = getattr(msg, 'content', '') or ''
+            # 安全获取 content，处理 None 和非字符串情况
+            if isinstance(msg, dict):
+                content = msg.get('content', '')
+            else:
+                content = getattr(msg, 'content', '')
+            if content is None or not isinstance(content, (str, list)):
+                continue
             if isinstance(content, list):
                 for block in content:
                     if block.get('type') == 'text':
