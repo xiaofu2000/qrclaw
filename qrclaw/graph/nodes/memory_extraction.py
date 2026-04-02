@@ -42,7 +42,7 @@ class ExtractionConfig:
     tool_calls_between_updates: int = 3
 
     # 最大待处理数量
-    max_pending: int = 5
+    max_pending: int = 3
 
     def __post_init__(self):
         """从环境变量加载配置（如果设置了）"""
@@ -539,5 +539,5 @@ class MemoryExtractionIntegration:
         self.extractor.check_and_extract(messages, token_count, current_round)
 
         # 检查是否需要批量写入
-        if self.extractor.get_pending_count() > 0:
+        if self.extractor.get_pending_count() > self.config.max_pending:
             self.extractor.flush_pending()
