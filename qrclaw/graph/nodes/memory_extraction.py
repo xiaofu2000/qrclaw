@@ -11,6 +11,7 @@ MemoryExtractionNode —— 会话记忆提取节点（Claude Code 风格）
 不同于 Claude Code：
 - 使用后台线程而非 forking（Python 限制）
 """
+import os
 import threading
 from dataclasses import dataclass
 from datetime import datetime
@@ -29,16 +30,28 @@ class ExtractionConfig:
     """提取配置"""
 
     # 初始化阈值：Token 数量达到多少时开始提取
+    # 支持环境变量覆盖：MEMORY_INIT_THRESHOLD
     minimum_message_tokens_to_init: int = 10000
 
     # 更新间隔：Token 增长多少时触发下一次提取
+    # 支持环境变量覆盖：MEMORY_UPDATE_INTERVAL
     minimum_tokens_between_update: int = 5000
 
     # 工具调用次数间隔
+    # 支持环境变量覆盖：MEMORY_TOOL_CALL_INTERVAL
     tool_calls_between_updates: int = 3
 
     # 最大待处理数量
     max_pending: int = 5
+
+    def __post_init__(self):
+        """从环境变量加载配置（如果设置了）"""
+        if "MEMORY_INIT_THRESHOLD" in os.environ:
+            self.minimum_message_tokens_to_init = int(os.environ["MEMORY_INIT_THRESHOLD"])
+        if "MEMORY_UPDATE_INTERVAL" in os.environ:
+            self.minimum_tokens_between_update = int(os.environ["MEMORY_UPDATE_INTERVAL"])
+        if "MEMORY_TOOL_CALL_INTERVAL" in os.environ:
+            self.tool_calls_between_updates = int(os.environ["MEMORY_TOOL_CALL_INTERVAL"])
 
 
 DEFAULT_CONFIG = ExtractionConfig()
@@ -128,7 +141,12 @@ class MemoryExtractionNode:
         self._stop_event = threading.Event()
         self._session_ref = None
 
-        logger.debug("MemoryExtractionNode 初始化完成")
+        logger.info(
+            f"MemoryExtractionNode 初始化完成 | "
+            f"init_threshold={self.config.minimum_message_tokens_to_init} | "
+            f"update_interval={self.config.minimum_tokens_between_update} | "
+            f"tool_call_interval={self.config.tool_calls_between_updates}"
+        )
 
     # ── 阈值检查 ──────────────────────────────────────────────────────────────
 
@@ -143,13 +161,19 @@ class MemoryExtractionNode:
         # 初始化检查
         if not self._is_initialized:
             if token_count < self.config.minimum_message_tokens_to_init:
+                logger.debug(
+                    f"[记忆提取] 未初始化 | 当前token={token_count} < 阈值={self.config.minimum_message_tokens_to_init}"
+                )
                 return False
             self._is_initialized = True
-            logger.info(f"记忆提取已初始化，Token数: {token_count}")
+            logger.info(f"[记忆提取] 已初始化，当前Token数: {token_count}")
 
         # Token 增长阈值
         tokens_since_last = token_count - self._tokens_at_last_extraction
         if tokens_since_last < self.config.minimum_tokens_between_update:
+            logger.debug(
+                f"[记忆提取] Token增长不足 | {tokens_since_last} < {self.config.minimum_tokens_between_update}"
+            )
             return False
 
         # 工具调用阈值
@@ -157,8 +181,16 @@ class MemoryExtractionNode:
         if tool_calls < self.config.tool_calls_between_updates:
             # 检查最后一条消息是否有工具调用（自然间隙）
             if self._has_tool_calls_in_last_turn(messages):
+                logger.debug(
+                    f"[记忆提取] 工具调用不足且最后轮次有工具调用 | "
+                    f"tool_calls={tool_calls} < {self.config.tool_calls_between_updates}"
+                )
                 return False
 
+        logger.info(
+            f"[记忆提取] ✅ 触发提取 | token={token_count} | "
+            f"tokens_since_last={tokens_since_last} | tool_calls={tool_calls}"
+        )
         return True
 
     def _count_tool_calls_since(self, messages: list, since_uuid: str = None) -> int:
@@ -180,15 +212,24 @@ class MemoryExtractionNode:
         return count
 
     def _has_tool_calls_in_last_turn(self, messages: list) -> bool:
-        """检查最后一条 assistant 消息是否有工具调用"""
+        """
+        检查最后一条 assistant 消息是否有工具调用
+        
+        Returns:
+            True: 最后有 assistant 且有工具调用
+            False: 没有 assistant 消息，或 assistant 没有工具调用
+        """
         # 从后往前找最后一条 assistant 消息
         for msg in reversed(messages):
             if hasattr(msg, 'type') and msg.type == 'assistant':
                 content = getattr(msg, 'content', None) or getattr(msg, 'message', {}).get('content', [])
                 if isinstance(content, list):
                     return any(block.get('type') == 'tool_use' for block in content)
+                # assistant 但内容为空，没有工具调用
                 return False
-        return True
+        
+        # 没有找到 assistant 消息，返回 False（允许提取）
+        return False
 
     # ── 检查与提取 ───────────────────────────────────────────────────────────
 
@@ -241,8 +282,9 @@ class MemoryExtractionNode:
                     description=f"会话记忆_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
                 )
             )
+            pending_count = len(self._pending_extractions)
 
-        logger.debug(f"提取任务已加入队列，消息数: {len(messages)}")
+        logger.warning(f"[记忆提取] 任务已加入队列，消息数: {len(messages)}，pending: {pending_count}")
 
     def _format_messages_for_llm(self, messages: list) -> str:
         """将消息列表格式化为 LLM 可读的文本"""
@@ -273,10 +315,14 @@ class MemoryExtractionNode:
         """
         with self._pending_lock:
             if not self._pending_extractions:
+                logger.debug("[记忆提取] flush_pending: 无待处理任务")
                 return 0
 
             to_write = self._pending_extractions[:self.config.max_pending]
             self._pending_extractions = self._pending_extractions[self.config.max_pending:]
+            remaining = len(self._pending_extractions)
+
+        logger.warning(f"[记忆提取] 开始写入，待处理: {len(to_write)}，剩余: {remaining}")
 
         success_count = 0
         for result in to_write:
@@ -295,12 +341,16 @@ class MemoryExtractionNode:
                         )
                         if success:
                             success_count += 1
-                            logger.info(f"写入记忆: {memory_info.get('name')}")
+                            logger.warning(f"[记忆提取] 写入成功: {memory_info.get('name')}")
+                        else:
+                            logger.warning(f"[记忆提取] 写入失败: {memory_info.get('name')}")
+                else:
+                    logger.debug("[记忆提取] LLM 判定无需提取")
             except Exception as e:
-                logger.warning(f"写入记忆失败: {e}")
+                logger.warning(f"[记忆提取] 写入异常: {e}")
 
         if success_count > 0:
-            logger.info(f"批量写入完成: {success_count}/{len(to_write)}")
+            logger.info(f"[记忆提取] 批量写入完成: {success_count}/{len(to_write)}")
 
         return success_count
 
@@ -314,12 +364,14 @@ class MemoryExtractionNode:
             from qrclaw.providers import provider
 
             messages = [{"role": "user", "content": prompt}]
+            logger.debug("[记忆提取] 调用 LLM 分析...")
             response = provider.chat(messages)
+            logger.debug(f"[记忆提取] LLM 响应: {response.content[:100]}...")
 
             return response.content
 
         except Exception as e:
-            logger.warning(f"LLM 分析失败: {e}，跳过本次提取")
+            logger.warning(f"[记忆提取] LLM 分析失败: {e}，跳过本次提取")
             return "无需提取"
 
     def _parse_llm_response(self, response: str) -> Optional[dict]:
@@ -391,15 +443,37 @@ class MemoryExtractionNode:
             self._stop_event.wait(interval_seconds)
 
     def _estimate_tokens(self, messages: list) -> int:
-        """估算 token 数量（简单实现）"""
-        # 简单估算：每4个字符约等于1个token
+        """
+        估算 token 数量
+        
+        改进估算：
+        - 中文按 2 字符 ≈ 1 token
+        - 英文按 4 字符 ≈ 1 token
+        - 包含 JSON/tool calls 时更密集
+        """
         total = 0
         for msg in messages:
             content = getattr(msg, 'content', '') or ''
             if isinstance(content, list):
-                content = ' '.join(b.get('text', '') for b in content if b.get('type') == 'text')
-            total += len(content)
-        return total // 4
+                for block in content:
+                    if block.get('type') == 'text':
+                        text = block.get('text', '')
+                        total += self._count_text_tokens(text)
+                    elif block.get('type') == 'tool_use':
+                        # 工具调用内容更密集
+                        import json
+                        args = block.get('input', {})
+                        total += len(json.dumps(args)) // 2
+            else:
+                total += self._count_text_tokens(content)
+        return total
+
+    def _count_text_tokens(self, text: str) -> int:
+        """估算文本的 token 数"""
+        if not text:
+            return 0
+        # 简单估算：字符数 / 3（考虑中英文混合）
+        return max(1, len(text) // 3)
 
     # ── 状态查询 ─────────────────────────────────────────────────────────────
 
@@ -449,6 +523,11 @@ class MemoryExtractionIntegration:
         """
         messages = getattr(session, 'messages', [])
         token_count = self.extractor._estimate_tokens(messages)
+
+        logger.warning(
+            f"[记忆提取集成] 轮次={current_round} | "
+            f"消息数={len(messages)} | 估算token={token_count}"
+        )
 
         self.extractor.check_and_extract(messages, token_count, current_round)
 
