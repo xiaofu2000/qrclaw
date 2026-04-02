@@ -329,6 +329,7 @@ class MemoryExtractionNode:
             try:
                 # 使用 LLM 分析
                 analysis = self._analyze_with_llm(result.content)
+                logger.warning(f"[记忆提取] 是否需要提取: {analysis}")
 
                 if analysis and analysis.strip() != "无需提取":
                     memory_info = self._parse_llm_response(analysis)
@@ -538,5 +539,5 @@ class MemoryExtractionIntegration:
         self.extractor.check_and_extract(messages, token_count, current_round)
 
         # 检查是否需要批量写入
-        if self.extractor.get_pending_count() >= self.extractor.config.max_pending:
+        if self.extractor.get_pending_count() > 0:
             self.extractor.flush_pending()
