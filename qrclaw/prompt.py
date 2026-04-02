@@ -104,15 +104,35 @@ def _build_safety_section() -> str:
     ])
 
 
-def _build_workspace_section() -> str:
-    cwd = os.getcwd()
+def _build_workspace_section(project_context=None, is_sub_agent: bool = False) -> str:
+    from qrclaw.project_context import get_project_context
+    pc = project_context or get_project_context()
+    cwd = pc.effective_cwd
     os_name = platform.system()
-    return "\n".join([
+
+    lines = [
         "## 工作环境",
         f"- 操作系统：{os_name}",
         f"- 当前工作目录：{cwd}",
-        "- 文件操作默认相对于当前工作目录",
-    ])
+        "- 所有文件操作和 shell 命令默认在当前工作目录下执行",
+        "- 请始终使用绝对路径，避免因工作目录不一致导致文件找不到",
+    ]
+
+    if pc.additional_paths:
+        lines.append(f"- 额外项目路径：{', '.join(pc.additional_paths)}")
+
+    # 主 agent 专用：路径注册指示
+    if not is_sub_agent:
+        lines.extend([
+            "",
+            "### 路径注册规则（重要）",
+            "当用户在对话中提到一个**新的项目绝对路径**（例如 '/Users/xxx/another-project'、'~/other-repo'），"
+            "你必须**立即调用 add_project_path 工具**将该路径注册到工作环境中，然后再执行后续操作。",
+            "这样做的目的是让子 agent 也能感知到该路径，避免找不到文件。",
+            "不需要注册的情况：路径已经是当前工作目录，或已在额外项目路径列表中。",
+        ])
+
+    return "\n".join(lines)
 
 
 def _build_behavior_section(is_sub_agent: bool = False) -> str:
@@ -238,6 +258,7 @@ def build_system_prompt(
     agent_file: Path | None = None,
     skills_dir: Path | None = None,
     memory_file: Path | None = None,
+    project_context=None,
 ) -> str:
     """构建完整的 system prompt。
 
@@ -250,6 +271,7 @@ def build_system_prompt(
         agent_file:     AGENT.md 路径（agent 身份定义）
         skills_dir:     技能目录路径
         memory_file:    记忆文件路径
+        project_context: 运行时项目上下文（ProjectContext 实例）
     """
     from qrclaw.skills.registry import SkillRegistry
     tool_names = [s["function"]["name"] for s in get_schemas()]
@@ -270,7 +292,7 @@ def build_system_prompt(
         "",
         _build_safety_section(),
         "",
-        _build_workspace_section(),
+        _build_workspace_section(project_context=project_context, is_sub_agent=is_sub_agent),
         "",
         _build_memory_section(memory),
         "",

@@ -112,17 +112,28 @@ class PlanExecutorNode:
         return react_loop_fn()
 
     def _run_serial(self, step, goal: str, past_steps: list[StepResult], workspace, run_sub_agent_fn, console) -> str:
+        from qrclaw.project_context import get_project_path, get_all_project_paths
+
         prior_context = ""
         if past_steps:
             prior_context = "\n\n【前置步骤结果】\n" + "\n---\n".join(
                 sr.to_context_prompt() for sr in past_steps
             )
 
+        # 注入项目路径，确保子 agent 任务描述自包含
+        project_path = get_project_path()
+        all_paths = get_all_project_paths()
+        path_hint = f"\n【项目路径】{project_path}"
+        if len(all_paths) > 1:
+            path_hint += f"\n【其他相关路径】{', '.join(p for p in all_paths if p != project_path)}"
+
         task = (
             f"【计划目标】{goal}"
+            f"{path_hint}"
             f"{prior_context}\n\n"
             f"【当前任务】{step.description}\n\n"
-            f"【要求】只完成当前任务。完成后返回详细的结果摘要，如果有路径请使用绝对路径，禁止使用相对路径，包括：做了什么、发现了什么、产出了哪些文件。"
+            f"【要求】只完成当前任务。完成后返回详细的结果摘要，所有路径必须使用绝对路径，"
+            f"包括：做了什么、发现了什么、产出了哪些文件。"
         )
         result, _ = run_sub_agent_fn(
             task, workspace, f"step-{step.id}",
@@ -132,6 +143,8 @@ class PlanExecutorNode:
         return result
 
     def _run_parallel(self, layer, goal: str, past_steps: list[StepResult], workspace, run_sub_agent_fn, console) -> dict[int, str]:
+        from qrclaw.project_context import get_project_path, get_all_project_paths
+
         results: dict[int, str] = {}
         lock = threading.Lock()
         notify_queue: queue.Queue = queue.Queue()
@@ -143,12 +156,21 @@ class PlanExecutorNode:
                 sr.to_context_prompt() for sr in past_steps
             )
 
+        # 注入项目路径
+        project_path = get_project_path()
+        all_paths = get_all_project_paths()
+        path_hint = f"\n【项目路径】{project_path}"
+        if len(all_paths) > 1:
+            path_hint += f"\n【其他相关路径】{', '.join(p for p in all_paths if p != project_path)}"
+
         def _run(step):
             task = (
-                f"【计划目标】{goal}\n"
+                f"【计划目标】{goal}"
+                f"{path_hint}\n"
                 f"【步骤】{step.description}"
                 f"{prior_context}\n\n"
-                f"【要求】完成上述步骤。完成后返回详细的结果摘要，包括：做了什么、发现了什么、产出了哪些文件。"
+                f"【要求】完成上述步骤。完成后返回详细的结果摘要，所有路径必须使用绝对路径，"
+                f"包括：做了什么、发现了什么、产出了哪些文件。"
             )
             try:
                 result, _ = run_sub_agent_fn(

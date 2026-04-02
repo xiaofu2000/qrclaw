@@ -31,15 +31,17 @@ def _get_current_agent_id() -> str:
 
 
 def _get_workspace_root() -> str:
-    """获取工作空间路径"""
+    """获取 shell 命令的工作目录。
+
+    优先级：ProjectContext.project_path > os.getcwd()
+    不再使用 workspace.root（那是 agent 内部存储目录，不是用户项目目录）。
+    """
     try:
-        from qrclaw.agent import get_workspace
-        ws = get_workspace()
-        if ws:
-            return str(ws.root)
+        from qrclaw.project_context import get_project_path
+        return get_project_path()
     except Exception:
         pass
-    return None
+    return os.getcwd()
 
 
 def _is_sandbox_enabled() -> bool:

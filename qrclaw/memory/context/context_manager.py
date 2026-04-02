@@ -22,6 +22,9 @@ from qrclaw.memory.context.session import Session, count_tokens
 from qrclaw.memory.compression.compressor import summarize
 from qrclaw.config import COMPRESS_THRESHOLD
 from qrclaw.workspace import Workspace
+from qrclaw.project_context import (
+    ProjectContext, set_project_context, get_project_context,
+)
 from qrclaw.prompt import build_system_prompt
 from qrclaw.logger import get_logger
 
@@ -44,11 +47,21 @@ def init_context_manager(
     session: Session,
     workspace: Workspace,
     is_sub_agent: bool = False,
+    project_context: ProjectContext | None = None,
 ) -> "ContextManager":
-    """初始化当前线程的 ContextManager，返回实例。"""
-    ctx = ContextManager(session, workspace, is_sub_agent)
+    """初始化当前线程的 ContextManager，返回实例。
+
+    Args:
+        project_context: 运行时项目上下文。传入时同步设置到当前线程的 thread_local，
+                         不传时自动获取当前线程已有的 ProjectContext（可能为默认值）。
+    """
+    if project_context is not None:
+        set_project_context(project_context)
+    pc = project_context or get_project_context()
+
+    ctx = ContextManager(session, workspace, is_sub_agent, pc)
     _thread_local.ctx = ctx
-    logger.debug(f"初始化 ContextManager，is_sub_agent={is_sub_agent}")
+    logger.debug(f"初始化 ContextManager，is_sub_agent={is_sub_agent}, project_path={pc.effective_cwd}")
     return ctx
 
 
@@ -62,10 +75,13 @@ def get_context_manager() -> "ContextManager":
 
 class ContextManager:
 
-    def __init__(self, session: Session, workspace: Workspace, is_sub_agent: bool = False):
+    def __init__(self, session: Session, workspace: Workspace,
+                 is_sub_agent: bool = False,
+                 project_context: ProjectContext | None = None):
         self.session = session
         self.workspace = workspace
         self.is_sub_agent = is_sub_agent
+        self.project_context = project_context or get_project_context()
         self._plan_state: PlanState | None = None
         self._lock = threading.Lock()  # 保护 plan_state 的并发写入
 
@@ -141,6 +157,7 @@ class ContextManager:
             agent_file=self.workspace.agent_file,
             skills_dir=self.workspace.skills_dir,
             memory_file=self.workspace.memory_file,
+            project_context=self.project_context,
         )
         return {"role": "system", "content": content}
 

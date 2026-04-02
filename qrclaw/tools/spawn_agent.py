@@ -15,7 +15,6 @@ spawn_agent 工具
 
 重要：子 agent 不允许再派生子 agent，防止无限嵌套。
 """
-import os
 import threading
 from rich.console import Console
 from rich.panel import Panel
@@ -75,16 +74,15 @@ def spawn_agent(agent_id: str, task: str) -> str:
 
     # 获取父 agent 的工作空间（子 agent 共享）
     parent_workspace = get_workspace() or Workspace("default")
-    
+
     # 检查是否需要创建沙箱
     sandbox_enabled = is_sandbox_enabled(agent_id)
-    
+
     logger.info(f"启动子 agent: {agent_id}, 共享工作空间: {parent_workspace.root}, 沙箱: {sandbox_enabled}")
 
     def _run():
-        original_cwd = os.getcwd()
         sandbox_created = False
-        
+
         try:
             # 创建沙箱（如果启用）
             if sandbox_enabled:
@@ -99,16 +97,16 @@ def spawn_agent(agent_id: str, task: str) -> str:
                     logger.info(f"已为子 agent {agent_id} 创建沙箱")
                 except Exception as e:
                     logger.warning(f"为子 agent {agent_id} 创建沙箱失败: {e}")
-            
+
             # 执行子 agent（共享父 agent 的工作空间）
             result = run_sub_agent(task, parent_workspace, agent_id)
-            
+
             with _task_pool_lock:
                 _task_pool[agent_id]["status"] = "done"
                 _task_pool[agent_id]["result"] = result
-            
+
             logger.info(f"子 agent {agent_id} 完成")
-            
+
             if _console:
                 _console.print()
                 _console.print(Panel(
@@ -118,7 +116,7 @@ def spawn_agent(agent_id: str, task: str) -> str:
                     expand=False,
                 ))
                 _console.print()
-                
+
         except Exception as e:
             logger.error(f"子 agent {agent_id} 出错: {e}", exc_info=True)
             with _task_pool_lock:
@@ -136,12 +134,6 @@ def spawn_agent(agent_id: str, task: str) -> str:
                         logger.info(f"已销毁子 agent {agent_id} 的沙箱")
                 except Exception as e:
                     logger.warning(f"销毁子 agent {agent_id} 的沙箱失败: {e}")
-            
-            # 恢复 cwd
-            try:
-                os.chdir(original_cwd)
-            except Exception:
-                pass
 
     thread = threading.Thread(target=_run, name=f"sub-agent-{agent_id}", daemon=True)
 
@@ -154,6 +146,6 @@ def spawn_agent(agent_id: str, task: str) -> str:
         }
 
     thread.start()
-    
+
     sandbox_hint = " (沙箱已启用)" if sandbox_enabled else ""
     return f"子 agent '{agent_id}' 已在后台启动{sandbox_hint}，任务：{task[:50]}{'...' if len(task) > 50 else ''}"
