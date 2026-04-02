@@ -161,7 +161,7 @@ class MemoryExtractionNode:
         # 初始化检查
         if not self._is_initialized:
             if token_count < self.config.minimum_message_tokens_to_init:
-                logger.debug(
+                logger.warning(
                     f"[记忆提取] 未初始化 | 当前token={token_count} < 阈值={self.config.minimum_message_tokens_to_init}"
                 )
                 return False
@@ -171,7 +171,7 @@ class MemoryExtractionNode:
         # Token 增长阈值
         tokens_since_last = token_count - self._tokens_at_last_extraction
         if tokens_since_last < self.config.minimum_tokens_between_update:
-            logger.debug(
+            logger.warning(
                 f"[记忆提取] Token增长不足 | {tokens_since_last} < {self.config.minimum_tokens_between_update}"
             )
             return False
@@ -179,12 +179,12 @@ class MemoryExtractionNode:
         # 工具调用阈值：只统计上次提取之后的工具调用数
         tool_calls = self._count_tool_calls_since(messages, since_uuid=self._last_message_uuid)
         if tool_calls < self.config.tool_calls_between_updates:
-            logger.debug(
+            logger.warning(
                 f"[记忆提取] 工具调用不足 | {tool_calls} < {self.config.tool_calls_between_updates}"
             )
             return False
 
-        logger.info(
+        logger.warning(
             f"[记忆提取] ✅ 触发提取 | token={token_count} | "
             f"tokens_since_last={tokens_since_last} | tool_calls_since_last={tool_calls}"
         )
@@ -196,15 +196,27 @@ class MemoryExtractionNode:
         found_start = since_uuid is None
 
         for msg in messages:
+            # uuid 定位起始点
             if not found_start:
-                if hasattr(msg, 'uuid') and msg.uuid == since_uuid:
+                msg_uuid = msg.get('uuid') if isinstance(msg, dict) else getattr(msg, 'uuid', None)
+                if msg_uuid == since_uuid:
                     found_start = True
                 continue
 
-            if hasattr(msg, 'type') and msg.type == 'assistant':
-                content = getattr(msg, 'content', None) or getattr(msg, 'message', {}).get('content', [])
+            # 兼容 dict（OpenAI格式）和对象两种结构
+            role = msg.get('role') if isinstance(msg, dict) else getattr(msg, 'type', None)
+            if role != 'assistant':
+                continue
+
+            if isinstance(msg, dict):
+                # OpenAI 格式：tool_calls 是独立字段
+                tool_calls = msg.get('tool_calls') or []
+                count += len(tool_calls)
+            else:
+                # Anthropic 对象格式：content 里有 tool_use block
+                content = getattr(msg, 'content', []) or []
                 if isinstance(content, list):
-                    count += sum(1 for block in content if block.get('type') == 'tool_use')
+                    count += sum(1 for block in content if isinstance(block, dict) and block.get('type') == 'tool_use')
 
         return count
 

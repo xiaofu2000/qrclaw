@@ -66,6 +66,10 @@ def _dump_assistant_msg(response: LLMResponse) -> dict:
     return msg
 
 
+from qrclaw.graph.runner import GraphRunner
+_runner = GraphRunner()
+
+
 # ── 对外接口 ──────────────────────────────────────────────────────────
 
 def run(
@@ -86,8 +90,7 @@ def run(
     init_context_manager(session, workspace, is_sub_agent=is_sub_agent())
 
     from qrclaw.graph.runner import GraphRunner
-    runner = GraphRunner()
-    return runner.run(
+    return _runner.run(
         user_input=user_input,
         session=session,
         console=console,

@@ -80,10 +80,8 @@ class PlanExecutorNode:
             done_ids = {s.id for s in layer}
             ps.remaining = [s for s in ps.remaining if s.id not in done_ids]
 
-            if not ps.remaining:
-                break
-
-            # Replanner 直接从 ctx 读写状态，无需传参
+            # 不管 remaining 是否为空，都让 Replanner 评估一次
+            # 避免最后一层并行完成后跳过 Replanner 直接交给主 agent
             console.print("\n[dim]🔄 重新评估剩余计划...[/dim]")
             new_remaining = self.replanner.run()
 
@@ -124,7 +122,7 @@ class PlanExecutorNode:
             f"【计划目标】{goal}"
             f"{prior_context}\n\n"
             f"【当前任务】{step.description}\n\n"
-            f"【要求】只完成当前任务。完成后返回详细的结果摘要，包括：做了什么、发现了什么、产出了哪些文件。"
+            f"【要求】只完成当前任务。完成后返回详细的结果摘要，如果有路径请使用绝对路径，禁止使用相对路径，包括：做了什么、发现了什么、产出了哪些文件。"
         )
         result, _ = run_sub_agent_fn(
             task, workspace, f"step-{step.id}",
