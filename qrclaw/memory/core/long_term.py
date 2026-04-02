@@ -4,15 +4,15 @@
 基于 MemoryManager 的结构化存储，支持四种记忆类型。
 
 目录结构：
-    memory/
+    ~/.qrclaw/agents/{agent_id}/memory/
     ├── MEMORY.md              # 入口索引
     ├── user/                  # 用户记忆（私有）
     │   └── <name>.md
     ├── feedback/              # 反馈记忆
     │   └── <name>.md
-    ├── project/              # 项目记忆
+    ├── project/               # 项目记忆
     │   └── <name>.md
-    └── reference/            # 外部引用
+    └── reference/             # 外部引用
         └── <name>.md
 """
 from pathlib import Path
@@ -20,6 +20,9 @@ from qrclaw.logger import get_logger
 from qrclaw.memory.types import MemoryType
 
 logger = get_logger("qrclaw.memory.long_term")
+
+# 统一的 agents 目录结构
+AGENTS_ROOT = Path.home() / ".qrclaw" / "agents"
 
 
 class LongTermMemory:
@@ -29,16 +32,23 @@ class LongTermMemory:
     封装 MemoryManager 和 MemoryIndexer，提供简洁的接口。
     """
 
-    def __init__(self, memory_file: Path, memory_dir: Path = None):
+    def __init__(self, memory_file: Path = None, memory_dir: Path = None):
         """
         初始化长期记忆。
 
         Args:
             memory_file: 记忆文件路径（兼容旧接口，保留但不使用）
-            memory_dir: 记忆目录路径
+            memory_dir: 记忆目录路径，默认为 ~/.qrclaw/agents/default/memory/
         """
-        self.memory_file = Path(memory_file)
-        self.memory_dir = Path(memory_dir) if memory_dir else self.memory_file.parent
+        # 统一路径：使用 memory_dir 参数，memory_file 参数已废弃
+        if memory_dir:
+            self.memory_dir = Path(memory_dir)
+        else:
+            # 默认路径：与 Workspace 保持一致
+            self.memory_dir = AGENTS_ROOT / "default" / "memory"
+        
+        # memory_file 参数保留但不再使用（兼容旧接口）
+        self.memory_file = memory_file or (self.memory_dir / "MEMORY.md")
         
         # 延迟导入，避免循环依赖
         self._manager = None

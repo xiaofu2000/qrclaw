@@ -1,52 +1,97 @@
 """
-记忆管理器工厂模块
+记忆管理器工厂
 
-提供便捷的 MemoryManager 创建函数
+统一管理 MemoryManager、MemoryIndexer 的创建。
+确保所有记忆相关组件使用一致的路径配置。
 """
-
 from pathlib import Path
-from qrclaw.memory.core.memory_manager import MemoryManager
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from qrclaw.memory.core.memory_manager import MemoryManager
+    from qrclaw.memory.storage.indexer import MemoryIndexer
+
+# 统一使用 agents 目录结构
+AGENTS_ROOT = Path.home() / ".qrclaw" / "agents"
 
 
-def get_default_memory_dir() -> Path:
+def get_default_memory_dir(agent_id: str = None) -> Path:
     """
     获取默认记忆目录
-
+    
+    统一路径格式：~/.qrclaw/agents/{agent_id}/memory/
+    
+    Args:
+        agent_id: agent 标识符，默认为 "default"
+        
     Returns:
-        Path: ~/.qrclaw/memory/
+        Path: 记忆目录路径
     """
-    home = Path.home()
-    return home / ".qrclaw" / "memory"
+    if agent_id:
+        return AGENTS_ROOT / agent_id / "memory"
+    return AGENTS_ROOT / "default" / "memory"
 
 
 def create_memory_manager(
     agent_id: str = None,
     memory_dir: Path = None,
-) -> MemoryManager:
+) -> "MemoryManager":
     """
-    创建记忆管理器
-
+    创建 MemoryManager 实例
+    
+    优先级：memory_dir > agent_id > default
+    
     Args:
-        agent_id: Agent ID（用于隔离不同 agent 的记忆）
-        memory_dir: 自定义记忆目录
-
+        agent_id: agent 标识符
+        memory_dir: 直接指定记忆目录路径
+        
     Returns:
-        MemoryManager 实例
+        MemoryManager: 配置好的记忆管理器
     """
-    if memory_dir:
-        base_dir = Path(memory_dir)
-    elif agent_id:
-        # 按 agent 隔离记忆
-        base_dir = Path.home() / ".qrclaw" / "agents" / agent_id / "memory"
-    else:
-        # 使用默认目录
-        base_dir = get_default_memory_dir()
-
+    from qrclaw.memory.core.memory_manager import MemoryManager
+    
+    base_dir = memory_dir or get_default_memory_dir(agent_id)
     return MemoryManager(memory_dir=base_dir)
 
 
-__all__ = [
-    "MemoryManager",
-    "create_memory_manager",
-    "get_default_memory_dir",
-]
+def create_memory_indexer(
+    agent_id: str = None,
+    memory_dir: Path = None,
+) -> "MemoryIndexer":
+    """
+    创建 MemoryIndexer 实例
+    
+    Args:
+        agent_id: agent 标识符
+        memory_dir: 直接指定记忆目录路径
+        
+    Returns:
+        MemoryIndexer: 配置好的记忆索引器
+    """
+    from qrclaw.memory.storage.indexer import MemoryIndexer
+    
+    base_dir = memory_dir or get_default_memory_dir(agent_id)
+    return MemoryIndexer(memory_dir=base_dir)
+
+
+def create_long_term_memory(
+    agent_id: str = None,
+    memory_dir: Path = None,
+):
+    """
+    创建 LongTermMemory 实例
+    
+    整合 MemoryManager 和 MemoryIndexer 的便捷方法。
+    
+    Args:
+        agent_id: agent 标识符
+        memory_dir: 直接指定记忆目录路径
+        
+    Returns:
+        LongTermMemory: 完整的记忆管理系统
+    """
+    from qrclaw.memory import LongTermMemory
+    
+    base_dir = memory_dir or get_default_memory_dir(agent_id)
+    memory_file = base_dir / "MEMORY.md"
+    return LongTermMemory(memory_file=memory_file, memory_dir=base_dir)

@@ -5,6 +5,10 @@
 子 agent 共享父 agent 的工作空间（子 agent 是一次性的）。
 """
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from qrclaw.memory import MemoryManager
 
 # 所有 agent 的根目录
 AGENTS_ROOT = Path.home() / ".qrclaw" / "agents"
@@ -22,8 +26,8 @@ class Workspace:
         self.logs_dir = self.root / "logs"
         self.skills_dir = self.root / "skills"
         
-        # 记忆系统路径
-        self.memory_dir = self.root / "memory"  # 增强版：目录结构
+        # 记忆系统路径（统一到 agents/{agent_id}/memory/）
+        self.memory_dir = self.root / "memory"
         self.memory_file = self.root / "MEMORY.md"  # 兼容旧接口：单个文件
         self.heartbeat_file = self.root / "HEARTBEAT.md"
         self.agent_file = self.root / "AGENT.md"
@@ -34,7 +38,7 @@ class Workspace:
         self.skills_dir.mkdir(parents=True, exist_ok=True)
         self.memory_dir.mkdir(parents=True, exist_ok=True)
 
-    def get_memory_manager(self):
+    def get_memory_manager(self) -> "MemoryManager":
         """
         获取 MemoryManager 实例
         
@@ -43,6 +47,24 @@ class Workspace:
         """
         from qrclaw.memory import MemoryManager
         return MemoryManager(self.memory_dir)
+
+    def sub_agent(self, sub_id: str) -> "Workspace":
+        """
+        创建子 agent 工作空间
+        
+        子 agent 共享父 agent 的工作目录，agent_id 用于标识和日志区分。
+        这与 sub-agents/ 目录下的持久化子 agent 不同，这里的子 agent
+        是轻量级的、一次性的任务执行器。
+        
+        Args:
+            sub_id: 子 agent 标识符（如 "heartbeat", "memory-extraction"）
+            
+        Returns:
+            Workspace: 新建的工作空间（共享 root）
+        """
+        # agent_id 格式：{parent_id}-{sub_id}
+        new_agent_id = f"{self.agent_id}-{sub_id}"
+        return Workspace(agent_id=new_agent_id, _root=self.root)
 
 
 def list_agents() -> list[str]:
