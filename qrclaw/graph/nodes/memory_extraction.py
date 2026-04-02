@@ -214,7 +214,7 @@ class MemoryExtractionNode:
     def _has_tool_calls_in_last_turn(self, messages: list) -> bool:
         """
         检查最后一条 assistant 消息是否有工具调用
-        
+
         Returns:
             True: 最后有 assistant 且有工具调用
             False: 没有 assistant 消息，或 assistant 没有工具调用
@@ -227,7 +227,7 @@ class MemoryExtractionNode:
                     return any(block.get('type') == 'tool_use' for block in content)
                 # assistant 但内容为空，没有工具调用
                 return False
-        
+
         # 没有找到 assistant 消息，返回 False（允许提取）
         return False
 
@@ -446,7 +446,7 @@ class MemoryExtractionNode:
     def _estimate_tokens(self, messages: list) -> int:
         """
         估算 token 数量
-        
+
         改进估算：
         - 中文按 2 字符 ≈ 1 token
         - 英文按 4 字符 ≈ 1 token
@@ -539,5 +539,5 @@ class MemoryExtractionIntegration:
         self.extractor.check_and_extract(messages, token_count, current_round)
 
         # 检查是否需要批量写入
-        if self.extractor.get_pending_count() > self.config.max_pending:
+        if self.extractor.get_pending_count() > self.extractor.config.max_pending:
             self.extractor.flush_pending()
