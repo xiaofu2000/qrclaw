@@ -176,20 +176,17 @@ class MemoryExtractionNode:
             )
             return False
 
-        # 工具调用阈值
-        tool_calls = self._count_tool_calls_since(messages)
+        # 工具调用阈值：只统计上次提取之后的工具调用数
+        tool_calls = self._count_tool_calls_since(messages, since_uuid=self._last_message_uuid)
         if tool_calls < self.config.tool_calls_between_updates:
-            # 检查最后一条消息是否有工具调用（自然间隙）
-            if self._has_tool_calls_in_last_turn(messages):
-                logger.debug(
-                    f"[记忆提取] 工具调用不足且最后轮次有工具调用 | "
-                    f"tool_calls={tool_calls} < {self.config.tool_calls_between_updates}"
-                )
-                return False
+            logger.debug(
+                f"[记忆提取] 工具调用不足 | {tool_calls} < {self.config.tool_calls_between_updates}"
+            )
+            return False
 
         logger.info(
             f"[记忆提取] ✅ 触发提取 | token={token_count} | "
-            f"tokens_since_last={tokens_since_last} | tool_calls={tool_calls}"
+            f"tokens_since_last={tokens_since_last} | tool_calls_since_last={tool_calls}"
         )
         return True
 
@@ -210,26 +207,6 @@ class MemoryExtractionNode:
                     count += sum(1 for block in content if block.get('type') == 'tool_use')
 
         return count
-
-    def _has_tool_calls_in_last_turn(self, messages: list) -> bool:
-        """
-        检查最后一条 assistant 消息是否有工具调用
-
-        Returns:
-            True: 最后有 assistant 且有工具调用
-            False: 没有 assistant 消息，或 assistant 没有工具调用
-        """
-        # 从后往前找最后一条 assistant 消息
-        for msg in reversed(messages):
-            if hasattr(msg, 'type') and msg.type == 'assistant':
-                content = getattr(msg, 'content', None) or getattr(msg, 'message', {}).get('content', [])
-                if isinstance(content, list):
-                    return any(block.get('type') == 'tool_use' for block in content)
-                # assistant 但内容为空，没有工具调用
-                return False
-
-        # 没有找到 assistant 消息，返回 False（允许提取）
-        return False
 
     # ── 检查与提取 ───────────────────────────────────────────────────────────
 
@@ -539,5 +516,5 @@ class MemoryExtractionIntegration:
         self.extractor.check_and_extract(messages, token_count, current_round)
 
         # 检查是否需要批量写入
-        if self.extractor.get_pending_count() > self.extractor.config.max_pending:
+        if self.extractor.get_pending_count() >= self.extractor.config.max_pending:
             self.extractor.flush_pending()
