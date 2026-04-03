@@ -93,18 +93,8 @@ def get_schemas() -> list[dict]:
     return schemas
 
 
-# 子 agent 不需要的工具（仅主 agent 可用）
-_MAIN_AGENT_ONLY_TOOLS = {"add_project_path", "spawn_agent", "wait_agents"}
-
-
-def get_schemas_for_sub_agent() -> list[dict]:
-    """返回子 agent 可用的工具 schema 列表，排除仅主 agent 可用的工具。"""
-    schemas = [
-        item["schema"] for name, item in _tools.items()
-        if name not in _MAIN_AGENT_ONLY_TOOLS
-    ]
-    logger.debug(f"获取子 agent 工具 schemas，共 {len(schemas)} 个工具")
-    return schemas
+# 子 agent 与主 agent 使用相同工具集
+get_schemas_for_sub_agent = get_schemas
 
 
 def execute(name: str, arguments: str) -> str:

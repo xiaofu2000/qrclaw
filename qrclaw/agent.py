@@ -78,7 +78,6 @@ def run(
     console: Console,
     workspace: Workspace,
     auto_confirm: bool = False,
-    project_path: str | None = None,
 ):
     logger.info(f"收到用户输入: {user_input[:100]}...")
 
@@ -86,15 +85,9 @@ def run(
     set_workspace(workspace)
     session.add({"role": "user", "content": user_input})
 
-    # 初始化项目上下文：优先用显式传入的 project_path，否则回退到进程 CWD
-    from qrclaw.project_context import ProjectContext, set_project_path, get_project_context
-    if project_path:
-        set_project_path(project_path)
-    pc = get_project_context()
-
     # 主 agent 初始化 ContextManager 单例
     from qrclaw.memory.context.context_manager import init_context_manager
-    init_context_manager(session, workspace, is_sub_agent=is_sub_agent(), project_context=pc)
+    init_context_manager(session, workspace, is_sub_agent=is_sub_agent())
 
     from qrclaw.graph.runner import GraphRunner
     return _runner.run(
@@ -116,8 +109,7 @@ def run_sub_agent(
 ) -> tuple[str, Session]:
     """
     启动子 agent，返回 (结果字符串, 子session)。
-    子 agent 自动继承父 agent 的 ProjectContext（项目路径），
-    确保子 agent 在正确的项目目录下工作。
+    子 agent 的任务与前置步骤上下文通过 task 字符串传递。
     """
     from io import StringIO
     from rich.console import Console as RichConsole
@@ -128,14 +120,6 @@ def run_sub_agent(
     current_depth = get_agent_depth()
     set_agent_depth(current_depth + 1)
     logger.info(f"子 agent 深度: {current_depth + 1}")
-
-    # 继承父 agent 的 ProjectContext
-    from qrclaw.project_context import get_project_context, ProjectContext
-    parent_pc = get_project_context()
-    child_pc = ProjectContext(
-        project_path=parent_pc.project_path,
-        additional_paths=list(parent_pc.additional_paths),
-    )
 
     # 保存当前线程的 ContextManager，子 agent 执行完后恢复
     from qrclaw.memory.context.context_manager import get_context_manager, init_context_manager
@@ -157,8 +141,7 @@ def run_sub_agent(
     )
 
     try:
-        result = run(task, sub_session, sub_console, workspace,
-                     auto_confirm=True, project_path=child_pc.project_path)
+        result = run(task, sub_session, sub_console, workspace, auto_confirm=True)
         result = result or "子 agent 未返回结果"
         logger.info(f"子 agent {agent_id} 执行完毕，结果长度: {len(result)} 字符")
     finally:
