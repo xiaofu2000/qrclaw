@@ -58,6 +58,7 @@ _ROUTE_INSTRUCTION = """【系统指令】根据以上对话，判断最新一�
 {
   "thought": "分析任务的复杂度和包含的物理步骤，梳理出需要并行的模块和依赖关系。分析当前用户的目标路径。强制自我审查：目标路径是否是一个全新的目录？如果是，必须要写绝对路径！",
   "route": "plan",
+  "project_path": "从对话上下文中推断出的项目根目录绝对路径，如 /Users/xxx/myproject",
   "goal": "任务目标的简短描述",
   "steps": [
     {"id": 1, "description": "步骤描述，如果有路径必须是绝对路径", "depends_on": []},
@@ -90,6 +91,7 @@ class PlanStep:
 class Plan:
     goal: str
     steps: list[PlanStep]
+    project_path: str = ""
 
     def get_step(self, step_id: int) -> PlanStep | None:
         return next((s for s in self.steps if s.id == step_id), None)
@@ -125,6 +127,7 @@ def _parse_json(raw: str) -> dict:
 
 def _parse_plan(data: dict, fallback_input: str) -> Plan:
     goal = data.get("goal", fallback_input[:50])
+    project_path = data.get("project_path", "")
     steps = [
         PlanStep(
             id=s["id"],
@@ -133,7 +136,7 @@ def _parse_plan(data: dict, fallback_input: str) -> Plan:
         )
         for s in data.get("steps", [])
     ]
-    return Plan(goal=goal, steps=steps)
+    return Plan(goal=goal, steps=steps, project_path=project_path)
 
 
 class RouterNode:
@@ -157,7 +160,7 @@ class RouterNode:
                     logger.warning("Router 返回 plan 但 steps 为空，降级为 direct")
                     return RouteResult(route="direct")
                 p = _parse_plan(data, user_input)
-                logger.info(f"路由结果: plan，目标: {p.goal}，共 {len(p.steps)} 步")
+                logger.warning(f"路由结果: plan，目标: {p.goal}，项目路径: {p.project_path}，共 {len(p.steps)} 步")
                 for s in p.steps:
                     dep_str = f"依赖 {s.depends_on}" if s.depends_on else "可并行"
                     logger.debug(f"  Step {s.id}: {s.description} [{dep_str}]")

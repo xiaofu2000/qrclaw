@@ -57,6 +57,7 @@ _REPLANNER_PROMPT = """你是一个高级智能体任务重规划器 (Replanner)
 {
   "thought": "分析战报发现... 步骤 X 报错了。我发现新线索 Y，因此调整策略。我已严格检查下方步骤，所有文件引用均已使用完整的绝对路径。",
   "status": "continue",
+  "project_path": "从战报或对话上下文中确认的项目根目录绝对路径，如 /Users/xxx/myproject",
   "steps": [
     {"id": 1, "description": "动作描述，必须包含具体的真实绝对路径参数和明确的处理要求", "depends_on": []},
     {"id": 2, "description": "动作描述，必须包含具体的真实绝对路径参数和明确的处理要求", "depends_on": [1]}
@@ -114,6 +115,12 @@ class ReplannerNode:
         if status == "done":
             logger.warning("Replanner 判断目标已达成，DONE")
             return None
+
+        # 如果 LLM 重新确认了项目路径，更新 PlanState
+        project_path = data.get("project_path", "")
+        if project_path and project_path != ps.project_path:
+            logger.info(f"Replanner 更新项目路径: {project_path}")
+            ps.project_path = project_path
 
         new_steps_data = data.get("steps", [])
         if not new_steps_data:

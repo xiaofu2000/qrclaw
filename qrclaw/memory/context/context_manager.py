@@ -34,6 +34,7 @@ class PlanState:
     goal: str
     past_steps: list = field(default_factory=list)  # list[StepResult]
     remaining: list = field(default_factory=list)   # list[PlanStep]
+    project_path: str = ""  # 项目根目录绝对路径，由 LLM 从对话中推断
 
 
 # 线程级单例：每个线程（主 agent / 子 agent）持有自己的 ContextManager
@@ -76,11 +77,11 @@ class ContextManager:
 
     # ── Plan 状态管理（线程安全） ──────────────────────────────────────
 
-    def set_plan(self, goal: str, steps: list):
+    def set_plan(self, goal: str, steps: list, project_path: str = ""):
         """初始化 plan。"""
         with self._lock:
-            self._plan_state = PlanState(goal=goal, remaining=list(steps))
-        logger.info(f"plan 初始化：{goal}，共 {len(steps)} 步")
+            self._plan_state = PlanState(goal=goal, remaining=list(steps), project_path=project_path)
+        logger.info(f"plan 初始化：{goal}，项目路径：{project_path}，共 {len(steps)} 步")
 
     def add_step_result(self, result) -> None:
         """线程安全地追加一个步骤结果。"""

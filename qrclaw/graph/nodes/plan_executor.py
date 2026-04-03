@@ -118,8 +118,12 @@ class PlanExecutorNode:
                 sr.to_context_prompt() for sr in past_steps
             )
 
+        ps = get_context_manager().plan_state
+        project_path_hint = f"\n\n【项目根目录】{ps.project_path}" if ps and ps.project_path else ""
+
         task = (
             f"【计划目标】{goal}"
+            f"{project_path_hint}"
             f"{prior_context}\n\n"
             f"【当前任务】{step.description}\n\n"
             f"【要求】只完成当前任务。完成后返回详细的结果摘要，如果有路径请使用绝对路径，禁止使用相对路径，包括：做了什么、发现了什么、产出了哪些文件。"
@@ -143,9 +147,13 @@ class PlanExecutorNode:
                 sr.to_context_prompt() for sr in past_steps
             )
 
+        ps = get_context_manager().plan_state
+        project_path_hint = f"\n【项目根目录】{ps.project_path}" if ps and ps.project_path else ""
+
         def _run(step):
             task = (
                 f"【计划目标】{goal}\n"
+                f"{project_path_hint}"
                 f"【步骤】{step.description}"
                 f"{prior_context}\n\n"
                 f"【要求】完成上述步骤。完成后返回详细的结果摘要，包括：做了什么、发现了什么、产出了哪些文件。"
