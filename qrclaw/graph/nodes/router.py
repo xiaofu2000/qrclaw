@@ -20,40 +20,6 @@ from qrclaw.logger import get_logger
 
 logger = get_logger("qrclaw.graph.nodes.router")
 
-# Router 的 system prompt
-_ROUTER_PROMPT = """你是一个任务路由器。
-
-根据用户的输入，判断应该使用哪种执行方式：
-
-1. direct（直接执行）：适合简单、明确的任务
-   - 单步骤操作（如读文件、写文件、运行命令）
-   - 明确的问答
-   - 不需要多步骤或并行处理
-
-2. plan（计划执行）：适合复杂、需要多步骤的任务
-   - 需要多步骤才能完成
-   - 需要探索未知结构（目录、代码库）
-   - 需要并行处理多个独立子任务
-   - 任务目标不明确，需要拆解
-
-输出格式（必须是有效的 JSON）：
-{
-    "route": "direct" 或 "plan",
-    "goal": "任务目标（plan 模式必填）",
-    "project_path": "项目根目录绝对路径（如有）",
-    "steps": [
-        {"id": "1", "description": "步骤描述", "depends_on": []},
-        {"id": "2", "description": "步骤描述", "depends_on": ["1"]}
-    ]
-}
-
-注意：
-- route 为 direct 时，goal 和 steps 可以省略或为空
-- depends_on 为空数组表示无依赖，可并行执行
-- project_path 填写推测的项目根目录路径
-"""
-
-
 # 路由指令
 _ROUTE_INSTRUCTION = "请判断这个任务应该使用哪种执行方式，直接输出 JSON。"
 
