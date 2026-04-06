@@ -7,6 +7,7 @@ ReactLoop 节点
 import json
 from rich.console import Console
 from rich.panel import Panel
+from rich.text import Text
 from rich.markdown import Markdown
 from qrclaw.config import MAX_ITERATIONS, COMPRESS_THRESHOLD
 from qrclaw.providers import provider
@@ -133,7 +134,7 @@ class ReactLoopNode:
 
                 console.print()
                 console.print(Panel(
-                    f"[bold cyan]{name}[/bold cyan]\n" + args_formatted,
+                    Text.assemble(("[bold cyan]" + name + "[/bold cyan]\n", ""), (args_formatted, "")),
                     title="[bold yellow]▶ 调用工具[/bold yellow]",
                     border_style="yellow",
                     expand=False,
@@ -176,7 +177,7 @@ class ReactLoopNode:
 
                 preview = result[:200] + "..." if len(result) > 200 else result
                 console.print(Panel(
-                    preview,
+                    Text(preview),
                     title="[bold blue]◀ 工具结果[/bold blue]",
                     border_style="blue",
                     expand=False,

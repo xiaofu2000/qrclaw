@@ -18,6 +18,7 @@ import threading
 import queue
 from rich.console import Console
 from rich.panel import Panel
+from rich.text import Text
 from qrclaw.memory.context.session import Session
 from qrclaw.memory.context.step_result import StepResult
 from qrclaw.memory.context.context_manager import get_context_manager
@@ -188,7 +189,7 @@ class PlanExecutorNode:
                 _, sid, desc, result = item
                 short_desc = desc[:40] + ("..." if len(desc) > 40 else "")
                 console.print(f"[bold green]✅ 完成[/bold green] {short_desc}")
-                console.print(Panel(result, title=f"[bold green]汇报[/bold green]", border_style="green", expand=False))
+                console.print(Panel(Text(result), title=f"[bold green]汇报[/bold green]", border_style="green", expand=False))
             else:
                 _, sid, desc, err = item
                 console.print(f"[bold red]❌ 失败[/bold red]: {err} ({desc})")
