@@ -55,7 +55,7 @@ _ROUTER_PROMPT = """你是一个任务路由器。
 
 
 # 路由指令
-_ROUTE_INSTRUCTION = """请判断这个任务应该使用哪种执行方式，直接输出 JSON。"""
+_ROUTE_INSTRUCTION = "请判断这个任务应该使用哪种执行方式，直接输出 JSON。"
 
 
 @dataclass
@@ -81,8 +81,7 @@ class RouteResult:
 def _parse_json(raw: str) -> dict:
     """从 LLM 输出中提取 JSON"""
     # 去掉 <result> 标签（MiniMax 等 thinking 模型会返回）
-    raw = re.sub(r'<think>.*?
-</think>', '', raw, flags=re.DOTALL).strip()
+    raw = re.sub(r'<result>.*?</result>', '', raw, flags=re.DOTALL).strip()
     try:
         return json.loads(raw)
     except json.JSONDecodeError:
