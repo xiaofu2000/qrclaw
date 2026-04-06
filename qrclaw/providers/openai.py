@@ -27,12 +27,20 @@ class OpenAIProvider(LLMProvider):
             result.append(cleaned)
         return result
 
-    def chat(self, messages: list[dict], tools: list[dict] | None = None, json_mode: bool = False) -> LLMResponse:
+    def chat(
+        self,
+        messages: list[dict],
+        tools: list[dict] | None = None,
+        json_mode: bool = False,
+        temperature: float | None = None,
+    ) -> LLMResponse:
         kwargs = {"model": OPENAI_MODEL, "messages": self._sanitize(messages)}
         if tools:
             kwargs["tools"] = tools
         if json_mode:
             kwargs["response_format"] = {"type": "json_object"}
+        if temperature is not None:
+            kwargs["temperature"] = temperature
 
         import time
 

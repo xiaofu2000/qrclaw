@@ -1,18 +1,15 @@
 """
-Router 节点
+Router 节点 —— 判断用户意图路由
 
-一次 LLM 调用完成路由判断 + 计划生成：
-- 简单任务：返回 RouteResult(route="direct")
-- 复杂任务：返回 RouteResult(route="plan", plan=Plan(...))
+职责：
+- 分析用户输入，判断是简单任务还是复杂任务
+- 简单任务 → 直接执行（ReactLoop）
+- 复杂任务 → 计划执行（PlanExecutor + ReactLoop）
 
-消息结构：
-  [system] 主 agent 完整 system prompt（工作目录、工具、行为准则全有）
-  [history] 主 session 的历史对话
-  [user]   路由指令 + 判断规则 + JSON 格式要求
-
-JSON 可靠性保障（双重防御）：
-  1. json_mode=True：OpenAI 协议层强制输出合法 JSON
-  2. 正则提取兜底：Vertex AI 等不支持 json_mode 的 provider 使用
+路由判断基于：
+- 用户输入的复杂度
+- 是否需要多步骤
+- 是否需要探索/并行
 """
 import json
 import re
@@ -23,98 +20,69 @@ from qrclaw.logger import get_logger
 
 logger = get_logger("qrclaw.graph.nodes.router")
 
-_ROUTE_INSTRUCTION = """【系统指令】根据以上对话，判断最新一条用户消息是否需要制定执行计划，只返回 JSON，不要其他内容。
+# Router 的 system prompt
+_ROUTER_PROMPT = """你是一个任务路由器。
 
-⚠️ 重要：你的输出必须是且仅是一个 JSON 对象，禁止输出任何自然语言、解释或 Markdown。不要回答用户的问题，只做路由判断。
+根据用户的输入，判断应该使用哪种执行方式：
 
-【判断规则】
-需要计划（route="plan"）的情况：
-1. 任务含 3 个及以上明确步骤
-2. 任务涉及多个文件、模块或方向，可以并行处理
-3. 任务需要先探索环境再决定后续步骤
-4. 任务明确要求分阶段完成
+1. direct（直接执行）：适合简单、明确的任务
+   - 单步骤操作（如读文件、写文件、运行命令）
+   - 明确的问答
+   - 不需要多步骤或并行处理
 
-不需要计划（route="direct"）的情况：
-1. 简单问答、解释、翻译
-2. 单个文件操作
-3. 单条命令执行
-4. 闲聊
+2. plan（计划执行）：适合复杂、需要多步骤的任务
+   - 需要多步骤才能完成
+   - 需要探索未知结构（目录、代码库）
+   - 需要并行处理多个独立子任务
+   - 任务目标不明确，需要拆解
 
-【输出格式】
-必须先输出 "thought" 字段进行逻辑推理，再输出 route 结论。
-
-【目标设定法则 (Definition of Done)】
-当你提取用户的请求并生成 `goal`（终极目标）时，必须严格遵守以下验收标准：
-1. 【实体交付优先】：如果用户的意图是生成代码、重构文件、撰写报告等【长文本产出】，你的 `goal` 必须明确要求“将最终结果写入磁盘”。
-2. 【禁止口头完结】：绝不允许将“搜集完情报”或“得出结论”作为最终目标！必须落实到物理文件的修改或创建。
-
-简单任务只返回：
+输出格式（必须是有效的 JSON）：
 {
-  "thought": "简要分析用户的意图，说明为什么这是一个简单任务。",
-  "route": "direct"
+    "route": "direct" 或 "plan",
+    "goal": "任务目标（plan 模式必填）",
+    "project_path": "项目根目录绝对路径（如有）",
+    "steps": [
+        {"id": "1", "description": "步骤描述", "depends_on": []},
+        {"id": "2", "description": "步骤描述", "depends_on": ["1"]}
+    ]
 }
 
-复杂任务返回（同时生成执行计划）：
-{
-  "thought": "分析任务的复杂度和包含的物理步骤，梳理出需要并行的模块和依赖关系。分析当前用户的目标路径。强制自我审查：目标路径是否是一个全新的目录？如果是，必须要写绝对路径！",
-  "route": "plan",
-  "project_path": "从对话上下文中推断出的项目根目录绝对路径，如 /Users/xxx/myproject",
-  "goal": "任务目标的简短描述",
-  "steps": [
-    {"id": 1, "description": "步骤描述，如果有路径必须是绝对路径", "depends_on": []},
-    {"id": 2, "description": "步骤描述，如果有路径必须是绝对路径", "depends_on": [1]},
-    {"id": 3, "description": "步骤描述，如果有路径必须是绝对路径", "depends_on": []},
-    {"id": 4, "description": "步骤描述，如果有路径必须是绝对路径", "depends_on": [2, 3]}
-  ]
-}
+注意：
+- route 为 direct 时，goal 和 steps 可以省略或为空
+- depends_on 为空数组表示无依赖，可并行执行
+- project_path 填写推测的项目根目录路径
+"""
 
-【规划规则】
-- 每个步骤具体、可执行，一步只做一件事
-- depends_on 填前置步骤 id，没有依赖填空数组
-- 无依赖的步骤会被并行执行，有依赖的步骤串行等待
-- 【动态规划视野（战争迷雾）】：你不必强制生成全部步骤。如果缺乏上下文（如未知目录），只需生成 1~2 个探测步骤（如 ls, find），绝不要凭空猜测后续！如果情报充足，请尽可能多地规划可并行的独立步骤。
-- 需要汇总或综合分析前置步骤结果的步骤，必须在 depends_on 中列出所有它依赖的步骤 id
-- 【上下文隔离与防幻觉原则】：执行步骤的子 agent 看不到对话历史，因此对于用户明确提供的已知信息（目录、参数等），必须直接写入描述中实现自包含。
-- 【严禁瞎编具体细节】：对于需要前置步骤（depends_on）动态搜索才能得知的未知信息（如具体文件名），绝对禁止在描述中盲目猜测或举例（例如禁止写“如 session.py”）。必须指示子 agent：“使用前置步骤 [id] 传递过来的结果进行处理”。
-- 步骤描述要足够详细，相当于给一个全新的 agent 下达完整任务指令：包括做什么、怎么做、目标是什么、输出什么"""
+
+# 路由指令
+_ROUTE_INSTRUCTION = """请判断这个任务应该使用哪种执行方式，直接输出 JSON。"""
 
 
 @dataclass
 class PlanStep:
-    id: int
+    id: str
     description: str
-    depends_on: list[int] = field(default_factory=list)
-    done: bool = False
+    depends_on: list = field(default_factory=list)
 
 
 @dataclass
 class Plan:
     goal: str
-    steps: list[PlanStep]
+    steps: list
     project_path: str = ""
-
-    def get_step(self, step_id: int) -> PlanStep | None:
-        return next((s for s in self.steps if s.id == step_id), None)
-
-    def mark_done(self, step_id: int):
-        step = self.get_step(step_id)
-        if step:
-            step.done = True
-
-    def all_done(self) -> bool:
-        return all(s.done for s in self.steps)
 
 
 @dataclass
 class RouteResult:
-    route: str               # "direct" | "plan"
-    plan: Plan | None = None  # route=plan 时携带完整 Plan
+    route: str  # "direct" | "plan"
+    plan: Plan | None = None
 
 
 def _parse_json(raw: str) -> dict:
-    raw = raw.strip()
-    # 剥掉 <think>...</think> 标签（MiniMax 等 thinking 模型会返回）
-    raw = re.sub(r'<think>.*?</think>', '', raw, flags=re.DOTALL).strip()
+    """从 LLM 输出中提取 JSON"""
+    # 去掉 <result> 标签（MiniMax 等 thinking 模型会返回）
+    raw = re.sub(r'<think>.*?
+</think>', '', raw, flags=re.DOTALL).strip()
     try:
         return json.loads(raw)
     except json.JSONDecodeError:
@@ -147,7 +115,13 @@ class RouterNode:
         messages = ctx.build_messages("router", route_instruction=_ROUTE_INSTRUCTION)
 
         try:
-            response = provider.chat(messages, tools=None, json_mode=True)
+            # 强制 JSON 输出 + 低温度
+            response = provider.chat(
+                messages,
+                tools=None,
+                json_mode=True,
+                temperature=0.1,
+            )
             data = _parse_json(response.content)
 
             route_val = data.get("route", "direct")
