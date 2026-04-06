@@ -92,9 +92,7 @@ class PlanExecutorNode:
                 break
 
             if new_remaining != ps.remaining:
-                console.print(f"[cyan]📝 Replanner 调整了计划，剩余 {len(new_remaining)} 步[/cyan]")
-                for s in new_remaining:
-                    console.print(f"  [yellow]Step {s.id}[/yellow] {s.description}")
+                console.print(f"[cyan]📝 Replanner 调整了计划")
             ctx.update_remaining(new_remaining)
 
         # 所有步骤执行完毕，把 past_steps 汇总写入主 session，交主 agent 整合
@@ -127,7 +125,7 @@ class PlanExecutorNode:
             f"{project_path_hint}"
             f"{prior_context}\n\n"
             f"【当前任务】{step.description}\n\n"
-            f"【要求】只完成当前任务。完成后返回详细的结果摘要，如果有路径请使用绝对路径，禁止使用相对路径，包括：做了什么、发现了什么、产出了哪些文件。"
+            f"【要求】只完成当前任务。完成后返回详细的结果摘要，不准写MD文档，如果有路径请使用绝对路径，禁止使用相对路径，包括：做了什么、发现了什么、产出了哪些文件。"
         )
         result, _ = run_sub_agent_fn(
             task, workspace, f"step-{step.id}",
@@ -157,7 +155,7 @@ class PlanExecutorNode:
                 f"{project_path_hint}"
                 f"【步骤】{step.description}"
                 f"{prior_context}\n\n"
-                f"【要求】完成上述步骤。完成后返回详细的结果摘要，包括：做了什么、发现了什么、产出了哪些文件。"
+                f"【要求】完成上述步骤。完成后返回详细的结果摘要，不准写MD文档，包括：做了什么、发现了什么、产出了哪些文件。"
             )
             try:
                 result, _ = run_sub_agent_fn(
