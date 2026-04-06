@@ -6,11 +6,12 @@ LiteLLM Provider
 
 配置项（优先级从高到低）：
 1. LITELLM_API_KEY / LITELLM_MODEL / LITELLM_BASE_URL（推荐）
-2. OPENAI_API_KEY / OPENAI_MODEL / OPENAI_BASE_URL（兼容性别名）
+
 """
 import litellm
 from litellm import completion
 from litellm.exceptions import RateLimitError, ServiceUnavailableError, APIError
+from urllib.parse import urlparse
 
 from qrclaw.providers.base import LLMProvider, LLMResponse, ToolCall
 from qrclaw.config import (
@@ -24,7 +25,44 @@ from qrclaw.logger import get_logger
 
 logger = get_logger("qrclaw.providers.litellm")
 
-
+# Provider 前缀映射表（根据 base_url 自动推断）
+PROVIDER_PREFIX_MAP = {
+    "api.openai.com": "openai",
+    "api minimaxi.com": "minimax",
+    "api.minimaxi.com": "minimax",
+    "api.deepseek.com": "deepseek",
+    "api.anthropic.com": "anthropic",
+    "generativelanguage.googleapis.com": "vertex_ai",
+    "azure.com": "azure",
+    "api.cohere.com": "cohere",
+    "api.mistral.ai": "mistral",
+    "api.huggingface.co": "huggingface",
+    "openrouter.ai": "openrouter",
+}
+def _infer_provider(model: str, base_url: str | None) -> str:
+    """
+    推断模型对应的 provider 前缀。
+    
+    LiteLLM 要求模型格式为 provider/model-name，如 minimax/MiniMax-M2.7-highspeed
+    如果模型名已包含 /，说明已有前缀，直接返回原值。
+    """
+    if "/" in model:
+        return model  # 已有前缀
+    
+    if not base_url:
+        return model  # 无法推断，返回原值
+    
+    # 从 base_url 提取 host
+    parsed = urlparse(base_url if base_url.startswith("http") else f"https://{base_url}")
+    host = parsed.netloc.lower()
+    
+    # 查找匹配的 provider
+    for pattern, provider in PROVIDER_PREFIX_MAP.items():
+        if pattern in host:
+            logger.debug(f"从 base_url 推断 provider: {base_url} -> {provider}")
+            return f"{provider}/{model}"
+    
+    return model  # 无法推断，返回原值
 class LiteLLMProvider(LLMProvider):
     """
     LiteLLM 统一调用接口。
@@ -34,14 +72,17 @@ class LiteLLMProvider(LLMProvider):
     - anthropic/claude-3-sonnet
     - vertex_ai/gemini-pro
     - deepseek/deepseek-chat
+    - minimax/MiniMax-M2.7-highspeed
     - 详见 https://docs.litellm.ai/docs/providers
     """
 
     def __init__(self):
         self._api_key = LITELLM_API_KEY
-        self._model = LITELLM_MODEL
         self._base_url = LITELLM_BASE_URL or LITELLM_API_BASE or None
         self._proxy_url = LITELLM_PROXY_URL or None
+        
+        # 自动推断 provider 前缀
+        self._model = _infer_provider(LITELLM_MODEL, self._base_url)
 
         # LiteLLM 配置
         litellm.drop_params = True  # 忽略不支持的参数

@@ -25,19 +25,15 @@ CONFIG_FILE = CONFIG_DIR / "config.yaml"
 DEFAULT_CONFIG = {
     "agent": {
         "name": "QRClaw",
-        "max_iterations": 50,
+        "max_iterations": 100,
     },
     "llm": {
-        "provider": "openai",  # openai | vertex
-        "openai": {
-            "api_key": "",
-            "model": "gpt-4o",
-            "base_url": "",
-            "max_tokens": 128000,
-        },
-        "vertex": {
-            "api_key": "",
-        },
+        "api_key": "",
+        "model": "gpt-4o",
+        "base_url": "",
+        "api_base": "",
+        "proxy_url": "",
+        "max_tokens": 128000,
     },
     "search": {
         "tavily_api_key": "",
@@ -57,6 +53,8 @@ DEFAULT_CONFIG = {
         "threshold_ratio": 0.6,
         "target_min_ratio": 0.20,
         "target_max_ratio": 0.25,
+        "summary_max_tokens": 2560,
+        "recent_max_tokens": 1536,
     },
 }
 
@@ -65,7 +63,8 @@ CONFIG_HEADER = """# ═══════════════════�
 # QRClaw 配置文件
 # ═══════════════════════════════════════════════════════════════
 # 文档：https://github.com/fu-qingrong/qrclaw
-# 修改配置后无需重启，下次启动自动生效。
+# 使用 LiteLLM 统一调用，支持 100+ 提供商（OpenAI/Claude/Gemini/DeepSeek 等）
+# 模型格式：provider/model，如 minimax/MiniMax-M2.7-highspeed
 # ═══════════════════════════════════════════════════════════════
 
 """
@@ -127,26 +126,41 @@ def load_config():
 
 def _inject_to_env(config: dict):
     """将配置注入到环境变量"""
-    os.environ.setdefault("AGENT_NAME", config["agent"]["name"])
-    os.environ.setdefault("MAX_ITERATIONS", str(config["agent"]["max_iterations"]))
+    # Agent 配置
+    agent_config = config.get("agent", {})
+    os.environ.setdefault("AGENT_NAME", agent_config.get("name", "QRClaw"))
+    os.environ.setdefault("MAX_ITERATIONS", str(agent_config.get("max_iterations", 100)))
 
-    os.environ.setdefault("LLM_PROVIDER", config["llm"]["provider"])
-    os.environ.setdefault("OPENAI_API_KEY", config["llm"]["openai"]["api_key"])
-    os.environ.setdefault("OPENAI_MODEL", config["llm"]["openai"]["model"])
-    os.environ.setdefault("OPENAI_BASE_URL", config["llm"]["openai"]["base_url"])
-    os.environ.setdefault("MODEL_MAX_TOKENS", str(config["llm"]["openai"]["max_tokens"]))
-    os.environ.setdefault("VERTEX_API_KEY", config["llm"]["vertex"]["api_key"])
+    # LLM 配置
+    llm_config = config.get("llm", {})
+    os.environ.setdefault("LITELLM_API_KEY", llm_config.get("api_key", ""))
+    os.environ.setdefault("LITELLM_MODEL", llm_config.get("model", "gpt-4o"))
+    os.environ.setdefault("LITELLM_BASE_URL", llm_config.get("base_url", ""))
+    os.environ.setdefault("LITELLM_API_BASE", llm_config.get("api_base", ""))
+    os.environ.setdefault("LITELLM_PROXY_URL", llm_config.get("proxy_url", ""))
+    os.environ.setdefault("MODEL_MAX_TOKENS", str(llm_config.get("max_tokens", 128000)))
 
-    os.environ.setdefault("TAVILY_API_KEY", config["search"]["tavily_api_key"])
+    # 搜索配置
+    search_config = config.get("search", {})
+    os.environ.setdefault("TAVILY_API_KEY", search_config.get("tavily_api_key", ""))
 
-    os.environ.setdefault("LOG_LEVEL", config["log"]["level"])
-    os.environ.setdefault("LOG_MAX_DAYS", str(config["log"]["max_days"]))
-    os.environ.setdefault("LOG_TO_FILE", str(config["log"]["to_file"]).lower())
-    os.environ.setdefault("LOG_TO_CONSOLE", str(config["log"]["to_console"]).lower())
-    os.environ.setdefault("LOG_CONSOLE_LEVEL", config["log"]["console_level"])
+    # 日志配置
+    log_config = config.get("log", {})
+    os.environ.setdefault("LOG_LEVEL", log_config.get("level", "INFO"))
+    os.environ.setdefault("LOG_MAX_DAYS", str(log_config.get("max_days", 30)))
+    os.environ.setdefault("LOG_TO_FILE", str(log_config.get("to_file", True)).lower())
+    os.environ.setdefault("LOG_TO_CONSOLE", str(log_config.get("to_console", True)).lower())
+    os.environ.setdefault("LOG_CONSOLE_LEVEL", log_config.get("console_level", "WARNING"))
 
-    os.environ.setdefault("HEARTBEAT_ENABLED", str(config["heartbeat"]["enabled"]).lower())
-    os.environ.setdefault("HEARTBEAT_INTERVAL", str(config["heartbeat"]["interval"]))
+    # 心跳配置
+    heartbeat_config = config.get("heartbeat", {})
+    os.environ.setdefault("HEARTBEAT_ENABLED", str(heartbeat_config.get("enabled", True)).lower())
+    os.environ.setdefault("HEARTBEAT_INTERVAL", str(heartbeat_config.get("interval", 3600)))
+
+    # 压缩配置
+    compress_config = config.get("compress", {})
+    os.environ.setdefault("COMPRESS_SUMMARY_MAX_TOKENS", str(compress_config.get("summary_max_tokens", 2560)))
+    os.environ.setdefault("COMPRESS_RECENT_MAX_TOKENS", str(compress_config.get("recent_max_tokens", 1536)))
 
 
 def get_config() -> dict:
@@ -161,7 +175,7 @@ def get_config() -> dict:
 
 
 def get(key: str, default: Any = None) -> Any:
-    """获取配置项（支持点号路径，如 llm.openai.api_key）"""
+    """获取配置项（支持点号路径，如 llm.model）"""
     config = get_config()
     keys = key.split(".")
     value = config
