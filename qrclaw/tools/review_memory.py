@@ -28,18 +28,14 @@ class ReviewMemoryArgs(BaseModel):
 
 
 def _call_llm(prompt: str) -> str:
-    """调用 LLM"""
-    from qrclaw.config import OPENAI_API_KEY, OPENAI_MODEL, OPENAI_BASE_URL
-    from openai import OpenAI
-    
-    client = OpenAI(api_key=OPENAI_API_KEY, base_url=OPENAI_BASE_URL or None)
-    
-    response = client.chat.completions.create(
-        model=OPENAI_MODEL,
+    """调用 LLM（统一接口）"""
+    from qrclaw.providers import provider
+
+    response = provider.chat(
         messages=[{"role": "user", "content": prompt}],
     )
-    
-    return response.choices[0].message.content
+
+    return response.content
 
 
 @register(

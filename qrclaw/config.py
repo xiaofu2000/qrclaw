@@ -7,14 +7,23 @@ load_config()
 
 # Agent 配置
 AGENT_NAME = os.getenv("AGENT_NAME", "QRClaw")
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
-OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o")
-OPENAI_BASE_URL = os.getenv("OPENAI_BASE_URL", "")
 
-# LLM 渠道：openai（默认）| vertex
-LLM_PROVIDER = os.getenv("LLM_PROVIDER", "openai")
+# LLM Provider 选择（支持 litellm/openai/vertex）
+LLM_PROVIDER = os.getenv("LLM_PROVIDER", "litellm")
 
-# Vertex AI 配置（Express API Key 方式）
+# LiteLLM 配置（统一 LLM 调用库，支持 OpenAI/Vertex/Azure/Anthropic 等 100+ 提供商）
+LITELLM_API_KEY = os.getenv("LITELLM_API_KEY", "")
+LITELLM_MODEL = os.getenv("LITELLM_MODEL", "gpt-4o")
+LITELLM_BASE_URL = os.getenv("LITELLM_BASE_URL", "")  # 自定义 API 地址（可选）
+LITELLM_API_BASE = os.getenv("LITELLM_API_BASE", "")  # LiteLLM 专用参数名（可选）
+LITELLM_PROXY_URL = os.getenv("LITELLM_PROXY_URL", "")  # 代理服务器（可选）
+
+# 兼容性别名（后续删除，优先读取 LITELLM_*）
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", os.getenv("LITELLM_API_KEY", ""))
+OPENAI_MODEL = os.getenv("OPENAI_MODEL", os.getenv("LITELLM_MODEL", "gpt-4o"))
+OPENAI_BASE_URL = os.getenv("OPENAI_BASE_URL", os.getenv("LITELLM_BASE_URL", ""))
+
+# Vertex AI 配置（通过 LiteLLM 统一调用，可选）
 VERTEX_API_KEY = os.getenv("VERTEX_API_KEY", "")
 
 MAX_ITERATIONS = int(os.getenv("MAX_ITERATIONS", "100"))

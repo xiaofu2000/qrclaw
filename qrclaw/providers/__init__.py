@@ -1,11 +1,12 @@
-from qrclaw.providers.base import LLMProvider
+from qrclaw.providers.base import LLMProvider, LLMResponse, ToolCall
+from qrclaw.providers.litellm_provider import LiteLLMProvider
 from qrclaw.config import LLM_PROVIDER
 from qrclaw.logger import get_logger
 
 logger = get_logger("qrclaw.providers")
 
 _REGISTRY = {
-    "openai": "qrclaw.providers.openai.OpenAIProvider",
+    "litellm": "qrclaw.providers.litellm_provider.LiteLLMProvider",
     "vertex": "qrclaw.providers.vertex.VertexProvider",
 }
 
