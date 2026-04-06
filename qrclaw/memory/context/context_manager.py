@@ -4,9 +4,10 @@ ContextManager —— 统一上下文管理中心
 职责：
 - 线程级单例，通过 get_context_manager() 全局获取，无需传参
 - 持有主 session、workspace、plan_state
-- 为不同角色（react / router / replanner）组装 messages
+- 为不同角色（react / router / replanner） 组装 messages
 - 线程安全地管理 plan 执行状态（加锁保护并发写入）
 - 压缩判断集中在此，不散落在各节点
+- System Prompt 缓存：使用 Dirty Flag 模式，延迟更新
 
 用法：
     # 主 agent 初始化时
@@ -18,7 +19,7 @@ ContextManager —— 统一上下文管理中心
 """
 import threading
 from dataclasses import dataclass, field
-from qrclaw.memory.context.session import Session, count_tokens
+from qrclaw.memory.context.session import Session
 from qrclaw.memory.compression.compressor import summarize
 from qrclaw.config import COMPRESS_THRESHOLD
 from qrclaw.workspace import Workspace
@@ -70,6 +71,10 @@ class ContextManager:
         self._plan_state: PlanState | None = None
         self._lock = threading.Lock()  # 保护 plan_state 的并发写入
 
+        # System Prompt 缓存（Dirty Flag 模式）
+        self._cached_system_prompt: str | None = None
+        self._dirty: bool = True  # 默认脏，首次使用时构建
+
     # ── 消息管理 ──────────────────────────────────────────────────────
 
     def add(self, message: dict):
@@ -103,6 +108,40 @@ class ContextManager:
     def plan_state(self) -> PlanState | None:
         return self._plan_state
 
+    # ── System Prompt 缓存管理（Dirty Flag 模式） ─────────────────────
+
+    def invalidate_cache(self) -> None:
+        """
+        标记 System Prompt 缓存为脏，需要重建。
+        
+        在以下情况调用：
+        - 外部文件被修改（需要外部调用方主动触发）
+        - 压缩后
+        - 用户主动要求
+        """
+        self._dirty = True
+        self._cached_system_prompt = None
+        logger.debug("System Prompt 缓存已失效")
+
+    def _get_system_prompt(self) -> str:
+        """
+        获取 System Prompt 内容。
+        使用 Dirty Flag 模式：脏时重建，否则返回缓存。
+        """
+        if self._dirty or self._cached_system_prompt is None:
+            logger.debug("重建 System Prompt（缓存失效）")
+            self._cached_system_prompt = build_system_prompt(
+                heartbeat_file=self.workspace.heartbeat_file,
+                is_sub_agent=self.is_sub_agent,
+                agent_file=self.workspace.agent_file,
+                skills_dir=self.workspace.skills_dir,
+                memory_file=self.workspace.memory_file,
+            )
+            self._dirty = False
+            logger.info("System Prompt 构建完成")
+
+        return self._cached_system_prompt
+
     # ── 消息组装 ──────────────────────────────────────────────────────
 
     def build_messages(self, role: str, **kwargs) -> list[dict]:
@@ -128,28 +167,26 @@ class ContextManager:
 
     def compress_if_needed(self):
         """检查 token 数，超限则压缩。"""
-        messages = [self._make_system_prompt(), *self.session.messages]
-        if count_tokens(messages) > COMPRESS_THRESHOLD:
-            logger.info("token 超限，触发压缩")
+        # 使用 session.prompt_tokens 进行估算
+        from qrclaw.memory.token_utils import count_text_tokens
+
+        # 估算总 token 数：session 消息 + system prompt
+        system_prompt_tokens = count_text_tokens(self._get_system_prompt())
+        total_tokens = self.session.prompt_tokens + system_prompt_tokens
+
+        if total_tokens > COMPRESS_THRESHOLD:
+            logger.info(f"token 超限（估算 {total_tokens}），触发压缩")
             summarize(self.session)
+            # 压缩后刷新缓存
+            self.invalidate_cache()
 
     # ── 私有组装方法 ──────────────────────────────────────────────────
 
-    def _make_system_prompt(self) -> dict:
-        content = build_system_prompt(
-            heartbeat_file=self.workspace.heartbeat_file,
-            is_sub_agent=self.is_sub_agent,
-            agent_file=self.workspace.agent_file,
-            skills_dir=self.workspace.skills_dir,
-            memory_file=self.workspace.memory_file,
-        )
-        return {"role": "system", "content": content}
-
     def _build_react_messages(self) -> list[dict]:
-        return [self._make_system_prompt(), *self.session.messages]
+        return [{"role": "system", "content": self._get_system_prompt()}, *self.session.messages]
 
     def _build_router_messages(self, route_instruction: str) -> list[dict]:
-        messages = [self._make_system_prompt(), *self.session.messages]
+        messages = [{"role": "system", "content": self._get_system_prompt()}, *self.session.messages]
         messages.append({"role": "user", "content": route_instruction})
         return messages
 

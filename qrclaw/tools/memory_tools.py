@@ -6,8 +6,7 @@
 支持：
 - 按类型分类存储（user/feedback/project/reference）
 - 结构化 frontmatter
-- MEMORY.md 入口索引
-- 延迟更新索引（Dirty Flag 模式）
+- MEMORY.md 入口索引（增量更新）
 """
 from pydantic import BaseModel, Field
 from qrclaw.tools.registry import register
@@ -15,6 +14,21 @@ from qrclaw.memory import LongTermMemory, MemoryType
 from qrclaw.logger import get_logger
 
 logger = get_logger("qrclaw.tools.memory")
+
+
+def _invalidate_context_manager_cache():
+    """
+    通知 ContextManager 失效 System Prompt 缓存。
+    当记忆被修改时，需要重新构建 System Prompt。
+    """
+    try:
+        from qrclaw.memory.context.context_manager import get_context_manager
+        ctx = get_context_manager()
+        ctx.invalidate_cache()
+        logger.debug("已通知 ContextManager 失效 System Prompt 缓存")
+    except RuntimeError:
+        # ContextManager 未初始化，忽略
+        pass
 
 
 class WriteMemoryArgs(BaseModel):
@@ -114,8 +128,8 @@ def write_memory(
                 description=description,
             )
             if success:
-                # 标记索引需要更新（Dirty Flag）
-                memory.manager.indexer.mark_dirty()
+                # 通知 ContextManager 失效 System Prompt 缓存
+                _invalidate_context_manager_cache()
                 result = f"✅ 已保存记忆「{title}」（{mtype.value}）"
                 if description:
                     result += f"\n描述: {description}"
@@ -126,8 +140,8 @@ def write_memory(
         success = memory.append(content, title if title else None, mtype)
         
         if success:
-            # 标记索引需要更新（Dirty Flag）
-            memory.manager.indexer.mark_dirty()
+            # 通知 ContextManager 失效 System Prompt 缓存
+            _invalidate_context_manager_cache()
             result = f"已写入中期记忆: {title or '无标题'}（{mtype.value}）"
             if description:
                 result += f"\n描述: {description}"
@@ -191,7 +205,7 @@ def read_memory(memory_type: str = "") -> str:
             except Exception as e:
                 return f"错误：无效的记忆类型 '{memory_type}'"
         
-        # 读取全部（使用索引器，按需重建）
+        # 读取全部
         content = memory.load()
         
         if not content or content.strip() == "# QRClaw 中期记忆":
@@ -298,8 +312,8 @@ def delete_memory(name: str) -> str:
         # 删除
         success = memory.manager.delete_memory(name)
         if success:
-            # 标记索引需要更新（Dirty Flag）
-            memory.manager.indexer.mark_dirty()
+            # 通知 ContextManager 失效 System Prompt 缓存
+            _invalidate_context_manager_cache()
             result = f"✅ 已删除记忆「{entry.name}」"
             logger.info(result)
             return result

@@ -8,9 +8,9 @@
 
 Token 计算：使用 tiktoken 精确计算，支持 GPT-4o 等模型
 """
-import tiktoken
+from collections import deque
+from qrclaw.memory.token_utils import _encoding, count_text_tokens
 from qrclaw.config import (
-    OPENAI_MODEL,
     COMPRESS_SUMMARY_MAX_TOKENS, COMPRESS_SUMMARY_TARGET_TOKENS,
     COMPRESS_RECENT_MAX_TOKENS,
     COMPRESS_TARGET_MIN_RATIO, COMPRESS_TARGET_MAX_RATIO,
@@ -19,14 +19,6 @@ from qrclaw.config import (
 from qrclaw.logger import get_logger
 
 logger = get_logger("qrclaw.memory.compressor")
-
-# 初始化 tiktoken encoder
-# 对于未知模型，fallback 到 cl100k_base（GPT-4/4o 使用）
-try:
-    _encoding = tiktoken.encoding_for_model(OPENAI_MODEL)
-except KeyError:
-    _encoding = tiktoken.get_encoding("cl100k_base")
-    logger.debug(f"模型 {OPENAI_MODEL} 无对应 encoder，使用 cl100k_base")
 
 
 def count_tokens(messages: list[dict]) -> int:
@@ -50,17 +42,13 @@ def count_tokens(messages: list[dict]) -> int:
     return tokens
 
 
-def count_text_tokens(text: str) -> int:
-    """
-    精确计算文本的 token 数。
-
-    Args:
-        text: 文本内容
-
-    Returns:
-        int: token 数
-    """
-    return len(_encoding.encode(text))
+def _msg_token_count(msg: dict) -> int:
+    """计算单条消息的 token 数（不含格式开销，用于快速比较）"""
+    tokens = 4  # 格式开销
+    for key, value in msg.items():
+        if value is not None:
+            tokens += len(_encoding.encode(str(value)))
+    return tokens
 
 
 SUMMARIZE_PROMPT = """请把下面的对话内容整理成结构化摘要，要求：
@@ -90,25 +78,28 @@ def _pick_recent(messages: list[dict], max_tokens: int = None) -> tuple[list[dic
     if max_tokens is None:
         max_tokens = COMPRESS_RECENT_MAX_TOKENS
 
-    recent = []
+    # 使用 deque 高效地在头部插入
+    recent = deque()
     token_count = 0
 
     for msg in reversed(messages):
-        t = count_tokens([msg])
+        t = _msg_token_count(msg)
         if token_count + t > max_tokens:
             break
-        recent.insert(0, msg)
+        recent.appendleft(msg)  # deque.appendleft 是 O(1)
         token_count += t
 
     # 确保不在 tool_calls 组中间截断：
     # 如果 recent 的第一条是 role=tool，说明对应的 assistant(tool_calls) 被切到 old 里了
     # 需要把这些孤立的 tool 消息也移到 old
     while recent and recent[0].get("role") == "tool":
-        recent.pop(0)
+        recent.popleft()
 
-    old = messages[:len(messages) - len(recent)]
-    logger.debug(f"保留窗口: {len(recent)} 条, {token_count} tokens; 待压缩: {len(old)} 条")
-    return recent, old
+    # 转换为列表
+    recent_list = list(recent)
+    old = messages[:len(messages) - len(recent_list)]
+    logger.debug(f"保留窗口: {len(recent_list)} 条, {token_count} tokens; 待压缩: {len(old)} 条")
+    return recent_list, old
 
 
 def summarize(session) -> None:

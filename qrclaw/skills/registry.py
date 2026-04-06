@@ -6,6 +6,7 @@ Skills 注册表
 - 轻量级描述注入（System Prompt）
 - 完整信息按需加载
 - 完全兼容 OpenClaw 的 SKILL.md 格式
+- 单例模式：load_from_dir() 只执行一次，后续直接返回缓存
 """
 
 import yaml
@@ -81,16 +82,72 @@ class Skill:
 
 
 class SkillRegistry:
-    """技能注册表"""
+    """
+    技能注册表（单例模式）
+    
+    使用单例模式确保 skills 目录只扫描一次，
+    后续调用直接返回缓存的技能列表，大幅提升启动性能。
+    
+    使用方式：
+        registry = SkillRegistry.get_instance()
+        registry.load_from_dir(skills_dir)  # 只在第一次执行
+    """
+    
+    _instance: Optional["SkillRegistry"] = None
+    _initialized: bool = False
+
+    def __new__(cls, *args, **kwargs):
+        """单例模式：确保只创建一个实例"""
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+        return cls._instance
 
     def __init__(self):
-        self.skills: Dict[str, Skill] = {}
+        # 确保初始化只执行一次（即使通过 __new__ 创建多个实例）
+        if not SkillRegistry._initialized:
+            self.skills: Dict[str, Skill] = {}
+            self._loaded: bool = False
+            self._loaded_dir: Optional[Path] = None
+            SkillRegistry._initialized = True
+            logger.debug("SkillRegistry 单例初始化")
+
+    @classmethod
+    def get_instance(cls) -> "SkillRegistry":
+        """获取单例实例的推荐方式"""
+        return cls()
+
+    @classmethod
+    def reset(cls):
+        """重置单例（主要用于测试）"""
+        cls._instance = None
+        cls._initialized = False
 
     def load_from_dir(self, skills_dir: Path):
-        """从目录加载所有技能（skills_dir 由 Workspace 提供）"""
+        """
+        从目录加载所有技能（skills_dir 由 Workspace 提供）
+        
+        首次调用执行实际加载，后续调用直接返回缓存，
+        除非传入不同的 skills_dir（会重新加载）。
+        """
+        if not skills_dir:
+            return
+
+        # 如果已经加载过，且目录未变化，直接返回缓存
+        if self._loaded and self._loaded_dir == skills_dir:
+            logger.debug(f"使用缓存的技能列表（已加载 {len(self.skills)} 个技能）")
+            return
+
+        # 目录变化了，需要重新加载
+        if self._loaded and self._loaded_dir != skills_dir:
+            logger.info(f"Skills 目录变更，重新加载: {self._loaded_dir} -> {skills_dir}")
+            self.skills.clear()
+            self._loaded = False
+
         if not skills_dir.exists():
             logger.info(f"Skills 目录不存在，创建：{skills_dir}")
             skills_dir.mkdir(parents=True, exist_ok=True)
+            self._loaded = True
+            self._loaded_dir = skills_dir
             return
 
         # 扫描所有技能目录
@@ -114,6 +171,8 @@ class SkillRegistry:
             except Exception as e:
                 logger.error(f"加载技能失败：{skill_dir}, 错误：{e}", exc_info=True)
 
+        self._loaded = True
+        self._loaded_dir = skills_dir
         logger.info(f"加载了 {len(self.skills)} 个技能")
 
     def get_skills_list(self) -> List[str]:
@@ -131,3 +190,7 @@ class SkillRegistry:
     def get_all_skills(self) -> Dict[str, Skill]:
         """获取所有技能"""
         return self.skills
+
+    def is_loaded(self) -> bool:
+        """检查是否已加载"""
+        return self._loaded

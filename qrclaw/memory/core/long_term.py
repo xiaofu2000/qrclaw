@@ -10,9 +10,9 @@
     │   └── <name>.md
     ├── feedback/              # 反馈记忆
     │   └── <name>.md
-    ├── project/               # 项目记忆
+    ├── project/              # 项目记忆
     │   └── <name>.md
-    └── reference/             # 外部引用
+    └── reference/            # 外部引用
         └── <name>.md
 """
 from pathlib import Path
@@ -50,7 +50,7 @@ class LongTermMemory:
         # memory_file 参数保留但不再使用（兼容旧接口）
         self.memory_file = memory_file or (self.memory_dir / "MEMORY.md")
         
-        # 延迟导入，避免循环依赖
+        # 延迟导入
         self._manager = None
         self._indexer = None
         
@@ -58,23 +58,20 @@ class LongTermMemory:
 
     @property
     def manager(self):
-        """懒加载 MemoryManager，并注入 MemoryIndexer"""
+        """懒加载 MemoryManager"""
         if self._manager is None:
             from qrclaw.memory.core.memory_manager import MemoryManager
-            from qrclaw.memory.storage.indexer import MemoryIndexer
-            
             self._manager = MemoryManager(self.memory_dir)
-            self._indexer = MemoryIndexer(self.memory_dir)
-            self._manager.indexer = self._indexer
-            
-            logger.debug("MemoryManager + MemoryIndexer 初始化完成")
-        
+            logger.debug("MemoryManager 初始化完成")
         return self._manager
 
     @property
     def indexer(self):
-        """获取 MemoryIndexer"""
-        _ = self.manager  # 确保 manager 已初始化
+        """懒加载 MemoryIndexer"""
+        if self._indexer is None:
+            from qrclaw.memory.storage.indexer import MemoryIndexer
+            self._indexer = MemoryIndexer(self.memory_dir)
+            logger.debug("MemoryIndexer 初始化完成")
         return self._indexer
 
     def load(self) -> str:
@@ -139,7 +136,6 @@ class LongTermMemory:
                 memory_type=memory_type,
             )
             if success:
-                self.indexer.mark_dirty()
                 logger.info(f"保存记忆: {name}")
             return success
         except Exception as e:
@@ -150,7 +146,7 @@ class LongTermMemory:
         """清空所有记忆"""
         try:
             self.manager.clear()
-            self.indexer.mark_dirty()
+            self.indexer.rebuild()
             logger.info("清空中期记忆")
             return True
         except Exception as e:

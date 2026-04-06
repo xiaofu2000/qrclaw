@@ -3,17 +3,9 @@ import uuid
 from datetime import datetime
 from pathlib import Path
 from qrclaw.logger import get_logger
-from qrclaw.config import OPENAI_MODEL
+from qrclaw.memory.token_utils import _encoding
 
 logger = get_logger("qrclaw.memory.session")
-
-# 初始化 tiktoken encoder
-import tiktoken
-try:
-    _encoding = tiktoken.encoding_for_model(OPENAI_MODEL)
-except KeyError:
-    _encoding = tiktoken.get_encoding("cl100k_base")
-    logger.debug(f"模型 {OPENAI_MODEL} 无对应 encoder，使用 cl100k_base")
 
 
 def list_sessions(sessions_dir: Path) -> list[dict]:
