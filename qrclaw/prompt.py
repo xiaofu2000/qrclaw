@@ -20,8 +20,8 @@ _TOOL_DESCRIPTIONS = {
     "web_search":      "联网搜索获取最新信息，查找文档、新闻、技术资料时使用",
     "web_fetch":       "访问指定网页并提取纯净的 Markdown 正文，适合阅读文章、文档",
     "run_shell":       "执行 shell 命令，需要运行程序、安装依赖、操作系统时使用",
-    "write_memory":    "写入中期记忆，仅用于记录用户偏好、项目配置等需要跨会话复用的信息，任务结果、调研报告等不要写入",
-    "read_memory":     "读取中期记忆，查看之前记录的用户偏好或配置信息",
+    "write_memory":    "写入中期记忆，仅用于记录用户偏好、项目配置等需要跨会话复用的信息。任务结果、调研报告等不要写入。支持四种类型：user（用户角色/偏好）、feedback（行为指导）、project（项目上下文）、reference（外部引用）",
+    "read_memory":     "读取中期记忆，查看之前记录的重要信息",
     "review_memory":   "审查中期记忆，识别过时、重复内容，支持分析和清理操作。建议定期调用维护记忆质量",
     "use_skill":       "使用指定的技能（Skill）来完成复杂任务，技能是预定义的工作流",
     "spawn_agent":     "在后台启动子 agent 并行执行独立子任务，任务可拆分时批量调用，子 agent 完成后结果自动打印",
@@ -133,41 +133,42 @@ def _build_behavior_section(is_sub_agent: bool = False) -> str:
     if is_sub_agent:
         # 子 agent 专用：汇报压缩规则
         lines.extend([
-    "",
-    "## ⚠️ 你是执行具体任务的子 Agent",
-    "你的角色是“前线突击队员”。你由主 Agent 或调度引擎派生，你的任务不是写读后感，而是向整个系统交付【高信息密度的硬核情报】。",
-    "",
-    "**情报汇报与规约规则（极重要）：**",
-    "1. 【过程脱水，拒绝废话】：绝对禁止输出你调用工具的中间思考过程、试错日志。不要输出类似“我阅读了文件，包含某某章节”的抽象废话。",
-    "2. 【情报保真，提取硬核数据】：下游节点（或重规划器）极其依赖你的发现。你必须提取出能直接指导下一步行动的“硬核上下文”。",
-    "   - 如果任务是读文档：必须提取出确切的安装命令、核心特性列表、关键参数要求。",
-    "   - 如果任务是读代码：必须提取出核心类名、入口函数、或者关键的逻辑流转。",
-    "   - （注意：允许包含必要的短小代码片段或配置项，只要它们是下游任务不可或缺的）",
-    "3. 强制交付格式：",
-    "```markdown",
-    "## 任务交付报告",
-    "- 🎯 状态：[成功 / 失败 / 部分完成]",
-    "- 🛠️ 动作简述：[一句话概括执行的操作，如：读取了 config.py]",
-    "- 📦 核心情报栈 (Payload)：",
-    "  - [硬核发现 1：例如，配置文件中写明的数据库默认端口是 5432]",
-    "  - [硬核发现 2：例如，原 README 中的安装命令是 `pip install -r req.txt`]",
-    "  - [硬核发现 3：...]",
-    "- ⚠️ 异常与移交建议：[无，或写明致命错误，并告诉 Replanner 接下来该怎么做]",
-    "```",
-    "4. 约束：用词极其精简，条理清晰。剔除一切不影响任务流转的水分，但【绝不能牺牲下游所需的关键细节数据】。",
-])
+            "",
+            "## 你是执行具体任务的子 Agent",
+            "你的角色是\"前线突击队员\"。你由主 Agent 或调度引擎派生，你的任务不是写读后感，而是向整个系统交付【高信息密度的硬核情报】。",
+            "",
+            "**情报汇报与规约规则（极重要）：**",
+            "1. 【过程脱水，拒绝废话】：绝对禁止输出你调用工具的中间思考过程、试错日志。不要输出类似\"我阅读了文件，包含某某章节\"的抽象废话。",
+            "2. 【情报保真，提取硬核数据】：下游节点（或重规划器）极其依赖你的发现。你必须提取出能直接指导下一步行动的\"硬核上下文\"。",
+            "   - 如果任务是读文档：必须提取出确切的安装命令、核心特性列表、关键参数要求。",
+            "   - 如果任务是读代码：必须提取出核心类名、入口函数、或者关键的逻辑流转。",
+            "   - （注意：允许包含必要的短小代码片段或配置项，只要它们是下游任务不可或缺的）",
+            "3. 强制交付格式：",
+            "```markdown",
+            "## 任务交付报告",
+            "- 状态：[成功 / 失败 / 部分完成]",
+            "- 动作简述：[一句话概括执行的操作，如：读取了 config.py]",
+            "- 核心情报栈 (Payload)：",
+            "  - [硬核发现 1：例如，配置文件中写明的数据库默认端口是 5432]",
+            "  - [硬核发现 2：例如，原 README 中的安装命令是 `pip install -r req.txt`]",
+            "  - [硬核发现 3：...]",
+            "- 异常与移交建议：[无，或写明致命错误，并告诉 Replanner 接下来该怎么做]",
+            "```",
+            "4. 约束：用词极其精简，条理清晰。剔除一切不影响任务流转的水分，但【绝不能牺牲下游所需的关键细节数据】。",
+        ])
 
     return "\n".join(lines)
 
 
-def _build_memory_section(memory: LongTermMemory = None) -> str:
+def _build_memory_section(memory_dir: Path) -> str:
     """构建中期记忆部分"""
-    if memory is None:
-        memory = LongTermMemory()
-
+    if memory_dir is None or not memory_dir.exists():
+        return ""
+    
+    memory = LongTermMemory(memory_dir=memory_dir)
     content = memory.load()
 
-    if not content or content.strip() == "# QRClaw 中期记忆":
+    if not content or content.strip() == "# QRClaw 记忆索引":
         # 记忆为空，不注入
         return ""
 
@@ -237,7 +238,7 @@ def build_system_prompt(
     is_sub_agent: bool = False,
     agent_file: Path | None = None,
     skills_dir: Path | None = None,
-    memory_file: Path | None = None,
+    memory_dir: Path | None = None,
 ) -> str:
     """构建完整的 system prompt。
 
@@ -249,11 +250,10 @@ def build_system_prompt(
         is_sub_agent:   是否是子 agent
         agent_file:     AGENT.md 路径（agent 身份定义）
         skills_dir:     技能目录路径
-        memory_file:    记忆文件路径
+        memory_dir:     记忆目录路径
     """
     from qrclaw.skills.registry import SkillRegistry
     tool_names = [s["function"]["name"] for s in get_schemas()]
-    memory = LongTermMemory(memory_file) if memory_file else None
     skill_registry = SkillRegistry()
     if skills_dir:
         skill_registry.load_from_dir(skills_dir)
@@ -272,7 +272,7 @@ def build_system_prompt(
         "",
         _build_workspace_section(),
         "",
-        _build_memory_section(memory),
+        _build_memory_section(memory_dir),
         "",
         _build_heartbeat_section(heartbeat_file),
     ]

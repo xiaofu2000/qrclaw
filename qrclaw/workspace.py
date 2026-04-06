@@ -28,7 +28,6 @@ class Workspace:
         
         # 记忆系统路径（统一到 agents/{agent_id}/memory/）
         self.memory_dir = self.root / "memory"
-        self.memory_file = self.root / "MEMORY.md"  # 兼容旧接口：单个文件
         self.heartbeat_file = self.root / "HEARTBEAT.md"
         self.agent_file = self.root / "AGENT.md"
 

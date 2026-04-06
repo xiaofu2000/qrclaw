@@ -76,7 +76,7 @@ def _get_workspace_and_memory():
     from qrclaw.agent import get_workspace
     from qrclaw.workspace import Workspace
     ws = get_workspace() or Workspace("default")
-    memory = LongTermMemory(ws.memory_file, ws.memory_dir)
+    memory = LongTermMemory(memory_dir=ws.memory_dir)
     return ws, memory
 
 
@@ -208,7 +208,7 @@ def read_memory(memory_type: str = "") -> str:
         # 读取全部
         content = memory.load()
         
-        if not content or content.strip() == "# QRClaw 中期记忆":
+        if not content or content.strip() == "# QRClaw 记忆索引":
             logger.info("中期记忆为空")
             return "## 中期记忆\n\n（暂无记录任何信息）\n"
         

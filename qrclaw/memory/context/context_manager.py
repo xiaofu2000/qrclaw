@@ -115,7 +115,7 @@ class ContextManager:
         标记 System Prompt 缓存为脏，需要重建。
         
         在以下情况调用：
-        - 外部文件被修改（需要外部调用方主动触发）
+        - 记忆被修改时（通过 _invalidate_context_manager_cache）
         - 压缩后
         - 用户主动要求
         """
@@ -135,7 +135,7 @@ class ContextManager:
                 is_sub_agent=self.is_sub_agent,
                 agent_file=self.workspace.agent_file,
                 skills_dir=self.workspace.skills_dir,
-                memory_file=self.workspace.memory_file,
+                memory_dir=self.workspace.memory_dir,
             )
             self._dirty = False
             logger.info("System Prompt 构建完成")

@@ -10,9 +10,9 @@
     │   └── <name>.md
     ├── feedback/              # 反馈记忆
     │   └── <name>.md
-    ├── project/              # 项目记忆
+    ├── project/               # 项目记忆
     │   └── <name>.md
-    └── reference/            # 外部引用
+    └── reference/             # 外部引用
         └── <name>.md
 """
 from pathlib import Path
@@ -32,23 +32,17 @@ class LongTermMemory:
     封装 MemoryManager 和 MemoryIndexer，提供简洁的接口。
     """
 
-    def __init__(self, memory_file: Path = None, memory_dir: Path = None):
+    def __init__(self, memory_dir: Path = None):
         """
         初始化长期记忆。
 
         Args:
-            memory_file: 记忆文件路径（兼容旧接口，保留但不使用）
             memory_dir: 记忆目录路径，默认为 ~/.qrclaw/agents/default/memory/
         """
-        # 统一路径：使用 memory_dir 参数，memory_file 参数已废弃
         if memory_dir:
             self.memory_dir = Path(memory_dir)
         else:
-            # 默认路径：与 Workspace 保持一致
             self.memory_dir = AGENTS_ROOT / "default" / "memory"
-        
-        # memory_file 参数保留但不再使用（兼容旧接口）
-        self.memory_file = memory_file or (self.memory_dir / "MEMORY.md")
         
         # 延迟导入
         self._manager = None
