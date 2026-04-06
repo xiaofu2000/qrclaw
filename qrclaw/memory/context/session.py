@@ -3,7 +3,7 @@ import uuid
 from datetime import datetime
 from pathlib import Path
 from qrclaw.logger import get_logger
-from qrclaw.memory.token_utils import _encoding
+from qrclaw.memory.token_utils import count_messages_tokens
 
 logger = get_logger("qrclaw.memory.session")
 
@@ -68,25 +68,6 @@ def delete_session(session_id: str, sessions_dir: Path) -> bool:
         return True
     return False
 
-
-def count_tokens(messages: list[dict]) -> int:
-    """
-    精确计算消息列表的 token 数（使用 tiktoken）。
-
-    Args:
-        messages: OpenAI 格式的消息列表
-    Returns:
-        int: token 总数
-    """
-    tokens = 0
-    for msg in messages:
-        # 每条消息有固定开销
-        tokens += 4  # {"role": "...", "content": "..."} 格式开销
-        for key, value in msg.items():
-            if value is not None:
-                tokens += len(_encoding.encode(str(value)))
-    tokens += 2  # 对话开销
-    return tokens
 
 
 class Session:
@@ -178,7 +159,7 @@ class Session:
                 # 过滤掉旧历史里的 system 消息，system prompt 由 agent 实时生成
                 self.messages = [m for m in data if m.get("role") != "system"]
                 # 精确计算已加载消息的 token 数
-                self.prompt_tokens = count_tokens(self.messages)
+                self.prompt_tokens = count_messages_tokens(self.messages)
                 logger.info(f"加载历史会话: {len(self.messages)} 条消息, {self.prompt_tokens} tokens")
             except Exception as e:
                 logger.error(f"加载会话失败: {e}", exc_info=True)

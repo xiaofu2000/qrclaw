@@ -1,29 +1,35 @@
 """
-tiktoken 编码器单例模块。
+Token 计算工具模块。
 
-所有模块统一从本模块导入 _encoding，避免重复初始化，提升启动性能。
+使用 LiteLLM 的 token_counter，针对不同模型自动选择正确的分词器，
+比 tiktoken 对非 OpenAI 模型（如 MiniMax）更准确。
 """
-import tiktoken
+import litellm
 from qrclaw.config import LITELLM_MODEL
 from qrclaw.logger import get_logger
 
 logger = get_logger("qrclaw.memory.token_utils")
 
-# 初始化 tiktoken encoder（单例，全局只初始化一次）
-try:
-    _encoding = tiktoken.encoding_for_model(LITELLM_MODEL)
-except KeyError:
-    _encoding = tiktoken.get_encoding("cl100k_base")
-    logger.debug(f"模型 {LITELLM_MODEL} 无对应 encoder，使用 cl100k_base")
-
 
 def count_text_tokens(text: str) -> int:
     """
-    精确计算文本的 token 数。
+    计算文本的 token 数。
 
     Args:
         text: 文本内容
     Returns:
         int: token 数
     """
-    return len(_encoding.encode(text))
+    return litellm.token_counter(model=LITELLM_MODEL, text=text)
+
+
+def count_messages_tokens(messages: list[dict]) -> int:
+    """
+    计算消息列表的 token 数。
+
+    Args:
+        messages: OpenAI 格式的消息列表
+    Returns:
+        int: token 总数
+    """
+    return litellm.token_counter(model=LITELLM_MODEL, messages=messages)

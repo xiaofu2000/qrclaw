@@ -9,7 +9,7 @@
 Token 计算：使用 tiktoken 精确计算，支持 GPT-4o 等模型
 """
 from collections import deque
-from qrclaw.memory.token_utils import _encoding, count_text_tokens
+from qrclaw.memory.token_utils import count_text_tokens
 from qrclaw.config import (
     COMPRESS_SUMMARY_MAX_TOKENS, COMPRESS_SUMMARY_TARGET_TOKENS,
     COMPRESS_RECENT_MAX_TOKENS,
