@@ -93,5 +93,4 @@ def create_long_term_memory(
     from qrclaw.memory import LongTermMemory
     
     base_dir = memory_dir or get_default_memory_dir(agent_id)
-    memory_file = base_dir / "MEMORY.md"
-    return LongTermMemory(memory_file=memory_file, memory_dir=base_dir)
+    return LongTermMemory(memory_dir=base_dir)

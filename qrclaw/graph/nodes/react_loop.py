@@ -53,7 +53,7 @@ class ReactLoopNode:
             from qrclaw.memory import LongTermMemory
 
             if workspace:
-                memory = LongTermMemory(workspace.memory_file, workspace.memory_dir)
+                memory = LongTermMemory(memory_dir=workspace.memory_dir)
                 extractor = MemoryExtractionNode(memory)
                 self._memory_integration = MemoryExtractionIntegration(extractor)
                 logger.debug("MemoryExtractionIntegration 已初始化")
