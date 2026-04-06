@@ -6,11 +6,14 @@ Replanner 节点
 - 如果需要调整方向，返回新的步骤列表
 - 如果原计划仍合理，返回原剩余步骤不变
 """
-import json
-import re
+from __future__ import annotations
+
+from typing import Literal
+from pydantic import BaseModel, Field
+
 from qrclaw.providers import provider
+from qrclaw.providers.litellm_provider import LiteLLMProvider
 from qrclaw.graph.nodes.router import PlanStep
-from qrclaw.memory.step_result import StepResult
 from qrclaw.memory.context.context_manager import get_context_manager
 from qrclaw.logger import get_logger
 
@@ -30,18 +33,17 @@ _REPLANNER_PROMPT = """你是一个高级智能体任务重规划器 (Replanner)
 【你的核心任务】
 1. 分析战报：已完成的步骤拿到了哪些真实情报？是否遇到了致命阻塞、报错或死胡同？
 2. 评估进度：终极目标是否已经彻底达成？（必须是拿到了可以直接回答用户的最终数据，才算达成）。
-   ⚠️ 极其重要：如果用户的最终目标是编写代码、生成报告或修改文件，仅仅搜集完情报绝对不算达成！ 
+   ⚠️ 极其重要：如果用户的最终目标是编写代码、生成报告或修改文件，仅仅搜集完情报绝对不算达成！
 3. 重构图纸：如果没达成，根据最新情报重新规划后续步骤。
 
 【重规划铁律（极重要！）】
 1. 【绝对路径强制令（生死线）】：只要步骤描述中需要读取、修改或操作任何文件/目录，**必须、绝对、毫无例外地使用完整的绝对路径**！
-2. 【绝对保真与防幻觉】：必须严格使用战报中出现的真实文件。绝不允许凭空猜测路径或使用“（如 xxx.py）”这种假设性举例！
+2. 【绝对保真与防幻觉】：必须严格使用战报中出现的真实文件。绝不允许凭空猜测路径或使用"（如 xxx.py）"这种假设性举例！
 3. 【破除死循环】：如果战报显示某步骤执行失败（如文件不存在），绝对禁止在后续计划中原样重复该步骤！必须改变策略（如扩大搜索范围）。
 4. 【上下文自包含】：步骤描述必须像给全新 Agent 下达的独立指令。明确写出具体要怎么做、处理哪个绝对路径的文件、目标是什么。
 5. 【动态并发视野】：情报充足时，尽量规划无依赖关系的并行步骤（depends_on: []）。情报不足时，只生成 1-2 步探测任务。
 
 【输出格式】
-必须且只能输出一个纯净的 JSON 对象。绝对禁止输出 ```json 这类 Markdown 代码块标记，禁止在 JSON 外输出任何解释性文字！
 必须先输出 "thought" 字段进行逻辑推演，并在推演中强制检查自己是否使用了绝对路径！
 
 如果目标已达成，返回：
@@ -66,19 +68,23 @@ _REPLANNER_PROMPT = """你是一个高级智能体任务重规划器 (Replanner)
 - 坚决取消原计划中已被证明无效、报错或多余的步骤。
 """
 
-def _parse_json(raw: str) -> dict:
-    raw = raw.strip()
-    # 剥掉 <think>...</think> 标签（MiniMax 等 thinking 模型会返回）
-    raw = re.sub(r'<think>.*?</think>', '', raw, flags=re.DOTALL).strip()
-    try:
-        return json.loads(raw)
-    except json.JSONDecodeError:
-        pass
-    match = re.search(r'\{.*\}', raw, re.DOTALL)
-    if match:
-        return json.loads(match.group())
-    raise ValueError(f"无法解析 Replanner 输出: {raw[:100]}")
 
+# ── Pydantic Schema ────────────────────────────────────────────────────────────
+
+class ReplanStepSchema(BaseModel):
+    id: int
+    description: str
+    depends_on: list[int] = Field(default_factory=list)
+
+
+class ReplanSchema(BaseModel):
+    thought: str = Field(description="逻辑推演过程，包含对战报的分析")
+    status: Literal["done", "continue"]
+    project_path: str = Field(default="", description="项目根目录绝对路径，status=continue 时填写")
+    steps: list[ReplanStepSchema] = Field(default_factory=list, description="新的剩余步骤，status=continue 时填写")
+
+
+# ── ReplannerNode ──────────────────────────────────────────────────────────────
 
 class ReplannerNode:
 
@@ -97,40 +103,45 @@ class ReplannerNode:
         messages = ctx.build_messages("replanner")
 
         try:
-            response = provider.chat(
-                messages,
-                tools=None,
-                json_mode=True,
-            )
-            data = _parse_json(response.content)
+            if not isinstance(provider, LiteLLMProvider):
+                raise RuntimeError("Replanner 目前仅支持 LiteLLMProvider")
+
+            import instructor
+            from litellm import completion
+            client = instructor.from_litellm(completion, mode=instructor.Mode.JSON)
+
+            kwargs = provider.make_instructor_kwargs(messages, temperature=0.1)
+            kwargs["response_model"] = ReplanSchema
+            kwargs["max_retries"] = 3
+
+            result: ReplanSchema = client.chat.completions.create(**kwargs)
+
         except Exception as e:
             logger.warning(f"Replanner 调用失败: {e}，保持原计划继续")
             return ctx.plan_state.remaining
 
-        status = data.get("status", "continue")
+        logger.debug(f"Replanner thought: {result.thought}")
 
-        if status == "done":
+        if result.status == "done":
             logger.warning("Replanner 判断目标已达成，DONE")
             return None
 
         # 如果 LLM 重新确认了项目路径，更新 PlanState
-        project_path = data.get("project_path", "")
-        if project_path and project_path != ps.project_path:
-            logger.info(f"Replanner 更新项目路径: {project_path}")
-            ps.project_path = project_path
+        if result.project_path and result.project_path != ps.project_path:
+            logger.info(f"Replanner 更新项目路径: {result.project_path}")
+            ps.project_path = result.project_path
 
-        new_steps_data = data.get("steps", [])
-        if not new_steps_data:
+        if not result.steps:
             logger.info("Replanner 返回空步骤，视为 DONE")
             return None
 
         new_steps = [
             PlanStep(
-                id=s["id"],
-                description=s["description"],
-                depends_on=s.get("depends_on", []),
+                id=s.id,
+                description=s.description,
+                depends_on=s.depends_on,
             )
-            for s in new_steps_data
+            for s in result.steps
         ]
 
         if len(new_steps) != len(ps.remaining) or any(
