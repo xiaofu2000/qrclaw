@@ -284,7 +284,7 @@ class ContextManager:
 
         return filtered
 
-    def _build_replanner_messages(self) -> list[dict]:
+    def _build_replanner_messages(self, replanner_instruction: str = "", **kwargs) -> list[dict]:
         from qrclaw.graph.nodes.replanner import _REPLANNER_PROMPT
         ps = self._plan_state
         if ps is None:
@@ -305,6 +305,6 @@ class ContextManager:
             .replace("{remaining_steps}", remaining_text)
         )
         messages = [{"role": "user", "content": prompt}]
-        if "replanner_instruction" in kwargs:
-            messages.append({"role": "user", "content": kwargs["replanner_instruction"]})
+        if replanner_instruction:
+            messages.append({"role": "user", "content": replanner_instruction})
         return messages

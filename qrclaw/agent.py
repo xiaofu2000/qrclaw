@@ -79,7 +79,7 @@ def run(
     workspace: Workspace,
     auto_confirm: bool = False,
 ):
-    logger.warning(f"收到用户输入: {user_input[:100]}...")
+    logger.info(f"收到用户输入: {user_input[:100]}...")
 
     set_session(session)
     set_workspace(workspace)
