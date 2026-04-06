@@ -68,6 +68,9 @@ _REPLANNER_PROMPT = """你是一个高级智能体任务重规划器 (Replanner)
 - 坚决取消原计划中已被证明无效、报错或多余的步骤。
 """
 
+# 用户指令：追加在战报之后，强化 JSON 输出约束
+_REPLANNER_INSTRUCTION = """请根据以上战报，判断终极目标是否已彻底完成，并输出 JSON。只输出 JSON，不要其他内容。"""
+
 
 # ── Pydantic Schema ────────────────────────────────────────────────────────────
 
@@ -100,7 +103,7 @@ class ReplannerNode:
         ps = ctx.plan_state
         logger.info(f"Replanner 评估，已完成 {len(ps.past_steps)} 步，剩余 {len(ps.remaining)} 步")
 
-        messages = ctx.build_messages("replanner")
+        messages = ctx.build_messages("replanner", replanner_instruction=_REPLANNER_INSTRUCTION)
 
         try:
             if not isinstance(provider, LiteLLMProvider):

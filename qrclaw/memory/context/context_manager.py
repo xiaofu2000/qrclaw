@@ -217,7 +217,7 @@ class ContextManager:
         elif role == "router":
             return self._build_router_messages(kwargs["route_instruction"])
         elif role == "replanner":
-            return self._build_replanner_messages()
+            return self._build_replanner_messages(**kwargs)
         else:
             raise ValueError(f"未知 role: {role}")
 
@@ -304,4 +304,7 @@ class ContextManager:
             .replace("{past_steps}", past_text)
             .replace("{remaining_steps}", remaining_text)
         )
-        return [{"role": "user", "content": prompt}]
+        messages = [{"role": "user", "content": prompt}]
+        if "replanner_instruction" in kwargs:
+            messages.append({"role": "user", "content": kwargs["replanner_instruction"]})
+        return messages
