@@ -42,26 +42,26 @@ PROVIDER_PREFIX_MAP = {
 def _infer_provider(model: str, base_url: str | None) -> str:
     """
     推断模型对应的 provider 前缀。
-    
+
     LiteLLM 要求模型格式为 provider/model-name，如 minimax/MiniMax-M2.7-highspeed
     如果模型名已包含 /，说明已有前缀，直接返回原值。
     """
     if "/" in model:
         return model  # 已有前缀
-    
+
     if not base_url:
         return model  # 无法推断，返回原值
-    
+
     # 从 base_url 提取 host
     parsed = urlparse(base_url if base_url.startswith("http") else f"https://{base_url}")
     host = parsed.netloc.lower()
-    
+
     # 查找匹配的 provider
     for pattern, provider in PROVIDER_PREFIX_MAP.items():
         if pattern in host:
             logger.debug(f"从 base_url 推断 provider: {base_url} -> {provider}")
             return f"{provider}/{model}"
-    
+
     return model  # 无法推断，返回原值
 class LiteLLMProvider(LLMProvider):
     """
@@ -80,7 +80,7 @@ class LiteLLMProvider(LLMProvider):
         self._api_key = LITELLM_API_KEY
         self._base_url = LITELLM_BASE_URL or LITELLM_API_BASE or None
         self._proxy_url = LITELLM_PROXY_URL or None
-        
+
         # 自动推断 provider 前缀
         self._model = _infer_provider(LITELLM_MODEL, self._base_url)
 
@@ -206,3 +206,19 @@ class LiteLLMProvider(LLMProvider):
             total_tokens=total_tokens,
             raw=response,
         )
+
+    def make_instructor_kwargs(self, messages: list[dict], temperature: float = 0.1) -> dict:
+        """
+        返回给 instructor 用的基础 kwargs（model、messages、api 配置）。
+        调用方追加 response_model / max_retries 等参数后传给 instructor client。
+        """
+        kwargs: dict = {
+            "model": self._model,
+            "messages": self._sanitize(messages),
+            "temperature": temperature,
+        }
+        if self._api_key:
+            kwargs["api_key"] = self._api_key
+        if self._base_url:
+            kwargs["api_base"] = self._base_url
+        return kwargs

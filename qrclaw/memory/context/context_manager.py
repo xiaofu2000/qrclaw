@@ -169,7 +169,7 @@ class ContextManager:
     def invalidate_cache(self) -> None:
         """
         标记 System Prompt 缓存为脏，需要重建。
-        
+
         在以下情况调用：
         - 记忆被修改时（通过 _invalidate_context_manager_cache）
         - 压缩后
@@ -253,45 +253,35 @@ class ContextManager:
 
     def _filter_for_router(self, messages: list[dict]) -> list[dict]:
         """
-        过滤消息，只保留用户对话。
-        
+        过滤消息，只保留用户输入和 assistant 最终纯文字回复。
+
         过滤掉的内容：
         - role=tool 的消息（工具返回）
-        - assistant 消息中带有 tool_calls 的消息
-        - assistant 消息中 tool_calls 之前的 thought 部分（如果有）
-        
+        - assistant 消息中带有 tool_calls 的消息（含中间推理 content 一并丢弃）
+
         保留的内容：
         - role=user 的消息（用户输入）
-        - assistant 消息中没有 tool_calls 的消息（纯文字回复）
+        - assistant 消息中没有 tool_calls 的消息（最终纯文字回复）
         """
         filtered = []
         i = 0
         while i < len(messages):
             msg = messages[i]
             role = msg.get("role")
-            
+
             if role == "user":
                 # 用户消息直接保留
                 filtered.append(msg)
-                
+
             elif role == "assistant":
-                # assistant 消息需要特殊处理
-                if msg.get("tool_calls"):
-                    # 有 tool_calls 的 assistant 消息需要拆分
-                    # 保留没有 tool_calls 部分的内容
-                    content = msg.get("content", "").strip()
-                    if content:
-                        # 只保留纯文字回复部分
-                        filtered.append({"role": "assistant", "content": content})
-                    # tool_calls 部分直接丢弃
-                else:
-                    # 没有 tool_calls 的 assistant 消息直接保留
+                # 有 tool_calls 的消息（包含中间推理）直接丢弃
+                if not msg.get("tool_calls"):
                     filtered.append(msg)
-                    
+
             # role=tool 的消息直接跳过
-            
+
             i += 1
-            
+
         return filtered
 
     def _build_replanner_messages(self) -> list[dict]:
