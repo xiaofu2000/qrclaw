@@ -58,8 +58,8 @@ _REPLANNER_PROMPT = """你是一个高级智能体任务重规划器 (Replanner)
   "status": "continue",
   "project_path": "从战报或对话上下文中确认的项目根目录绝对路径，如 /Users/xxx/myproject",
   "steps": [
-    {"id": 1, "description": "动作描述，必须包含具体的真实绝对路径参数和明确的处理要求", "depends_on": []},
-    {"id": 2, "description": "动作描述，必须包含具体的真实绝对路径参数和明确的处理要求", "depends_on": [1]}
+    {"id": 1, "description": "动作描述，如果有文件引用，必须包含具体的真实绝对路径参数和明确的处理要求", "depends_on": []},
+    {"id": 2, "description": "动作描述，如果有文件引用，必须包含具体的真实绝对路径参数和明确的处理要求", "depends_on": [1]}
   ]
 }
 
