@@ -276,17 +276,42 @@ class MemoryExtractionNode:
         logger.warning(f"[记忆提取] 任务已加入队列，消息数: {len(messages)}，pending: {pending_count}")
 
     def _format_messages_for_llm(self, messages: list) -> str:
-        """将消息列表格式化为 LLM 可读的文本"""
+        """
+        将消息列表格式化为 LLM 可读的文本。
+
+        过滤规则：
+        - 跳过 role=tool 的消息（工具返回结果）
+        - 跳过含 tool_calls 的 assistant 消息（中间推理步骤）
+        - 保留 role=user 和纯文字 role=assistant 消息（[SUMMARY] 摘要也保留）
+        - 传全量，不截断
+        """
         lines = []
-        for msg in messages[-20:]:  # 最近20条
-            role = getattr(msg, 'type', 'unknown') or getattr(msg, 'role', 'unknown')
+        for msg in messages:
+            role = msg.get('role', '') if isinstance(msg, dict) else getattr(msg, 'role', '')
+
+            # 跳过 tool 返回
+            if role == 'tool':
+                continue
+
+            # 跳过含 tool_calls 的 assistant 消息
+            if role == 'assistant':
+                tool_calls = msg.get('tool_calls') if isinstance(msg, dict) else getattr(msg, 'tool_calls', None)
+                if tool_calls:
+                    continue
+
             content = msg.get('content', '') if isinstance(msg, dict) else getattr(msg, 'content', '')
+            if not content:
+                continue
+
             if isinstance(content, list):
                 content = '\n'.join(
                     b.get('text', '') or b.get('content', '')
                     for b in content if b.get('type') == 'text'
                 )
-            lines.append(f"[{role}] {content}")
+
+            if content.strip():
+                lines.append(f"[{role}] {content}")
+
         return '\n\n'.join(lines)
 
     def _build_extraction_prompt(self, messages_text: str) -> str:
@@ -341,6 +366,11 @@ class MemoryExtractionNode:
 
         if success_count > 0:
             logger.info(f"[记忆提取] 批量写入完成: {success_count}/{len(to_write)}")
+            try:
+                from qrclaw.memory.context.context_manager import get_context_manager
+                get_context_manager().invalidate_cache()
+            except Exception:
+                pass
 
         return success_count
 
@@ -516,17 +546,23 @@ class MemoryExtractionIntegration:
         在 ReAct 循环结束时调用
 
         集成到 ReactLoopNode.run() 的循环结束后
+        check_and_extract 判断是否需要提取，flush_pending 在后台线程执行，不阻塞 CLI
         """
         messages = getattr(session, 'messages', [])
         token_count = self.extractor._estimate_tokens(messages)
 
-        logger.warning(
+        logger.debug(
             f"[记忆提取集成] 轮次={current_round} | "
             f"消息数={len(messages)} | 估算token={token_count}"
         )
 
         self.extractor.check_and_extract(messages, token_count, current_round)
 
-        # 检查是否需要批量写入
+        # 检查是否需要批量写入，放后台线程执行，不阻塞主线程
         if self.extractor.get_pending_count() >= self.extractor.config.max_pending:
-            self.extractor.flush_pending()
+            t = threading.Thread(
+                target=self.extractor.flush_pending,
+                daemon=True,
+                name="memory-extraction",
+            )
+            t.start()
