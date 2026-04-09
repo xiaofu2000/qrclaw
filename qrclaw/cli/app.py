@@ -61,7 +61,8 @@ def main() -> None:
         session_id=session.session_id,
         log_level=LOG_LEVEL,
         log_to_file=LOG_TO_FILE,
-        log_to_console=LOG_CONSOLE_LEVEL,
+        log_to_console=LOG_TO_CONSOLE,
+        console_level=LOG_CONSOLE_LEVEL,
         log_max_days=LOG_MAX_DAYS,
         log_dir=workspace.logs_dir,
     )

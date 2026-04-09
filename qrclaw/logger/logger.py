@@ -163,6 +163,21 @@ class QRClawLogger:
         self._initialized = True
         self._current_session_id = session_id
 
+        # 静默 root logger，防止第三方库日志通过 root handler 泄漏到终端
+        root_logger = logging.getLogger()
+        root_logger.handlers.clear()
+        root_logger.setLevel(logging.WARNING)
+
+        # 静默常见的"话多"第三方库
+        for _lib in [
+            "httpx", "httpcore",
+            "urllib3", "urllib3.connectionpool",
+            "LiteLLM", "LiteLLM Router",
+            "openai", "anthropic",
+            "asyncio", "aiohttp",
+        ]:
+            logging.getLogger(_lib).setLevel(logging.WARNING)
+
         # 记录初始化日志
         self._logger.info("=" * 60)
         self._logger.info(f"QRClaw 日志系统初始化完成 (会话: {session_id})")

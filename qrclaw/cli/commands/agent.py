@@ -71,13 +71,13 @@ def _cmd_new(agent_id: str, current_workspace: Workspace, current_session: Sessi
 
     # 调用统一的创建函数（会自动写入 permissions.yaml）
     result = _create_agent(agent_id)
-    
+
     if result.startswith("错误") or result.startswith("❌"):
         console.print(f"[red]{result}[/red]")
         return current_workspace, current_session
-    
+
     console.print(f"[green]{result}[/green]")
-    
+
     new_workspace = Workspace(agent_id=agent_id)
     new_session = _switch_to(new_workspace, console)
     console.print(f"[bold cyan]已切换到 agent: {agent_id}[/bold cyan]")
@@ -110,12 +110,12 @@ def _cmd_delete(agent_id: str, current_workspace: Workspace, current_session: Se
 
     # 调用统一的删除函数（会清理 permissions.yaml）
     result = _delete_agent(agent_id)
-    
+
     if result.startswith("错误") or result.startswith("❌"):
         console.print(f"[red]{result}[/red]")
     else:
         console.print(f"[green]{result}[/green]")
-    
+
     return current_workspace, current_session
 
 
@@ -125,9 +125,9 @@ def _switch_to(workspace: Workspace, console: Console) -> Session:
         session_id="init",
         log_level=LOG_LEVEL,
         log_to_file=LOG_TO_FILE,
-        log_to_console=LOG_CONSOLE_LEVEL,
-        log_max_days=LOG_MAX_DAYS,
+        log_to_console=LOG_TO_CONSOLE,
         console_level=LOG_CONSOLE_LEVEL,
+        log_max_days=LOG_MAX_DAYS,
         log_dir=workspace.logs_dir,
     )
     new_session = Session(sessions_dir=workspace.sessions_dir)
@@ -136,7 +136,8 @@ def _switch_to(workspace: Workspace, console: Console) -> Session:
         session_id=new_session.session_id,
         log_level=LOG_LEVEL,
         log_to_file=LOG_TO_FILE,
-        log_to_console=LOG_CONSOLE_LEVEL,
+        log_to_console=LOG_TO_CONSOLE,
+        console_level=LOG_CONSOLE_LEVEL,
         log_max_days=LOG_MAX_DAYS,
         log_dir=workspace.logs_dir,
     )
