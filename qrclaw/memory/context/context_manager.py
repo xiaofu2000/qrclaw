@@ -301,6 +301,7 @@ class ContextManager:
         prompt = (
             _REPLANNER_PROMPT
             .replace("{goal}", ps.goal)
+            .replace("{project_path}", ps.project_path or "（未指定，请从战报中推断）")
             .replace("{past_steps}", past_text)
             .replace("{remaining_steps}", remaining_text)
         )

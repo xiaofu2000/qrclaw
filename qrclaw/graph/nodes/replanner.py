@@ -24,6 +24,10 @@ _REPLANNER_PROMPT = """你是一个高级智能体任务重规划器 (Replanner)
 【终极目标】
 {goal}
 
+【项目根目录】
+{project_path}
+（所有文件操作必须基于此路径，禁止使用其他路径）
+
 【已完成步骤及真实结果 (战报)】
 {past_steps}
 
