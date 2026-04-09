@@ -22,33 +22,15 @@ logger = get_logger("qrclaw.memory.compressor")
 
 
 def count_tokens(messages: list[dict]) -> int:
-    """
-    精确计算消息列表的 token 数。
-
-    Args:
-        messages: OpenAI 格式的消息列表
-
-    Returns:
-        int: token 总数
-    """
-    tokens = 0
-    for msg in messages:
-        # 每条消息有固定开销
-        tokens += 4  # {"role": "...", "content": "..."} 格式开销
-        for key, value in msg.items():
-            if value is not None:
-                tokens += len(_encoding.encode(str(value)))
-    tokens += 2  # 对话开销
-    return tokens
+    """计算消息列表的 token 数（基于 litellm token_counter）"""
+    from qrclaw.memory.token_utils import count_messages_tokens
+    return count_messages_tokens(messages)
 
 
 def _msg_token_count(msg: dict) -> int:
-    """计算单条消息的 token 数（不含格式开销，用于快速比较）"""
-    tokens = 4  # 格式开销
-    for key, value in msg.items():
-        if value is not None:
-            tokens += len(_encoding.encode(str(value)))
-    return tokens
+    """计算单条消息的 token 数"""
+    from qrclaw.memory.token_utils import count_messages_tokens
+    return count_messages_tokens([msg])
 
 
 SUMMARIZE_PROMPT = """请把下面的对话内容整理成结构化摘要，要求：
