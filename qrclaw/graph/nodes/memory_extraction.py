@@ -102,14 +102,21 @@ EXTRACTION_PROMPT_TEMPLATE = """你是一个 Wiki 知识库维护者。请分析
 5. content 是页面完整正文，不是增量
 
 【输出格式】
-needs_update: 是否需要写入（true/false）
-pages: 要写入的页面列表，每个页面包含：
-  - action: "create"（新建）或 "update"（更新已有页面）
-  - name: 页面名称
-  - content: 页面完整正文（Markdown）
-  - description: 一句话描述
-  - tags: 标签列表
-  - related: 关联页面名列表（只填已存在的页面名）"""
+{{
+  "needs_update": true,
+  "pages": [
+    {{
+      "action": "create",
+      "name": "页面名称（一个主题一个页面）",
+      "content": "页面完整正文（Markdown，用 [[页面名]] 引用其他页面）",
+      "description": "一句话描述",
+      "tags": ["标签1", "标签2"],
+      "related": ["只填已存在的页面名"]
+    }}
+  ]
+}}
+
+needs_update 为 false 时，pages 为空数组。"""
 
 
 # ── MemoryExtractionNode ─────────────────────────────────────────────────────
