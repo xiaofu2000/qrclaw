@@ -58,19 +58,22 @@ DEFAULT_CONFIG = ExtractionConfig()
 # ── Pydantic Schema（强制结构化输出）─────────────────────────────────────────
 
 class WikiPageSchema(BaseModel):
-    """单个 Wiki 页面操作"""
+    """单个 Wiki 页面操作，每个实例只聚焦一个主题"""
     action: Literal["create", "update"] = Field(description="create=新建页面，update=更新已有页面")
-    name: str = Field(description="页面名称，update 时必须与索引中完全一致")
-    content: str = Field(description="页面完整正文，Markdown 格式，可用 [[页面名]] 建立链接")
+    name: str = Field(description="页面名称，一个名称只对应一个主题，update 时必须与索引中完全一致")
+    content: str = Field(description="页面完整正文，Markdown 格式，只包含本页面主题的内容，用 [[页面名]] 引用其他主题")
     description: str = Field(default="", description="一句话描述，显示在索引里")
     tags: list[str] = Field(default_factory=list, description="标签列表")
-    related: list[str] = Field(default_factory=list, description="关联页面名列表")
+    related: list[str] = Field(default_factory=list, description="关联页面名列表，只填索引中已存在的页面名")
 
 
 class ExtractionSchema(BaseModel):
     """记忆提取结果"""
     needs_update: bool = Field(description="对话中是否有值得写入 Wiki 的知识")
-    pages: list[WikiPageSchema] = Field(default_factory=list, description="需要写入的页面列表，needs_update=false 时为空")
+    pages: list[WikiPageSchema] = Field(
+        default_factory=list,
+        description="要写入的页面列表。内容涉及多个主题时必须拆成多个页面分别列出，每个页面只聚焦一个独立主题，不要把所有内容塞进一个页面"
+    )
 
 
 # ── 提取结果 ──────────────────────────────────────────────────────────────────

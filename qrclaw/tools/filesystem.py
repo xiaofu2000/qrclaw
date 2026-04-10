@@ -47,6 +47,10 @@ def read_file(path: str) -> str:
     logger.debug(f"读取文件: {path}")
     try:
         p = _resolve_path(path)
+        if p.is_dir():
+            error_msg = f"错误：{path} 是一个目录，请使用 list_directory 工具查看目录内容"
+            logger.warning(error_msg)
+            return error_msg
         content = p.read_text(encoding="utf-8")
         logger.info(f"读取文件成功: {p}, 大小: {len(content)} 字符")
         return content

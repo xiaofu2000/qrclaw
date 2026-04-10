@@ -10,7 +10,7 @@ LiteLLM Provider
 """
 import litellm
 from litellm import completion
-from litellm.exceptions import RateLimitError, ServiceUnavailableError, APIError
+from litellm.exceptions import RateLimitError, ServiceUnavailableError, APIError, APIConnectionError
 from urllib.parse import urlparse
 
 from qrclaw.providers.base import LLMProvider, LLMResponse, ToolCall
@@ -151,7 +151,7 @@ class LiteLLMProvider(LLMProvider):
             try:
                 response = completion(**kwargs)
                 break
-            except (RateLimitError, ServiceUnavailableError) as e:
+            except (RateLimitError, ServiceUnavailableError, APIConnectionError) as e:
                 last_error = e
                 if attempt < max_retries - 1:
                     wait = 2 ** attempt
