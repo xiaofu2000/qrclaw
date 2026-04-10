@@ -50,12 +50,14 @@ class ReactLoopNode:
             from qrclaw.graph.nodes.memory_extraction import (
                 MemoryExtractionNode,
                 MemoryExtractionIntegration,
+                register_extractor,
             )
-            from qrclaw.memory import LongTermMemory
+            from qrclaw.memory.wiki import WikiMemory
 
             if workspace:
-                memory = LongTermMemory(memory_dir=workspace.memory_dir)
+                memory = WikiMemory(memory_dir=workspace.memory_dir)
                 extractor = MemoryExtractionNode(memory)
+                register_extractor(extractor)
                 self._memory_integration = MemoryExtractionIntegration(extractor)
                 logger.debug("MemoryExtractionIntegration 已初始化")
         return self._memory_integration
