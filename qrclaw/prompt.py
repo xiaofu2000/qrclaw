@@ -6,7 +6,7 @@ import os
 import platform
 from pathlib import Path
 from qrclaw.config import AGENT_NAME
-from qrclaw.memory import LongTermMemory
+from qrclaw.memory.wiki import WikiMemory
 from qrclaw.skills.registry import SkillRegistry
 from qrclaw.tools.registry import get_schemas
 from qrclaw.logger import get_logger
@@ -20,9 +20,11 @@ _TOOL_DESCRIPTIONS = {
     "web_search":      "联网搜索获取最新信息，查找文档、新闻、技术资料时使用",
     "web_fetch":       "访问指定网页并提取纯净的 Markdown 正文，适合阅读文章、文档",
     "run_shell":       "执行 shell 命令，需要运行程序、安装依赖、操作系统时使用",
-    "write_memory":    "写入中期记忆，仅用于记录用户偏好、项目配置等需要跨会话复用的信息。任务结果、调研报告等不要写入。支持四种类型：user（用户角色/偏好）、feedback（行为指导）、project（项目上下文）、reference（外部引用）",
-    "read_memory":     "读取中期记忆，查看之前记录的重要信息",
-    "review_memory":   "审查中期记忆，识别过时、重复内容，支持分析和清理操作。建议定期调用维护记忆质量",
+    "write_wiki_page": "新建或更新 Wiki 记忆页面，用于记录用户偏好、项目配置、技术决策等需要跨会话复用的知识。正文可用 [[页面名]] 引用其他页面",
+    "read_wiki_page":  "读取指定 Wiki 页面的完整内容",
+    "list_wiki_pages": "列出所有 Wiki 页面，可按标签过滤",
+    "search_wiki":     "在 Wiki 中搜索关键词，返回匹配的页面",
+    "delete_wiki_page":"删除指定的 Wiki 页面",
     "use_skill":       "使用指定的技能（Skill）来完成复杂任务，技能是预定义的工作流",
     "spawn_agent":     "在后台启动子 agent 并行执行独立子任务，任务可拆分时批量调用，子 agent 完成后结果自动打印",
     "wait_agents":     "等待所有后台子 agent 完成，返回各子 agent 的结构化摘要，再根据摘要决定是否用 read_file 查看详情",
@@ -161,21 +163,21 @@ def _build_behavior_section(is_sub_agent: bool = False) -> str:
 
 
 def _build_memory_section(memory_dir: Path) -> str:
-    """构建中期记忆部分"""
+    """构建 Wiki 记忆索引部分（注入 index.md）"""
     if memory_dir is None or not memory_dir.exists():
         return ""
-    
-    memory = LongTermMemory(memory_dir=memory_dir)
-    content = memory.load()
 
-    if not content or content.strip() == "# QRClaw 记忆索引":
-        # 记忆为空，不注入
+    wiki = WikiMemory(memory_dir=memory_dir)
+    content = wiki.load_index()
+
+    if not content or "暂无页面" in content:
         return ""
 
-    logger.info("注入中期记忆到 system prompt")
+    logger.info("注入 Wiki 记忆索引到 system prompt")
     return "\n".join([
-        "## 中期记忆",
-        "以下是你之前记录的重要信息，请在回答时参考：",
+        "## Wiki 记忆",
+        "以下是你的 Wiki 知识库索引，记录了跨会话的重要知识。",
+        "需要详细内容时，使用 read_wiki_page 读取对应页面。",
         "",
         content,
     ])

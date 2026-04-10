@@ -1,24 +1,22 @@
 """
-MemoryExtractionNode —— 会话记忆提取节点（Claude Code 风格）
+MemoryExtractionNode —— 会话记忆提取节点（LLM Wiki 风格）
 
-对齐 Claude Code 的 Session Memory 设计：
-
-核心机制：
-1. 阈值驱动：Token 数量 + 工具调用次数
-2. LLM 分析：默默分析会话，提取关键信息
-3. 延迟写入：不阻塞主流程
-
-不同于 Claude Code：
-- 使用后台线程而非 forking（Python 限制）
+触发逻辑不变（Token 阈值 + 工具调用次数），
+写入方式升级为 LLM Wiki：
+- 提取时注入 index.md，让 LLM 了解已有页面
+- LLM 决定新建页面还是更新已有页面
+- 写入通过 WikiMemory.save_page 完成（upsert 语义）
 """
 import os
 import threading
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Optional
+from typing import Literal, Optional
+
+from pydantic import BaseModel, Field
 
 from qrclaw.logger import get_logger
-from qrclaw.memory import LongTermMemory, MemoryType
+from qrclaw.memory.wiki import WikiMemory
 
 logger = get_logger("qrclaw.graph.nodes.memory_extraction")
 
@@ -57,38 +55,61 @@ class ExtractionConfig:
 DEFAULT_CONFIG = ExtractionConfig()
 
 
+# ── Pydantic Schema（强制结构化输出）─────────────────────────────────────────
+
+class WikiPageSchema(BaseModel):
+    """单个 Wiki 页面操作"""
+    action: Literal["create", "update"] = Field(description="create=新建页面，update=更新已有页面")
+    name: str = Field(description="页面名称，update 时必须与索引中完全一致")
+    content: str = Field(description="页面完整正文，Markdown 格式，可用 [[页面名]] 建立链接")
+    description: str = Field(default="", description="一句话描述，显示在索引里")
+    tags: list[str] = Field(default_factory=list, description="标签列表")
+    related: list[str] = Field(default_factory=list, description="关联页面名列表")
+
+
+class ExtractionSchema(BaseModel):
+    """记忆提取结果"""
+    needs_update: bool = Field(description="对话中是否有值得写入 Wiki 的知识")
+    pages: list[WikiPageSchema] = Field(default_factory=list, description="需要写入的页面列表，needs_update=false 时为空")
+
+
 # ── 提取结果 ──────────────────────────────────────────────────────────────────
 
 @dataclass
 class ExtractionResult:
-    """提取结果"""
-
-    content: str
-    memory_type: MemoryType
-    description: str
+    """提取结果（待写入队列条目）"""
+    prompt: str  # 传给 LLM 的完整提示词
 
 
 # ── 提取提示词模板 ────────────────────────────────────────────────────────────
 
-EXTRACTION_PROMPT_TEMPLATE = """请分析以下会话，提取值得记住的关键信息。
+EXTRACTION_PROMPT_TEMPLATE = """你是一个 Wiki 知识库维护者。请分析以下会话，决定是否需要更新或新建 Wiki 页面。
 
-要求：
-1. 识别用户偏好和习惯（如工具偏好、沟通方式）
-2. 识别反馈和纠正（用户告诉你要做什么/不要做什么）
-3. 识别项目上下文（任务目标、约束条件、决策）
-4. 如果没有值得记住的信息，请回复"无需提取"
+【现有 Wiki 页面索引】
+{index_md}
 
-输出格式：
-如果需要提取，请按以下格式输出：
+【最近对话】
+{messages_text}
 
-类型: USER | FEEDBACK | PROJECT | REFERENCE
-描述: 一句话描述
-内容: 详细说明（2-3句话）
+【任务】
+判断对话中是否有值得长期保存的知识（用户偏好、项目配置、技术决策、行为反馈等）。
 
----
+【写入规则】
+1. 每个页面只聚焦一个主题，不要把多个主题塞进一个页面
+2. 内容涉及多个主题时，拆分成多个独立页面，每个页面用 [[页面名]] 引用相关页面
+3. related 字段只填【现有 Wiki 页面索引】中已存在的页面名，不能引用不存在的页面
+4. 对于要 update 的页面，name 必须与索引中完全一致
+5. content 是页面完整正文，不是增量
 
-会话内容：
-{messages_text}"""
+【输出格式】
+needs_update: 是否需要写入（true/false）
+pages: 要写入的页面列表，每个页面包含：
+  - action: "create"（新建）或 "update"（更新已有页面）
+  - name: 页面名称
+  - content: 页面完整正文（Markdown）
+  - description: 一句话描述
+  - tags: 标签列表
+  - related: 关联页面名列表（只填已存在的页面名）"""
 
 
 # ── MemoryExtractionNode ─────────────────────────────────────────────────────
@@ -117,7 +138,7 @@ class MemoryExtractionNode:
 
     def __init__(
         self,
-        memory: LongTermMemory,
+        memory: WikiMemory,
         config: ExtractionConfig = None,
     ):
         self.memory = memory
@@ -255,22 +276,23 @@ class MemoryExtractionNode:
         return True
 
     def _trigger_extraction(self, messages: list):
-        """触发提取"""
-        # 将消息转换为文本格式
+        """触发提取：把消息文本 + index.md 一起打包进队列"""
         messages_text = self._format_messages_for_llm(messages)
-
-        # 构建提取提示词
-        prompt = self._build_extraction_prompt(messages_text)
-
-        # 加入待处理队列
-        with self._pending_lock:
-            self._pending_extractions.append(
-                ExtractionResult(
-                    content=prompt,
-                    memory_type=MemoryType.PROJECT,
-                    description=f"会话记忆_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
-                )
+        # 只传页面名+描述，不传路径/标题等噪音
+        entries = self.memory.index.all_entries()
+        if entries:
+            index_summary = "\n".join(
+                f"- {e['name']}：{e.get('description', '')}" for e in entries
             )
+        else:
+            index_summary = "（暂无页面）"
+
+        prompt = EXTRACTION_PROMPT_TEMPLATE.format(
+            index_md=index_summary,
+            messages_text=messages_text,
+        )
+        with self._pending_lock:
+            self._pending_extractions.append(ExtractionResult(prompt=prompt))
             pending_count = len(self._pending_extractions)
 
         logger.warning(f"[记忆提取] 任务已加入队列，消息数: {len(messages)}，pending: {pending_count}")
@@ -315,8 +337,8 @@ class MemoryExtractionNode:
         return '\n\n'.join(lines)
 
     def _build_extraction_prompt(self, messages_text: str) -> str:
-        """构建提取提示词"""
-        return EXTRACTION_PROMPT_TEMPLATE.format(messages_text=messages_text)
+        """兼容旧调用，不再使用"""
+        return messages_text
 
     # ── 批量写入 ──────────────────────────────────────────────────────────────
 
@@ -341,26 +363,26 @@ class MemoryExtractionNode:
         success_count = 0
         for result in to_write:
             try:
-                # 使用 LLM 分析
-                analysis = self._analyze_with_llm(result.content)
-                logger.warning(f"[记忆提取] 是否需要提取: {analysis}")
+                extraction: Optional[ExtractionSchema] = self._analyze_with_llm(result.prompt)
 
-                if analysis and analysis.strip() != "无需提取":
-                    memory_info = self._parse_llm_response(analysis)
-                    if memory_info:
-                        success = self.memory.save_entry(
-                            name=memory_info.get('name', f"记忆_{datetime.now().strftime('%H%M%S')}"),
-                            description=memory_info.get('description', ''),
-                            content=memory_info.get('content', ''),
-                            memory_type=MemoryType.from_str(memory_info.get('type', 'project').lower()),
+                if extraction is None or not extraction.needs_update or not extraction.pages:
+                    logger.debug("[记忆提取] LLM 判定无需更新")
+                    continue
+
+                for page in extraction.pages:
+                    try:
+                        self.memory.save_page(
+                            name=page.name,
+                            content=page.content,
+                            description=page.description,
+                            tags=page.tags,
+                            related=page.related,
                         )
-                        if success:
-                            success_count += 1
-                            logger.warning(f"[记忆提取] 写入成功: {memory_info.get('name')}")
-                        else:
-                            logger.warning(f"[记忆提取] 写入失败: {memory_info.get('name')}")
-                else:
-                    logger.debug("[记忆提取] LLM 判定无需提取")
+                        success_count += 1
+                        logger.warning(f"[记忆提取] 写入成功: [{page.action}] {page.name}")
+                    except Exception as e:
+                        logger.warning(f"[记忆提取] 写入页面失败: {page.name}, {e}")
+
             except Exception as e:
                 logger.warning(f"[记忆提取] 写入异常: {e}")
 
@@ -374,46 +396,37 @@ class MemoryExtractionNode:
 
         return success_count
 
-    def _analyze_with_llm(self, prompt: str) -> str:
+    def _analyze_with_llm(self, prompt: str) -> Optional[ExtractionSchema]:
         """
-        使用 LLM 分析会话内容
-
-        接入 QRClaw 的 LLM Provider
+        使用 instructor + Pydantic Schema 强制结构化输出，与 Router 节点一致。
+        失败返回 None（跳过本次提取）。
         """
         try:
+            import instructor
+            from litellm import completion
             from qrclaw.providers import provider
+            from qrclaw.providers.litellm_provider import LiteLLMProvider
 
+            if not isinstance(provider, LiteLLMProvider):
+                raise RuntimeError("记忆提取目前仅支持 LiteLLMProvider")
+
+            client = instructor.from_litellm(completion, mode=instructor.Mode.JSON)
             messages = [{"role": "user", "content": prompt}]
-            logger.debug("[记忆提取] 调用 LLM 分析...")
-            response = provider.chat(messages)
-            logger.debug(f"[记忆提取] LLM 响应: {response.content[:100]}...")
+            kwargs = provider.make_instructor_kwargs(messages, temperature=0.1)
+            kwargs["response_model"] = ExtractionSchema
+            kwargs["max_retries"] = 3
 
-            return response.content
+            result: ExtractionSchema = client.chat.completions.create(**kwargs)
+            logger.debug(f"[记忆提取] needs_update={result.needs_update}, pages={len(result.pages)}")
+            return result
 
         except Exception as e:
             logger.warning(f"[记忆提取] LLM 分析失败: {e}，跳过本次提取")
-            return "无需提取"
+            return None
 
-    def _parse_llm_response(self, response: str) -> Optional[dict]:
-        """解析 LLM 返回的内容"""
-        result = {}
-
-        for line in response.strip().split('\n'):
-            line = line.strip()
-            if line.startswith('类型:'):
-                result['type'] = line[3:].strip()
-            elif line.startswith('描述:'):
-                result['description'] = line[3:].strip()
-            elif line.startswith('内容:'):
-                result['content'] = line[3:].strip()
-            elif line.startswith('名称:') or line.startswith('name:'):
-                result['name'] = line.split(':', 1)[1].strip()
-
-        # 生成默认名称
-        if 'name' not in result:
-            result['name'] = f"会话记忆_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-
-        return result if result.get('type') else None
+    def _parse_llm_response(self, response: str) -> list[dict]:
+        """兼容旧调用，不再使用"""
+        return []
 
     # ── 后台线程 ─────────────────────────────────────────────────────────────
 
@@ -566,3 +579,19 @@ class MemoryExtractionIntegration:
                 name="memory-extraction",
             )
             t.start()
+
+
+# ── 全局 Extractor 注册表（供工具层访问）────────────────────────────────────────
+
+_global_extractor: Optional[MemoryExtractionNode] = None
+
+
+def register_extractor(extractor: MemoryExtractionNode) -> None:
+    """ReactLoopNode 初始化时注册 extractor，供工具层调用"""
+    global _global_extractor
+    _global_extractor = extractor
+
+
+def get_extractor() -> Optional[MemoryExtractionNode]:
+    """工具层获取当前 extractor"""
+    return _global_extractor
