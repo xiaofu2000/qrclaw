@@ -516,8 +516,8 @@ class MemoryExtractionNode:
                 name=page.name,
                 content=result.content,
                 description=result.description or page.description,
-                tags=result.tags or page.tags,
-                related=result.related or page.related,
+                tags=page.tags,
+                related=page.related,
             )
             logger.info(f"[记忆整理] 整理完成: {name}")
         except Exception as e:
