@@ -266,6 +266,38 @@ class MemoryExtractionNode:
 
         return count
 
+    def _messages_since_last_extraction(self, messages: list) -> list:
+        """
+        返回上次提取之后新增的消息，通过 uuid 截断。
+
+        - _last_message_uuid 为 None 时（首次提取），返回全部消息
+        - 找到 uuid 匹配的消息后，返回其后的所有消息
+        - 找不到对应 uuid 时（消息被压缩/清理），回退返回全量
+        """
+        if self._last_message_uuid is None:
+            return messages
+
+        found = False
+        result = []
+        for msg in messages:
+            if not found:
+                msg_uuid = msg.get('uuid') if isinstance(msg, dict) else getattr(msg, 'uuid', None)
+                if msg_uuid == self._last_message_uuid:
+                    found = True
+                continue
+            result.append(msg)
+
+        if not found:
+            logger.warning(
+                f"[记忆提取] 未找到上次截断点 uuid={self._last_message_uuid}，回退全量消息"
+            )
+            return messages
+
+        logger.debug(
+            f"[记忆提取] uuid 截断: 全量={len(messages)}, 截断后={len(result)}"
+        )
+        return result
+
     # ── 检查与提取 ───────────────────────────────────────────────────────────
 
     def check_and_extract(
@@ -292,8 +324,10 @@ class MemoryExtractionNode:
         self._tokens_at_last_extraction = token_count
         if messages:
             last_msg = messages[-1]
-            if hasattr(last_msg, 'uuid') and last_msg.uuid:
-                self._last_message_uuid = last_msg.uuid
+            if isinstance(last_msg, dict):
+                self._last_message_uuid = last_msg.get('uuid')
+            else:
+                self._last_message_uuid = getattr(last_msg, 'uuid', None)
 
         # 启动提取
         self._trigger_extraction(messages)
@@ -301,8 +335,10 @@ class MemoryExtractionNode:
         return True
 
     def _trigger_extraction(self, messages: list):
-        """触发提取：把消息文本 + index.md 一起打包进队列"""
-        messages_text = self._format_messages_for_llm(messages)
+        """触发提取：只取上次提取后的新消息 + index.md 一起打包进队列"""
+        # 只取上次提取之后新增的消息，之前的已被处理过
+        new_messages = self._messages_since_last_extraction(messages)
+        messages_text = self._format_messages_for_llm(new_messages)
         # 只传页面名+描述，不传路径/标题等噪音
         entries = self.memory.index.all_entries()
         if entries:
