@@ -5,6 +5,7 @@ ReactLoop 节点
 适用于：简单任务直接执行、并行计划完成后的最终整合。
 """
 import json
+from typing import Callable, Optional
 from rich.console import Console
 from rich.panel import Panel
 from rich.text import Text
@@ -36,6 +37,117 @@ def _dump_assistant_msg(response: LLMResponse) -> dict:
             tc_list.append(entry)
         msg["tool_calls"] = tc_list
     return msg
+
+
+def run_react_loop(
+    messages: list[dict],
+    tools: list[dict],
+    max_iterations: int = MAX_ITERATIONS,
+    on_tool_call: Optional[Callable[[str, str], str]] = None,
+    on_finish: Optional[Callable[[str], None]] = None,
+    console: Optional[Console] = None,
+    silent: bool = False,
+) -> str:
+    """
+    通用 ReAct 循环核心，供 ReactLoopNode 和 MemoryExtractionNode 等复用。
+
+    Args:
+        messages: 初始消息列表（system + 任务描述）
+        tools: 工具 schema 列表
+        max_iterations: 最大迭代次数
+        on_tool_call: 工具执行回调，签名 (name, arguments) -> result
+                      为 None 时使用默认 execute()
+        on_finish: 完成回调，签名 (content) -> None
+        console: Rich Console，silent=True 时不输出
+        silent: 静默模式，不打印任何内容
+
+    Returns:
+        最终 LLM 输出内容
+    """
+    _console = console or Console()
+
+    for iteration in range(max_iterations):
+        logger.debug(f"run_react_loop 第 {iteration + 1} 轮")
+
+        with _console.status("[bold yellow]思考中...[/bold yellow]", spinner="dots") if not silent else _noop_ctx():
+            try:
+                response = provider.chat(messages, tools=tools)
+            except Exception as e:
+                logger.error(f"LLM 调用失败: {e}", exc_info=True)
+                raise
+
+        if response.finish_reason == "stop":
+            if not silent:
+                _console.print()
+                _console.print(Panel(
+                    Markdown(response.content or "", code_theme="ansi_dark"),
+                    title="[bold green]Agent[/bold green]",
+                    border_style="green",
+                    expand=True,
+                ))
+                _console.print()
+            messages.append({"role": "assistant", "content": response.content or ""})
+            if on_finish:
+                on_finish(response.content or "")
+            return response.content or ""
+
+        if response.finish_reason == "length":
+            return "错误：回复被截断"
+
+        assistant_msg_saved = False
+
+        for tc in response.tool_calls:
+            name = tc.name
+            arguments = tc.arguments
+            logger.info(f"工具调用: {name}")
+
+            if not silent:
+                try:
+                    args_formatted = json.dumps(json.loads(arguments), ensure_ascii=False, indent=2)
+                except Exception:
+                    args_formatted = arguments
+                _console.print()
+                _console.print(Panel(
+                    Text.assemble(("[bold cyan]" + name + "[/bold cyan]\n", ""), (args_formatted, "")),
+                    title="[bold yellow]▶ 调用工具[/bold yellow]",
+                    border_style="yellow",
+                    expand=False,
+                ))
+                _console.print()
+
+            if not assistant_msg_saved:
+                messages.append(_dump_assistant_msg(response))
+                assistant_msg_saved = True
+
+            try:
+                if on_tool_call:
+                    result = on_tool_call(name, arguments)
+                else:
+                    result = execute(name, arguments)
+            except Exception as e:
+                result = f"工具执行失败: {str(e)}"
+                logger.error(f"工具执行失败: {name}, 错误: {e}", exc_info=True)
+
+            if not silent:
+                preview = result[:200] + "..." if len(result) > 200 else result
+                _console.print(Panel(
+                    Text(preview),
+                    title="[bold blue]◀ 工具结果[/bold blue]",
+                    border_style="blue",
+                    expand=False,
+                ))
+                _console.print()
+
+            messages.append({"role": "tool", "tool_call_id": tc.id, "content": result})
+
+    logger.warning("run_react_loop 达到最大迭代次数")
+    return "错误：达到最大迭代次数"
+
+
+class _noop_ctx:
+    """静默模式占位 context manager"""
+    def __enter__(self): return self
+    def __exit__(self, *_): pass
 
 
 class ReactLoopNode:
@@ -77,122 +189,54 @@ class ReactLoopNode:
         # 仅主 agent 启用记忆提取
         memory_integration = self._get_memory_integration(workspace) if not is_sub_agent else None
 
-        for iteration in range(MAX_ITERATIONS):
-            logger.debug(f"ReAct 第 {iteration + 1} 轮")
+        tools = get_schemas_for_sub_agent() if is_sub_agent else get_schemas()
 
-            # 调用前检查 token 数，超限提前压缩
-            ctx.compress_if_needed()
-            messages = ctx.build_messages("react")
+        def _tool_call(name: str, arguments: str) -> str:
+            nonlocal permission_denied_count
+            if need_confirm(name) and not auto_confirm:
+                console.print(f"[bold red]⚠ 需要确认[/bold red] 是否允许执行？(y/n) ", end="")
+                choice = input().strip().lower()
+                if choice != "y":
+                    return "用户拒绝执行此操作"
+            try:
+                result = execute(name, arguments)
+                permission_denied_count = 0
+                return result
+            except PermissionError as e:
+                permission_denied_count += 1
+                if permission_denied_count >= MAX_PERMISSION_DENIED:
+                    raise RuntimeError(f"连续 {MAX_PERMISSION_DENIED} 次权限拒绝，任务终止") from e
+                return str(e)
+            except Exception as e:
+                logger.error(f"工具执行失败: {name}, 错误: {e}", exc_info=True)
+                return f"工具执行失败: {str(e)}"
 
-            tools = get_schemas_for_sub_agent() if is_sub_agent else get_schemas()
+        def _on_finish(content: str) -> None:
+            session.add({"role": "assistant", "content": content})
+            if memory_integration:
+                memory_integration.on_react_loop_end(session, 0)
 
-            with console.status("[bold yellow]思考中...[/bold yellow]", spinner="dots"):
-                try:
-                    response = provider.chat(messages, tools=tools)
-                    session.update_tokens(
-                        prompt_tokens=response.prompt_tokens,
-                        completion_tokens=response.completion_tokens,
-                        total_tokens=response.total_tokens,
-                    )
-                except Exception as e:
-                    logger.error(f"LLM 调用失败: {e}", exc_info=True)
-                    raise
+        # 调用前检查压缩
+        ctx.compress_if_needed()
+        messages = ctx.build_messages("react")
 
-            if response.prompt_tokens > COMPRESS_THRESHOLD:
-                ctx.compress_if_needed()
+        try:
+            result = run_react_loop(
+                messages=messages,
+                tools=tools,
+                max_iterations=MAX_ITERATIONS,
+                on_tool_call=_tool_call,
+                on_finish=_on_finish,
+                console=console,
+                silent=False,
+            )
+        except RuntimeError as e:
+            console.print(Panel(
+                f"[bold red]{e}[/bold red]",
+                title="[bold red]⛔ 权限不足[/bold red]",
+                border_style="red",
+                expand=False,
+            ))
+            return f"错误：{e}"
 
-            if response.finish_reason == "stop":
-                session.add({"role": "assistant", "content": response.content})
-                console.print()
-                console.print(Panel(
-                    Markdown(response.content, code_theme="ansi_dark"),
-                    title="[bold green]Agent[/bold green]",
-                    border_style="green",
-                    expand=True,
-                ))
-                console.print()
-
-                # 循环结束时触发记忆提取（仅主 agent）
-                if memory_integration:
-                    memory_integration.on_react_loop_end(session, iteration)
-
-                return response.content
-
-            if response.finish_reason == "length":
-                console.print("[bold red]警告：回复被截断，请尝试简化任务[/bold red]\n")
-                return "错误：回复被截断"
-
-            assistant_msg_saved = False
-
-            for tc in response.tool_calls:
-                name = tc.name
-                arguments = tc.arguments
-                logger.info(f"工具调用: {name}")
-
-                try:
-                    args_formatted = json.dumps(json.loads(arguments), ensure_ascii=False, indent=2)
-                except Exception:
-                    args_formatted = arguments
-
-                console.print()
-                console.print(Panel(
-                    Text.assemble(("[bold cyan]" + name + "[/bold cyan]\n", ""), (args_formatted, "")),
-                    title="[bold yellow]▶ 调用工具[/bold yellow]",
-                    border_style="yellow",
-                    expand=False,
-                ))
-                console.print()
-
-                if need_confirm(name) and not auto_confirm:
-                    console.print(f"[bold red]⚠ 需要确认[/bold red] 是否允许执行？(y/n) ", end="")
-                    choice = input().strip().lower()
-                    if choice != "y":
-                        result = "用户拒绝执行此操作"
-                        console.print(Panel(result, title="[bold red]已拒绝[/bold red]", border_style="red", expand=False))
-                        if not assistant_msg_saved:
-                            session.add(_dump_assistant_msg(response))
-                            assistant_msg_saved = True
-                        session.add({"role": "tool", "tool_call_id": tc.id, "content": result})
-                        break
-
-                if not assistant_msg_saved:
-                    session.add(_dump_assistant_msg(response))
-                    assistant_msg_saved = True
-
-                try:
-                    result = execute(name, arguments)
-                    permission_denied_count = 0
-                except PermissionError as e:
-                    permission_denied_count += 1
-                    result = str(e)
-                    if permission_denied_count >= MAX_PERMISSION_DENIED:
-                        console.print(Panel(
-                            f"[bold red]连续 {MAX_PERMISSION_DENIED} 次权限拒绝，任务终止。[/bold red]\n\n{e}",
-                            title="[bold red]⛔ 权限不足[/bold red]",
-                            border_style="red",
-                            expand=False,
-                        ))
-                        return f"错误：连续 {MAX_PERMISSION_DENIED} 次权限拒绝，任务终止"
-                except Exception as e:
-                    result = f"工具执行失败: {str(e)}"
-                    logger.error(f"工具执行失败: {name}, 错误: {e}", exc_info=True)
-
-                preview = result[:200] + "..." if len(result) > 200 else result
-                console.print(Panel(
-                    Text(preview),
-                    title="[bold blue]◀ 工具结果[/bold blue]",
-                    border_style="blue",
-                    expand=False,
-                ))
-                console.print()
-
-                session.add({"role": "tool", "tool_call_id": tc.id, "content": result})
-
-
-        logger.warning("达到最大迭代次数")
-
-        # 达到最大迭代次数后也触发一次提取（仅主 agent）
-        if memory_integration:
-            memory_integration.on_react_loop_end(session, iteration)
-
-        return "错误：达到最大迭代次数"
+        return result
