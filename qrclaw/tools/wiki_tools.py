@@ -22,7 +22,7 @@ def _get_wiki_memory():
     from qrclaw.memory.wiki import WikiMemory
 
     ws = get_workspace() or Workspace("default")
-    return WikiMemory(memory_dir=ws.memory_dir)
+    return WikiMemory.for_workspace(ws.memory_dir)
 
 
 def _invalidate_context_cache():

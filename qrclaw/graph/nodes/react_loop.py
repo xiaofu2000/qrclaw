@@ -167,7 +167,7 @@ class ReactLoopNode:
             from qrclaw.memory.wiki import WikiMemory
 
             if workspace:
-                memory = WikiMemory(memory_dir=workspace.memory_dir)
+                memory = WikiMemory.for_workspace(workspace.memory_dir)
                 extractor = MemoryExtractionNode(memory)
                 register_extractor(extractor)
                 self._memory_integration = MemoryExtractionIntegration(extractor)

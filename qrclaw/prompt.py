@@ -167,7 +167,7 @@ def _build_memory_section(memory_dir: Path) -> str:
     if memory_dir is None or not memory_dir.exists():
         return ""
 
-    wiki = WikiMemory(memory_dir=memory_dir)
+    wiki = WikiMemory.for_workspace(memory_dir)
     content = wiki.load_index()
 
     if not content or "暂无页面" in content:
