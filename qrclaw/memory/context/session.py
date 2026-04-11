@@ -118,7 +118,9 @@ class Session:
         self._load()
 
     def add(self, message: dict):
-        """追加一条消息，并立即存盘"""
+        """追加一条消息，并立即存盘。自动注入 uuid 用于记忆提取截断。"""
+        if 'uuid' not in message:
+            message['uuid'] = uuid.uuid4().hex[:12]
         self.messages.append(message)
         self._save()
         logger.debug(f"添加消息: {message.get('role', 'unknown')}, 当前会话消息数: {len(self.messages)}")
