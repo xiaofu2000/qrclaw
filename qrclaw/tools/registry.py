@@ -9,8 +9,45 @@ logger = get_logger("qrclaw.tools.registry")
 _tools: dict = {}
 
 
-def register(description: str, args_model: Type[BaseModel], confirm: bool = False):
-    """装饰器：把函数注册成一个工具。confirm=True 表示执行前需要用户确认"""
+# ── Agent 类型常量 ────────────────────────────────────────────────────────────
+
+class AgentType:
+    MAIN    = "main"       # 主 Agent，完整工具集
+    SUB     = "sub"        # 子 Agent，执行类工具
+    MEMORY  = "memory"     # 记忆 Agent，只读/写 Wiki
+
+
+# ── 各 Agent 默认工具白名单（工具名列表，None 表示继承全量）──────────────────
+
+_AGENT_TOOL_WHITELIST: dict[str, list[str] | None] = {
+    AgentType.MAIN: None,  # 全量
+    AgentType.SUB: [
+        "read_file", "write_file", "list_directory",
+        "run_shell", "web_search", "web_fetch",
+        "use_skill",
+    ],
+    AgentType.MEMORY: [
+        "read_wiki_page",
+        "submit_memory_result",
+    ],
+}
+
+
+def register(
+    description: str,
+    args_model: Type[BaseModel],
+    confirm: bool = False,
+    agents: list[str] | None = None,
+):
+    """
+    装饰器：把函数注册成一个工具。
+
+    Args:
+        description: 工具描述
+        args_model: Pydantic 参数模型
+        confirm: True 表示执行前需要用户确认
+        agents: 可见的 AgentType 列表，None 表示所有 Agent 可见
+    """
     def decorator(fn):
         schema = _build_schema(fn.__name__, description, args_model)
         _tools[fn.__name__] = {
@@ -18,8 +55,9 @@ def register(description: str, args_model: Type[BaseModel], confirm: bool = Fals
             "model": args_model,
             "schema": schema,
             "confirm": confirm,
+            "agents": agents,  # None = 所有 Agent 可见
         }
-        logger.debug(f"注册工具: {fn.__name__} (需要确认: {confirm})")
+        logger.debug(f"注册工具: {fn.__name__} (agents={agents}, 需要确认: {confirm})")
         return fn
     return decorator
 
@@ -86,15 +124,29 @@ def _build_schema(name: str, description: str, args_model: Type[BaseModel]) -> d
     }
 
 
-def get_schemas() -> list[dict]:
-    """返回所有工具的 schema 列表"""
-    schemas = [item["schema"] for item in _tools.values()]
-    logger.debug(f"获取工具 schemas，共 {len(schemas)} 个工具")
+def get_schemas(agent_type: str = AgentType.MAIN) -> list[dict]:
+    """返回指定 Agent 类型可见的工具 schema 列表"""
+    whitelist = _AGENT_TOOL_WHITELIST.get(agent_type)
+    schemas = []
+    for name, item in _tools.items():
+        tool_agents = item.get("agents")
+        # 工具级过滤：tool 指定了 agents，且当前 agent_type 不在其中
+        if tool_agents is not None and agent_type not in tool_agents:
+            continue
+        # Agent 白名单过滤：白名单存在，且工具名不在白名单中
+        if whitelist is not None and name not in whitelist:
+            continue
+        schemas.append(item["schema"])
+    logger.debug(f"获取工具 schemas [{agent_type}]，共 {len(schemas)} 个工具")
     return schemas
 
 
-# 子 agent 与主 agent 使用相同工具集
-get_schemas_for_sub_agent = get_schemas
+def get_schemas_for_sub_agent() -> list[dict]:
+    return get_schemas(AgentType.SUB)
+
+
+def get_schemas_for_memory_agent() -> list[dict]:
+    return get_schemas(AgentType.MEMORY)
 
 
 def execute(name: str, arguments: str) -> str:
