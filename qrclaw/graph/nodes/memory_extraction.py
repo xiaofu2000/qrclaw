@@ -67,6 +67,12 @@ class WikiPageSchema(BaseModel):
     related: list[str] = Field(default_factory=list, description="关联页面名列表，只填索引中已存在的页面名")
 
 
+class ConsolidatePageSchema(BaseModel):
+    """页面整理结果，只包含需要重新生成的字段"""
+    content: str = Field(description="整理后的页面正文（Markdown），去重合并后的精炼内容")
+    description: str = Field(default="", description="一句话描述，显示在索引里")
+
+
 class ExtractionSchema(BaseModel):
     """记忆提取结果"""
     needs_update: bool = Field(description="对话中是否有值得写入 Wiki 的知识")
@@ -493,8 +499,7 @@ class MemoryExtractionNode:
             f"以下是 Wiki 页面「{name}」的当前内容，其中可能有重复、冗余或结构混乱的地方。\n\n"
             f"请整理成精炼的知识点列表：去除重复内容，合并相似内容，保留所有关键信息，"
             f"每条不超过200字。\n\n"
-            f"---\n{page.content}\n---\n\n"
-            f"按 WikiPageSchema 格式输出，action 填 create，name 填「{name}」。"
+            f"---\n{page.content}\n---"
         )
         try:
             import instructor
@@ -508,10 +513,10 @@ class MemoryExtractionNode:
             client = instructor.from_litellm(completion, mode=instructor.Mode.JSON)
             messages = [{"role": "user", "content": prompt}]
             kwargs = provider.make_instructor_kwargs(messages, temperature=0.1)
-            kwargs["response_model"] = WikiPageSchema
+            kwargs["response_model"] = ConsolidatePageSchema
             kwargs["max_retries"] = 2
 
-            result: WikiPageSchema = client.chat.completions.create(**kwargs)
+            result: ConsolidatePageSchema = client.chat.completions.create(**kwargs)
             self.memory.save_page(
                 name=page.name,
                 content=result.content,
