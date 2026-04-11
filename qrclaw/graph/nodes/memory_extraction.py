@@ -437,50 +437,9 @@ class MemoryExtractionNode:
 
             return f"未知工具: {name}"
 
-        # 工具 schema：只给记忆 Agent 两个工具
-        tools = [
-            {
-                "type": "function",
-                "function": {
-                    "name": "read_wiki_page",
-                    "description": "读取指定 Wiki 页面的现有完整内容，update 时必须先读再合并",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {"name": {"type": "string", "description": "页面名称"}},
-                        "required": ["name"],
-                    },
-                },
-            },
-            {
-                "type": "function",
-                "function": {
-                    "name": "submit_memory_result",
-                    "description": "提交最终记忆写入结果，由系统执行文件写入",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "pages": {
-                                "type": "array",
-                                "description": "要写入的页面列表",
-                                "items": {
-                                    "type": "object",
-                                    "properties": {
-                                        "action":      {"type": "string", "enum": ["create", "update"]},
-                                        "name":        {"type": "string"},
-                                        "content":     {"type": "string"},
-                                        "description": {"type": "string"},
-                                        "tags":        {"type": "array", "items": {"type": "string"}},
-                                        "related":     {"type": "array", "items": {"type": "string"}},
-                                    },
-                                    "required": ["action", "name", "content"],
-                                },
-                            }
-                        },
-                        "required": ["pages"],
-                    },
-                },
-            },
-        ]
+        # 工具 schema：从注册表取记忆 Agent 专属工具
+        from qrclaw.tools.registry import get_schemas_for_memory_agent
+        tools = get_schemas_for_memory_agent()
 
         messages = [{"role": "user", "content": prompt}]
 
