@@ -14,7 +14,6 @@ _tools: dict = {}
 class AgentType:
     MAIN    = "main"       # 主 Agent，完整工具集
     SUB     = "sub"        # 子 Agent，执行类工具
-    MEMORY  = "memory"     # 记忆 Agent，只读/写 Wiki
 
 
 # ── 各 Agent 默认工具白名单（工具名列表，None 表示继承全量）──────────────────
@@ -25,10 +24,6 @@ _AGENT_TOOL_WHITELIST: dict[str, list[str] | None] = {
         "read_file", "write_file", "list_directory",
         "run_shell", "web_search", "web_fetch",
         "use_skill",
-    ],
-    AgentType.MEMORY: [
-        "read_wiki_page",
-        "submit_memory_result",
     ],
 }
 
@@ -143,10 +138,6 @@ def get_schemas(agent_type: str = AgentType.MAIN) -> list[dict]:
 
 def get_schemas_for_sub_agent() -> list[dict]:
     return get_schemas(AgentType.SUB)
-
-
-def get_schemas_for_memory_agent() -> list[dict]:
-    return get_schemas(AgentType.MEMORY)
 
 
 def execute(name: str, arguments: str) -> str:

@@ -3,12 +3,10 @@ Wiki 工具
 
 工具列表：
 - write_wiki_page：触发记忆提取节点，让节点决定如何拆分写入（主 Agent）
-- read_wiki_page：读取指定页面完整内容（主 Agent + 记忆 Agent）
+- read_wiki_page：读取指定页面完整内容（主 Agent）
 - delete_wiki_page：删除页面（主 Agent）
-- submit_memory_result：记忆 Agent 提交写入结果（仅记忆 Agent）
 """
 
-from typing import List
 from pydantic import BaseModel, Field
 from qrclaw.tools.registry import register, AgentType
 from qrclaw.logger import get_logger
@@ -47,10 +45,6 @@ class DeleteWikiPageArgs(BaseModel):
     name: str = Field(description="要删除的页面名称")
 
 
-class SubmitMemoryResultArgs(BaseModel):
-    pages: List[dict] = Field(description="要写入的页面列表，每项包含 action/name/content/description/tags/related")
-
-
 # ── 工具实现 ──────────────────────────────────────────────────────────────────
 
 @register(
@@ -65,7 +59,7 @@ class SubmitMemoryResultArgs(BaseModel):
 )
 def write_wiki_page(content: str) -> str:
     try:
-        from qrclaw.graph.nodes.memory_extraction import get_extractor
+        from qrclaw.agent import get_extractor
         import threading
 
         extractor = get_extractor()
@@ -106,7 +100,7 @@ def write_wiki_page(content: str) -> str:
 @register(
     description="读取指定 Wiki 页面的完整内容。系统提示词中只有页面摘要，需要详细内容时调用此工具。",
     args_model=ReadWikiPageArgs,
-    agents=[AgentType.MAIN, AgentType.MEMORY],
+    agents=[AgentType.MAIN],
 )
 def read_wiki_page(name: str) -> str:
     try:
@@ -151,13 +145,3 @@ def delete_wiki_page(name: str) -> str:
     except Exception as e:
         logger.error(f"delete_wiki_page 失败: {e}", exc_info=True)
         return f"错误：删除 Wiki 页面失败 — {e}"
-
-
-@register(
-    description="提交记忆写入结果，由系统执行文件写入。分析完成后必须调用此工具提交结果。",
-    args_model=SubmitMemoryResultArgs,
-    agents=[AgentType.MEMORY],
-)
-def submit_memory_result(pages: List[dict]) -> str:
-    """此工具在 memory_extraction._run_memory_agent 中被拦截处理，不直接执行"""
-    return "submit_memory_result 应由记忆 Agent 内部拦截，不应走到这里"
