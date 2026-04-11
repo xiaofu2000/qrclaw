@@ -30,17 +30,29 @@ logger = get_logger("qrclaw.memory.wiki.wiki_memory")
 
 AGENTS_ROOT = Path.home() / ".qrclaw" / "agents"
 
+# 按 memory_dir 缓存实例，同一目录永远返回同一个实例
+_instances: dict[Path, "WikiMemory"] = {}
+
 
 class WikiMemory:
     """
     LLM Wiki 记忆管理器
 
     用法：
-        wiki = WikiMemory(memory_dir)
+        wiki = WikiMemory.for_workspace(memory_dir)  # 推荐，按目录缓存单例
+        wiki = WikiMemory(memory_dir)                # 直接创建
         wiki.save_page("qrclaw架构", content="...", tags=["架构"])
         page = wiki.get_page("qrclaw架构")
         index = wiki.load_index()  # 注入 system prompt
     """
+
+    @classmethod
+    def for_workspace(cls, memory_dir: Path) -> "WikiMemory":
+        """按 memory_dir 返回缓存实例，同一目录永远返回同一个对象"""
+        key = Path(memory_dir).resolve()
+        if key not in _instances:
+            _instances[key] = cls(memory_dir)
+        return _instances[key]
 
     def __init__(self, memory_dir: Path = None):
         if memory_dir:
