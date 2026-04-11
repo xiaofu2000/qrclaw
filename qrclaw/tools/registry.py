@@ -21,8 +21,8 @@ class AgentType:
 _AGENT_TOOL_WHITELIST: dict[str, list[str] | None] = {
     AgentType.MAIN: None,  # 全量
     AgentType.SUB: [
-        "read_file", "write_file", "list_directory",
-        "run_shell", "web_search", "web_fetch",
+        "read_file", "write_file", "str_replace", "list_directory",
+        "grep_code", "run_shell", "web_search", "web_fetch",
         "use_skill",
     ],
 }

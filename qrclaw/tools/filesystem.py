@@ -1,3 +1,4 @@
+import subprocess
 from pathlib import Path
 from pydantic import BaseModel, Field
 from qrclaw.tools.registry import register
@@ -100,3 +101,111 @@ def list_directory(path: str) -> str:
         error_msg = f"错误：{e}"
         logger.error(f"列出目录失败: {path}, 错误: {e}", exc_info=True)
         return error_msg
+
+
+# ── 精确文本替换工具 ─────────────────────────────────────────────────────────
+
+class StrReplaceArgs(BaseModel):
+    path: str = Field(description="要编辑的文件路径")
+    old_str: str = Field(description="要被替换的原始文本片段，必须与文件中的内容完全一致（包括空格和缩进）")
+    new_str: str = Field(description="替换后的新文本。留空字符串则为删除")
+
+
+@register(
+    description=(
+        "精确替换文件中的一段文本。只替换第一个匹配项。"
+        "old_str 必须与文件内容完全一致，包含足够的上下文以确保唯一匹配。"
+        "比 write_file 更安全，不会丢失文件其他内容。"
+    ),
+    args_model=StrReplaceArgs,
+    confirm=True,
+)
+def str_replace(path: str, old_str: str, new_str: str) -> str:
+    logger.debug(f"str_replace: {path}")
+    try:
+        p = _resolve_path(path)
+        if not p.is_file():
+            return f"错误：文件不存在 {path}"
+
+        content = p.read_text(encoding="utf-8")
+        count = content.count(old_str)
+
+        if count == 0:
+            return "错误：未找到匹配的文本，请检查 old_str 是否与文件内容完全一致（注意空格和缩进）"
+        if count > 1:
+            return f"错误：匹配到 {count} 处，请在 old_str 中包含更多上下文使其唯一"
+
+        new_content = content.replace(old_str, new_str, 1)
+        p.write_text(new_content, encoding="utf-8")
+        logger.info(f"str_replace 成功: {p}")
+        return f"✅ 替换成功：{p}"
+    except Exception as e:
+        logger.error(f"str_replace 失败: {path}, 错误: {e}", exc_info=True)
+        return f"错误：替换失败 {e}"
+
+
+# ── 代码搜索工具 ─────────────────────────────────────────────────────────────
+
+class GrepCodeArgs(BaseModel):
+    pattern: str = Field(description="搜索的文本或正则表达式")
+    path: str = Field(default=".", description="搜索的目录或文件路径，默认当前工作目录")
+    include: str = Field(default="", description="限定文件类型，如 '*.py'、'*.ts'、'*.js'")
+
+
+@register(
+    description=(
+        "在代码文件中搜索文本模式，返回匹配的文件名、行号和内容。"
+        "支持正则表达式。用于查找函数定义、变量引用、import 语句等。"
+        "比 run_shell 执行 grep 更安全、更方便。"
+    ),
+    args_model=GrepCodeArgs,
+)
+def grep_code(pattern: str, path: str = ".", include: str = "") -> str:
+    logger.debug(f"grep_code: pattern={pattern}, path={path}, include={include}")
+    try:
+        p = _resolve_path(path)
+        if not p.exists():
+            return f"错误：路径不存在 {path}"
+
+        # 优先用 ripgrep，没有则用 grep
+        rg_path = _find_executable("rg")
+        if rg_path:
+            cmd = [rg_path, "--line-number", "--max-count", "30", "--no-heading"]
+            if include:
+                cmd += ["--glob", include]
+            cmd += [pattern, str(p)]
+        else:
+            cmd = ["grep", "-rn", "--max-count=30"]
+            if include:
+                cmd += ["--include", include]
+            cmd += [pattern, str(p)]
+
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=30,
+            cwd=str(p) if p.is_dir() else str(p.parent),
+        )
+
+        output = result.stdout.strip()
+        if not output:
+            return "(无匹配结果)"
+
+        lines = output.split("\n")
+        if len(lines) > 30:
+            output = "\n".join(lines[:30]) + f"\n\n... 共 {len(lines)} 条结果，仅显示前 30 条"
+
+        logger.info(f"grep_code 成功: {len(lines)} 条匹配")
+        return output
+    except subprocess.TimeoutExpired:
+        return "错误：搜索超时（30秒），请缩小搜索范围"
+    except Exception as e:
+        logger.error(f"grep_code 失败: {e}", exc_info=True)
+        return f"错误：搜索失败 {e}"
+
+
+def _find_executable(name: str) -> str | None:
+    """查找可执行文件路径，找不到返回 None"""
+    import shutil
+    return shutil.which(name)
