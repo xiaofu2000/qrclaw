@@ -46,6 +46,23 @@ def get_agent_id() -> str | None:
     return ws.agent_id if ws else None
 
 
+# ── 全局 Extractor 注册表 ──────────────────────────────────────────────
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from qrclaw.graph.nodes.memory_extraction import MemoryExtractionNode
+
+_global_extractor = None
+
+def register_extractor(extractor: "MemoryExtractionNode") -> None:
+    """ReactLoopNode 初始化时注册，供工具层调用"""
+    global _global_extractor
+    _global_extractor = extractor
+
+def get_extractor() -> "MemoryExtractionNode | None":
+    """工具层获取当前 extractor"""
+    return _global_extractor
+
+
 # ── 工具函数 ─────────────────────────────────────────────────────────
 
 def _dump_assistant_msg(response: LLMResponse) -> dict:

@@ -124,6 +124,49 @@ class WikiMemory:
         logger.info(f"WikiMemory.save_page [{action}]: {name}")
         return page
 
+    def append_page(
+        self,
+        name: str,
+        content: str,
+        tags: list[str] = None,
+        related: list[str] = None,
+    ) -> WikiPage:
+        """
+        追加内容到已有页面末尾。
+        页面不存在时自动创建（等同于 save_page）。
+        tags/related 为空时保留已有值。
+        """
+        existing = self.get_page(name)
+        if not existing:
+            return self.save_page(name=name, content=content, tags=tags or [], related=related or [])
+
+        new_content = existing.content.rstrip() + "\n\n" + content.strip()
+        merged_tags = list(dict.fromkeys(existing.tags + (tags or [])))
+        merged_related = list(dict.fromkeys(existing.related + (related or [])))
+        return self.save_page(
+            name=name,
+            content=new_content,
+            description=existing.description,
+            tags=merged_tags,
+            related=merged_related,
+        )
+
+    def fuzzy_find_name(self, name: str) -> Optional[str]:
+        """
+        模糊匹配页面名（忽略大小写和空格）。
+        找到返回 index 中的真实页面名，找不到返回 None。
+        """
+        normalized = name.lower().replace(" ", "").replace("_", "")
+        for entry in self.index.all_entries():
+            real_name = entry["name"]
+            if real_name.lower().replace(" ", "").replace("_", "") == normalized:
+                return real_name
+        return None
+
+    def page_exists(self, name: str) -> bool:
+        """精确匹配页面是否存在"""
+        return (self.pages_dir / f"{name}.md").exists()
+
     def get_page(self, name: str) -> Optional[WikiPage]:
         """读取指定页面，不存在返回 None"""
         filepath = self.pages_dir / f"{name}.md"

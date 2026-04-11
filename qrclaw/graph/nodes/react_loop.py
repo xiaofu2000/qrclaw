@@ -162,8 +162,8 @@ class ReactLoopNode:
             from qrclaw.graph.nodes.memory_extraction import (
                 MemoryExtractionNode,
                 MemoryExtractionIntegration,
-                register_extractor,
             )
+            from qrclaw.agent import register_extractor
             from qrclaw.memory.wiki import WikiMemory
 
             if workspace:

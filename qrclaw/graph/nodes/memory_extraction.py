@@ -59,9 +59,9 @@ DEFAULT_CONFIG = ExtractionConfig()
 
 class WikiPageSchema(BaseModel):
     """单个 Wiki 页面操作，每个实例只聚焦一个主题"""
-    action: Literal["create", "update"] = Field(description="create=新建页面，update=更新已有页面")
-    name: str = Field(description="页面名称，一个名称只对应一个主题，update 时必须与索引中完全一致")
-    content: str = Field(description="页面完整正文，Markdown 格式，只包含本页面主题的内容，用 [[页面名]] 引用其他主题")
+    action: Literal["create", "append"] = Field(description="create=新建页面（页面不存在时），append=追加内容到已有页面末尾")
+    name: str = Field(description="页面名称，一个名称只对应一个主题，append 时必须与索引中完全一致")
+    content: str = Field(description="页面内容（Markdown）。create 时为完整正文；append 时为本次新增内容，将追加到页面末尾")
     description: str = Field(default="", description="一句话描述，显示在索引里")
     tags: list[str] = Field(default_factory=list, description="标签列表")
     related: list[str] = Field(default_factory=list, description="关联页面名列表，只填索引中已存在的页面名")
@@ -101,8 +101,8 @@ EXTRACTION_PROMPT_TEMPLATE = """你是一个 Wiki 知识库维护者。请分析
 1. 每个页面只聚焦一个主题，不要把多个主题塞进一个页面
 2. 内容涉及多个主题时，拆分成多个独立页面，每个页面用 [[页面名]] 引用相关页面
 3. related 字段只填【现有 Wiki 页面索引】中已存在的页面名，不能引用不存在的页面
-4. 对于要 update 的页面，name 必须与索引中完全一致
-5. content 是页面完整正文，不是增量
+4. append 时 name 必须与索引中的页面名完全一致（直接复制，不要改动大小写或空格）
+5. content 要精炼，只写关键信息和结论，不写背景叙述和过程，每条关键信息不超过200字
 
 【输出格式】
 {{
@@ -115,11 +115,20 @@ EXTRACTION_PROMPT_TEMPLATE = """你是一个 Wiki 知识库维护者。请分析
       "description": "一句话描述",
       "tags": ["标签1", "标签2"],
       "related": ["只填已存在的页面名"]
+    }},
+    {{
+      "action": "append",
+      "name": "已存在的页面名（必须与索引完全一致）",
+      "content": "本次新增的内容（Markdown），将追加到页面末尾",
+      "description": "",
+      "tags": [],
+      "related": []
     }}
   ]
 }}
 
-needs_update 为 false 时，pages 为空数组。"""
+needs_update 为 false 时，pages 为空数组。
+action 只有两种：create（新建）和 append（追加到已有页面末尾）。"""
 
 
 # ── MemoryExtractionNode ─────────────────────────────────────────────────────
@@ -354,11 +363,10 @@ class MemoryExtractionNode:
 
     def flush_pending(self) -> int:
         """
-        批量写入待处理的记忆（记忆 Agent：最多2轮 ReAct）
+        批量写入待处理的记忆。
 
-        第1轮：LLM 分析会话 + index摘要，决定 create/update，如有 update 调 read_wiki_page
-        第2轮（可选）：LLM 拿到现有内容后合并，调 submit_memory_result 提交 JSON
-        脚本执行 save_page()，LLM 不直接写文件
+        create → save_page()（新建）
+        append → append_page()（追加到已有页面末尾，不读现有内容，省 token）
 
         Returns:
             int: 成功写入的数量
@@ -375,15 +383,65 @@ class MemoryExtractionNode:
         logger.warning(f"[记忆提取] 开始写入，待处理: {len(to_write)}，剩余: {remaining}")
 
         success_count = 0
+        pages_to_consolidate: list[str] = []
+
         for result in to_write:
             try:
-                count = self._run_memory_agent(result.prompt)
-                success_count += count
+                extraction: Optional[ExtractionSchema] = self._analyze_with_llm(result.prompt)
+
+                if extraction is None or not extraction.needs_update or not extraction.pages:
+                    logger.debug("[记忆提取] LLM 判定无需更新")
+                    continue
+
+                for page in extraction.pages:
+                    try:
+                        # A. 模糊匹配：修正 LLM 填的名字（大小写/空格差异）
+                        if page.action == "append":
+                            real_name = self.memory.fuzzy_find_name(page.name)
+                            if real_name:
+                                page.name = real_name
+                            else:
+                                # C. 降级：找不到对应页面，改为 create
+                                logger.warning(f"[记忆提取] append 页面不存在，降级为 create: {page.name}")
+                                page.action = "create"
+
+                        if page.action == "append":
+                            self.memory.append_page(
+                                name=page.name,
+                                content=page.content,
+                                tags=page.tags or None,
+                                related=page.related or None,
+                            )
+                            pages_to_consolidate.append(page.name)
+                        else:
+                            self.memory.save_page(
+                                name=page.name,
+                                content=page.content,
+                                description=page.description,
+                                tags=page.tags,
+                                related=page.related,
+                            )
+                        success_count += 1
+                        logger.warning(f"[记忆提取] 写入成功: [{page.action}] {page.name}")
+                    except Exception as e:
+                        logger.warning(f"[记忆提取] 写入页面失败: {page.name}, {e}")
+
             except Exception as e:
                 logger.warning(f"[记忆提取] 写入异常: {e}")
 
         if success_count > 0:
             logger.info(f"[记忆提取] 批量写入完成: {success_count}/{len(to_write)}")
+
+            # append 的页面并发整理（去重/合并）
+            if pages_to_consolidate:
+                from concurrent.futures import ThreadPoolExecutor, as_completed
+                unique_pages = list(dict.fromkeys(pages_to_consolidate))  # 去重保序
+                logger.info(f"[记忆整理] 并发整理 {len(unique_pages)} 个页面")
+                with ThreadPoolExecutor(max_workers=min(len(unique_pages), 4)) as executor:
+                    futures = {executor.submit(self._consolidate_page, name): name for name in unique_pages}
+                    for future in as_completed(futures):
+                        future.result()  # 异常已在 _consolidate_page 内吞掉
+
             try:
                 from qrclaw.memory.context.context_manager import get_context_manager
                 get_context_manager().invalidate_cache()
@@ -391,70 +449,6 @@ class MemoryExtractionNode:
                 pass
 
         return success_count
-
-    def _run_memory_agent(self, prompt: str) -> int:
-        """
-        用 run_react_loop 跑记忆 Agent（最多2轮，静默）。
-
-        工具：
-          - read_wiki_page：读现有页面内容（update 时第1轮调用）
-          - submit_memory_result：提交最终 JSON，由脚本写入文件
-
-        Returns:
-            int: 成功写入的页面数
-        """
-        from qrclaw.graph.nodes.react_loop import run_react_loop
-        from qrclaw.tools.registry import get_schema_by_name
-
-        submitted_pages: list = []
-
-        def _tool_call(name: str, arguments: str) -> str:
-            import json as _json
-            args = _json.loads(arguments)
-
-            if name == "read_wiki_page":
-                page = self.memory.get_page(args["name"])
-                if not page:
-                    return f"页面「{args['name']}」不存在"
-                return f"# {page.name}\n\n{page.content}"
-
-            if name == "submit_memory_result":
-                pages_data = args.get("pages", [])
-                for p in pages_data:
-                    try:
-                        self.memory.save_page(
-                            name=p["name"],
-                            content=p["content"],
-                            description=p.get("description", ""),
-                            tags=p.get("tags", []),
-                            related=p.get("related", []),
-                        )
-                        submitted_pages.append(p["name"])
-                        logger.warning(f"[记忆提取] 写入成功: [{p.get('action','create')}] {p['name']}")
-                    except Exception as e:
-                        logger.warning(f"[记忆提取] 写入页面失败: {p.get('name')}, {e}")
-                return f"已写入 {len(submitted_pages)} 个页面"
-
-            return f"未知工具: {name}"
-
-        # 工具 schema：从注册表取记忆 Agent 专属工具
-        from qrclaw.tools.registry import get_schemas_for_memory_agent
-        tools = get_schemas_for_memory_agent()
-
-        messages = [{"role": "user", "content": prompt}]
-
-        try:
-            run_react_loop(
-                messages=messages,
-                tools=tools,
-                max_iterations=2,
-                on_tool_call=_tool_call,
-                silent=True,
-            )
-        except Exception as e:
-            logger.warning(f"[记忆提取] 记忆 Agent 执行失败: {e}")
-
-        return len(submitted_pages)
 
 
 
@@ -485,6 +479,49 @@ class MemoryExtractionNode:
         except Exception as e:
             logger.warning(f"[记忆提取] LLM 分析失败: {e}，跳过本次提取")
             return None
+
+    def _consolidate_page(self, name: str) -> None:
+        """
+        append 后对页面做一次 LLM 整理：去重、合并、保持精炼。
+        整理失败不影响已写入的内容。
+        """
+        page = self.memory.get_page(name)
+        if not page:
+            return
+
+        prompt = (
+            f"以下是 Wiki 页面「{name}」的当前内容，其中可能有重复、冗余或结构混乱的地方。\n\n"
+            f"请整理成精炼的知识点列表：去除重复内容，合并相似内容，保留所有关键信息，"
+            f"每条不超过200字。\n\n"
+            f"---\n{page.content}\n---\n\n"
+            f"按 WikiPageSchema 格式输出，action 填 create，name 填「{name}」。"
+        )
+        try:
+            import instructor
+            from litellm import completion
+            from qrclaw.providers import provider
+            from qrclaw.providers.litellm_provider import LiteLLMProvider
+
+            if not isinstance(provider, LiteLLMProvider):
+                return
+
+            client = instructor.from_litellm(completion, mode=instructor.Mode.JSON)
+            messages = [{"role": "user", "content": prompt}]
+            kwargs = provider.make_instructor_kwargs(messages, temperature=0.1)
+            kwargs["response_model"] = WikiPageSchema
+            kwargs["max_retries"] = 2
+
+            result: WikiPageSchema = client.chat.completions.create(**kwargs)
+            self.memory.save_page(
+                name=page.name,
+                content=result.content,
+                description=result.description or page.description,
+                tags=result.tags or page.tags,
+                related=result.related or page.related,
+            )
+            logger.info(f"[记忆整理] 整理完成: {name}")
+        except Exception as e:
+            logger.warning(f"[记忆整理] 整理失败: {name}, {e}")
 
     def _parse_llm_response(self, response: str) -> list[dict]:
         """兼容旧调用，不再使用"""
@@ -643,17 +680,3 @@ class MemoryExtractionIntegration:
             t.start()
 
 
-# ── 全局 Extractor 注册表（供工具层访问）────────────────────────────────────────
-
-_global_extractor: Optional[MemoryExtractionNode] = None
-
-
-def register_extractor(extractor: MemoryExtractionNode) -> None:
-    """ReactLoopNode 初始化时注册 extractor，供工具层调用"""
-    global _global_extractor
-    _global_extractor = extractor
-
-
-def get_extractor() -> Optional[MemoryExtractionNode]:
-    """工具层获取当前 extractor"""
-    return _global_extractor
