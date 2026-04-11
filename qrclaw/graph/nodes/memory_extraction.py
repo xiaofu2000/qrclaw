@@ -354,7 +354,11 @@ class MemoryExtractionNode:
 
     def flush_pending(self) -> int:
         """
-        批量写入待处理的记忆
+        批量写入待处理的记忆（记忆 Agent：最多2轮 ReAct）
+
+        第1轮：LLM 分析会话 + index摘要，决定 create/update，如有 update 调 read_wiki_page
+        第2轮（可选）：LLM 拿到现有内容后合并，调 submit_memory_result 提交 JSON
+        脚本执行 save_page()，LLM 不直接写文件
 
         Returns:
             int: 成功写入的数量
@@ -373,26 +377,8 @@ class MemoryExtractionNode:
         success_count = 0
         for result in to_write:
             try:
-                extraction: Optional[ExtractionSchema] = self._analyze_with_llm(result.prompt)
-
-                if extraction is None or not extraction.needs_update or not extraction.pages:
-                    logger.debug("[记忆提取] LLM 判定无需更新")
-                    continue
-
-                for page in extraction.pages:
-                    try:
-                        self.memory.save_page(
-                            name=page.name,
-                            content=page.content,
-                            description=page.description,
-                            tags=page.tags,
-                            related=page.related,
-                        )
-                        success_count += 1
-                        logger.warning(f"[记忆提取] 写入成功: [{page.action}] {page.name}")
-                    except Exception as e:
-                        logger.warning(f"[记忆提取] 写入页面失败: {page.name}, {e}")
-
+                count = self._run_memory_agent(result.prompt)
+                success_count += count
             except Exception as e:
                 logger.warning(f"[记忆提取] 写入异常: {e}")
 
@@ -405,6 +391,113 @@ class MemoryExtractionNode:
                 pass
 
         return success_count
+
+    def _run_memory_agent(self, prompt: str) -> int:
+        """
+        用 run_react_loop 跑记忆 Agent（最多2轮，静默）。
+
+        工具：
+          - read_wiki_page：读现有页面内容（update 时第1轮调用）
+          - submit_memory_result：提交最终 JSON，由脚本写入文件
+
+        Returns:
+            int: 成功写入的页面数
+        """
+        from qrclaw.graph.nodes.react_loop import run_react_loop
+        from qrclaw.tools.registry import get_schema_by_name
+
+        submitted_pages: list = []
+
+        def _tool_call(name: str, arguments: str) -> str:
+            import json as _json
+            args = _json.loads(arguments)
+
+            if name == "read_wiki_page":
+                page = self.memory.get_page(args["name"])
+                if not page:
+                    return f"页面「{args['name']}」不存在"
+                return f"# {page.name}\n\n{page.content}"
+
+            if name == "submit_memory_result":
+                pages_data = args.get("pages", [])
+                for p in pages_data:
+                    try:
+                        self.memory.save_page(
+                            name=p["name"],
+                            content=p["content"],
+                            description=p.get("description", ""),
+                            tags=p.get("tags", []),
+                            related=p.get("related", []),
+                        )
+                        submitted_pages.append(p["name"])
+                        logger.warning(f"[记忆提取] 写入成功: [{p.get('action','create')}] {p['name']}")
+                    except Exception as e:
+                        logger.warning(f"[记忆提取] 写入页面失败: {p.get('name')}, {e}")
+                return f"已写入 {len(submitted_pages)} 个页面"
+
+            return f"未知工具: {name}"
+
+        # 工具 schema：只给记忆 Agent 两个工具
+        tools = [
+            {
+                "type": "function",
+                "function": {
+                    "name": "read_wiki_page",
+                    "description": "读取指定 Wiki 页面的现有完整内容，update 时必须先读再合并",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {"name": {"type": "string", "description": "页面名称"}},
+                        "required": ["name"],
+                    },
+                },
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "submit_memory_result",
+                    "description": "提交最终记忆写入结果，由系统执行文件写入",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "pages": {
+                                "type": "array",
+                                "description": "要写入的页面列表",
+                                "items": {
+                                    "type": "object",
+                                    "properties": {
+                                        "action":      {"type": "string", "enum": ["create", "update"]},
+                                        "name":        {"type": "string"},
+                                        "content":     {"type": "string"},
+                                        "description": {"type": "string"},
+                                        "tags":        {"type": "array", "items": {"type": "string"}},
+                                        "related":     {"type": "array", "items": {"type": "string"}},
+                                    },
+                                    "required": ["action", "name", "content"],
+                                },
+                            }
+                        },
+                        "required": ["pages"],
+                    },
+                },
+            },
+        ]
+
+        messages = [{"role": "user", "content": prompt}]
+
+        try:
+            run_react_loop(
+                messages=messages,
+                tools=tools,
+                max_iterations=2,
+                on_tool_call=_tool_call,
+                silent=True,
+            )
+        except Exception as e:
+            logger.warning(f"[记忆提取] 记忆 Agent 执行失败: {e}")
+
+        return len(submitted_pages)
+
+
 
     def _analyze_with_llm(self, prompt: str) -> Optional[ExtractionSchema]:
         """
