@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from qrclaw.memory import MemoryManager
+    from qrclaw.memory import WikiMemoryManager
 
 # 所有 agent 的根目录
 AGENTS_ROOT = Path.home() / ".qrclaw" / "agents"
@@ -37,15 +37,15 @@ class Workspace:
         self.skills_dir.mkdir(parents=True, exist_ok=True)
         self.memory_dir.mkdir(parents=True, exist_ok=True)
 
-    def get_memory_manager(self) -> "MemoryManager":
+    def get_memory_manager(self) -> "WikiMemoryManager":
         """
-        获取 MemoryManager 实例
+        获取 WikiMemoryManager 实例（记忆管理器）
         
         Returns:
-            MemoryManager: 增强版记忆管理器
+            WikiMemoryManager: Wiki 架构的记忆管理器
         """
-        from qrclaw.memory import MemoryManager
-        return MemoryManager(self.memory_dir)
+        from qrclaw.memory import WikiMemoryManager
+        return WikiMemoryManager.for_workspace(self.memory_dir)
 
     def sub_agent(self, sub_id: str) -> "Workspace":
         """

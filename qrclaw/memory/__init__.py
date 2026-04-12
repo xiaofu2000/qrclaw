@@ -7,15 +7,15 @@ QRClaw 记忆系统模块
 - MemoryManager: 完整的记忆管理系统（参考 Claude Code 设计）
 
 目录结构：
-- core/: 核心管理器
+- wiki/: Wiki 记忆管理器（提供持久化、索引、提取能力）
 - storage/: 文件存储与索引
 - context/: 上下文管理
 - types/: 类型定义
 - compression/: 压缩工具
 """
 
-# 核心组件
-from qrclaw.memory.core import MemoryManager, LongTermMemory
+# Wiki 记忆组件（替代旧的 core/ 模块）
+from qrclaw.memory.wiki import WikiMemoryManager, WikiMemory
 
 # 存储层
 from qrclaw.memory.storage import MemoryIndexer
@@ -56,9 +56,9 @@ except ImportError:
     pass
 
 __all__ = [
-    # 核心组件
-    "MemoryManager",
-    "LongTermMemory",
+    # Wiki 记忆组件
+    "WikiMemoryManager",
+    "WikiMemory",
 
     # 存储层
     "MemoryIndexer",

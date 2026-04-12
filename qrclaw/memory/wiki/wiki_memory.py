@@ -163,10 +163,6 @@ class WikiMemory:
                 return real_name
         return None
 
-    def page_exists(self, name: str) -> bool:
-        """精确匹配页面是否存在"""
-        return (self.pages_dir / f"{name}.md").exists()
-
     def get_page(self, name: str) -> Optional[WikiPage]:
         """读取指定页面，不存在返回 None"""
         filepath = self.pages_dir / f"{name}.md"

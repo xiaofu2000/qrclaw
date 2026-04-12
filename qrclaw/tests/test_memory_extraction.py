@@ -6,7 +6,7 @@ Memory Extraction 节点测试
 import pytest
 import os
 from unittest.mock import MagicMock, patch
-from qrclaw.memory import LongTermMemory, MemoryType
+# LongTermMemory 已迁移到 wiki 系统，测试使用 MockMemory
 from qrclaw.graph.nodes.memory_extraction import (
     MemoryExtractionNode,
     MemoryExtractionIntegration,
@@ -224,13 +224,11 @@ class TestFlushPending:
         mock_memory = MockMemory()
         extractor = MemoryExtractionNode(mock_memory)
         
-        # 手动加入一个待处理项
+        # 手动加入一个待处理项（Wiki 架构用 tags 替代 memory_type）
         with extractor._pending_lock:
             extractor._pending_extractions.append(
                 ExtractionResult(
-                    content="分析内容",
-                    memory_type=MemoryType.PROJECT,
-                    description="测试",
+                    prompt="测试提取"
                 )
             )
         
