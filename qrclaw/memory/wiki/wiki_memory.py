@@ -222,6 +222,62 @@ class WikiMemory:
 
         return name_hits + desc_hits + content_hits
 
+    def select_relevant_pages(
+        self,
+        query: str,
+        messages: list[dict],
+        top_k: int = 3,
+    ) -> list[WikiPage]:
+        """
+        基于 LLM 的智能页面选择
+
+        两阶段筛选：
+        1. 关键词初筛：用 search_pages 获取候选页面
+        2. LLM 精选：用 WikiPageSelector 做语义匹配，选出 top_k 个最相关页面
+
+        Args:
+            query: 用户当前消息（用于关键词初筛和 LLM 精选）
+            messages: 主 agent 的完整 messages 列表（继承对话上下文）
+            top_k: 返回的最相关页面数量，默认 3
+
+        Returns:
+            按相关性排序的 WikiPage 列表
+
+        用法：
+            wiki = WikiMemory.for_workspace(memory_dir)
+            pages = wiki.select_relevant_pages(
+                query="如何配置 LLM provider?",
+                messages=agent.messages,
+            )
+        """
+        from qrclaw.memory.wiki.selection import WikiPageSelector
+
+        # 第一阶段：关键词初筛，获取候选页面
+        candidates = self.search_pages(query)
+        if not candidates:
+            logger.debug(f"select_relevant_pages: 关键词初筛无候选页面 (query={query})")
+            return []
+
+        # 第二阶段：LLM 精选
+        selector = WikiPageSelector(self)
+        selection_result = selector.select(query, messages)
+
+        if not selection_result.selected:
+            logger.debug("select_relevant_pages: LLM 精选无结果，返回关键词匹配结果")
+            return candidates[:top_k]
+
+        # 根据 LLM 选择结果获取 WikiPage 对象
+        selected_pages = []
+        for selected in selection_result.selected[:top_k]:
+            page = self.get_page(selected.name)
+            if page:
+                selected_pages.append(page)
+
+        logger.debug(
+            f"select_relevant_pages: 关键词候选 {len(candidates)} 个，LLM 选中 {len(selected_pages)} 个"
+        )
+        return selected_pages
+
     def page_exists(self, name: str) -> bool:
         """检查页面是否存在"""
         return (self.pages_dir / f"{name}.md").exists()

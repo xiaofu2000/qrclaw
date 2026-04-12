@@ -92,6 +92,7 @@ class PlanState:
     past_steps: list = field(default_factory=list)  # list[StepResult]
     remaining: list = field(default_factory=list)   # list[PlanStep]
     project_path: str = ""  # 项目根目录绝对路径，由 LLM 从对话中推断
+    wiki_context: str = ""   # Wiki 记忆上下文（通过 Router 触发 LLM 精排注入）
 
 
 # 线程级单例：每个线程（主 agent / 子 agent）持有自己的 ContextManager
@@ -144,6 +145,18 @@ class ContextManager:
             self._plan_state = PlanState(goal=goal, remaining=list(steps), project_path=project_path)
         logger.info(f"plan 初始化：{goal}，项目路径：{project_path}，共 {len(steps)} 步")
 
+    def set_wiki_context(self, wiki_context: str) -> None:
+        """设置 Wiki 查询上下文（由 RouterNode 触发 LLM 精排后注入）。"""
+        with self._lock:
+            if self._plan_state is None:
+                logger.warning("set_wiki_context: plan_state 为空，无法设置 wiki_context")
+                return
+            self._plan_state.wiki_context = wiki_context
+        if wiki_context:
+            logger.info(f"Wiki 上下文已注入，长度: {len(wiki_context)} 字符")
+        # wiki_context 变化后需要重建 System Prompt
+        self.invalidate_cache()
+
     def add_step_result(self, result) -> None:
         """线程安全地追加一个步骤结果。"""
         with self._lock:
@@ -186,12 +199,18 @@ class ContextManager:
         """
         if self._dirty or self._cached_system_prompt is None:
             logger.debug("重建 System Prompt（缓存失效）")
+            # 从 plan_state 获取 wiki_context
+            wiki_context = ""
+            with self._lock:
+                if self._plan_state is not None:
+                    wiki_context = self._plan_state.wiki_context
             self._cached_system_prompt = build_system_prompt(
                 heartbeat_file=self.workspace.heartbeat_file,
                 is_sub_agent=self.is_sub_agent,
                 agent_file=self.workspace.agent_file,
                 skills_dir=self.workspace.skills_dir,
                 memory_dir=self.workspace.memory_dir,
+                wiki_context=wiki_context,
             )
             self._dirty = False
             logger.info("System Prompt 构建完成")

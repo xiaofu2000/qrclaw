@@ -19,6 +19,7 @@ from pydantic import BaseModel, Field
 from qrclaw.providers import provider
 from qrclaw.providers.litellm_provider import LiteLLMProvider
 from qrclaw.memory.context.context_manager import get_context_manager
+from qrclaw.memory.wiki.wiki_memory import WikiMemory
 from qrclaw.logger import get_logger
 
 logger = get_logger("qrclaw.graph.nodes.router")
@@ -110,6 +111,15 @@ class RouterNode:
                 for s in steps:
                     dep_str = f"依赖 {s.depends_on}" if s.depends_on else "可并行"
                     logger.debug(f"  Step {s.id}: {s.description} [{dep_str}]")
+
+                # Wiki 查询：触发 LLM 精排获取相关页面正文
+                wiki_context = _query_wiki_context(result.goal, messages)
+
+                # 将 wiki_context 存入 ctx，PlanExecutor 会在构建 task 时注入
+                ctx = get_context_manager()
+                ctx.set_plan(plan.goal, plan.steps, plan.project_path)
+                ctx.set_wiki_context(wiki_context)
+
                 return RouteResult(route="plan", plan=plan)
 
             logger.info("路由结果: direct")
@@ -118,3 +128,44 @@ class RouterNode:
         except Exception as e:
             logger.warning(f"Router 解析失败: {e}，降级为 direct")
             return RouteResult(route="direct")
+
+
+def _query_wiki_context(goal: str, messages: list[dict]) -> str:
+    """
+    查询 Wiki 记忆，通过 LLM 精排获取与当前目标相关的页面正文。
+
+    Args:
+        goal: 任务目标描述（用于 Wiki 查询）
+        messages: 当前 session 的 messages（用于 LLM 上下文理解）
+
+    Returns:
+        格式化后的 Wiki 正文内容，无相关内容时返回空字符串
+    """
+    # 延迟导入避免循环依赖
+    from qrclaw.agent import get_workspace
+
+    try:
+        workspace = get_workspace()
+        if not workspace or not workspace.memory_dir:
+            logger.debug("无 workspace 或 memory_dir，跳过 Wiki 查询")
+            return ""
+
+        wiki = WikiMemory.for_workspace(workspace.memory_dir)
+        pages = wiki.select_relevant_pages(goal, messages, top_k=3)
+
+        if not pages:
+            logger.debug(f"Wiki 查询无结果: {goal}")
+            return ""
+
+        # 将页面正文拼接为上下文字符串
+        sections = []
+        for page in pages:
+            sections.append(f"### {page.name}\n{page.content}")
+
+        context = "\n\n---\n\n".join(sections)
+        logger.info(f"Wiki 查询命中 {len(pages)} 个页面: {[p.name for p in pages]}")
+        return context
+
+    except Exception as e:
+        logger.warning(f"Wiki 查询失败: {e}")
+        return ""

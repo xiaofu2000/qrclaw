@@ -152,7 +152,7 @@ class PlanExecutorNode:
         def _run(step):
             task = (
                 f"【计划目标】{goal}\n"
-                f"{project_path_hint}"
+                f"{project_path_hint}\n\n"
                 f"【步骤】{step.description}"
                 f"{prior_context}\n\n"
                 f"【要求】完成上述步骤。完成后返回详细的结果摘要，不准写MD文档，包括：做了什么、发现了什么、产出了哪些文件。"

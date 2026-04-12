@@ -162,25 +162,37 @@ def _build_behavior_section(is_sub_agent: bool = False) -> str:
     return "\n".join(lines)
 
 
-def _build_memory_section(memory_dir: Path) -> str:
+def _build_memory_section(memory_dir: Path, wiki_context: str = "") -> str:
     """构建 Wiki 记忆索引部分（注入 index.md）"""
-    if memory_dir is None or not memory_dir.exists():
-        return ""
+    sections = []
 
-    wiki = WikiMemory.for_workspace(memory_dir)
-    content = wiki.load_index()
+    # 原有：Wiki 记忆索引
+    if memory_dir is not None and memory_dir.exists():
+        wiki = WikiMemory.for_workspace(memory_dir)
+        content = wiki.load_index()
 
-    if not content or "暂无页面" in content:
-        return ""
+        if content and "暂无页面" not in content:
+            logger.info("注入 Wiki 记忆索引到 system prompt")
+            sections.extend([
+                "## Wiki 记忆",
+                "以下是你的 Wiki 知识库索引，记录了跨会话的重要知识。",
+                "需要详细内容时，使用 read_wiki_page 读取对应页面。",
+                "",
+                content,
+            ])
 
-    logger.info("注入 Wiki 记忆索引到 system prompt")
-    return "\n".join([
-        "## Wiki 记忆",
-        "以下是你的 Wiki 知识库索引，记录了跨会话的重要知识。",
-        "需要详细内容时，使用 read_wiki_page 读取对应页面。",
-        "",
-        content,
-    ])
+    # 新增：Wiki 查询上下文（通过 Router 触发 LLM 精排注入）
+    if wiki_context:
+        logger.info("注入 Wiki 查询上下文到 system prompt")
+        sections.extend([
+            "## Wiki 记忆",
+            "以下是你的 Wiki 知识库索引，记录了跨会话的重要知识。",
+            "需要详细内容时，使用 read_wiki_page 读取对应页面。",
+            "",
+            wiki_context,
+        ])
+
+    return "\n".join(sections) if sections else ""
 
 
 def _build_heartbeat_section(heartbeat_file: Path = None) -> str:
@@ -241,6 +253,7 @@ def build_system_prompt(
     agent_file: Path | None = None,
     skills_dir: Path | None = None,
     memory_dir: Path | None = None,
+    wiki_context: str = "",
 ) -> str:
     """构建完整的 system prompt。
 
@@ -253,6 +266,7 @@ def build_system_prompt(
         agent_file:     AGENT.md 路径（agent 身份定义）
         skills_dir:     技能目录路径
         memory_dir:     记忆目录路径
+        wiki_context:   Wiki 查询上下文（通过 Router 触发 LLM 精排注入）
     """
     from qrclaw.skills.registry import SkillRegistry
     tool_names = [s["function"]["name"] for s in get_schemas()]
@@ -274,7 +288,7 @@ def build_system_prompt(
         "",
         _build_workspace_section(),
         "",
-        _build_memory_section(memory_dir),
+        _build_memory_section(memory_dir, wiki_context),
         "",
         _build_heartbeat_section(heartbeat_file),
     ]
