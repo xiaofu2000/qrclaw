@@ -46,11 +46,25 @@ class WikiLLMAnalyzer:
                 "Install it with: pip install instructor"
             )
         if self._client is None:
+            # 适配 LiteLLMProvider，它使用 chat 方法而不是 create
             self._client = instructor.patch(
-                create=self.provider.create,
+                create=self._chat_wrapper,
                 mode=instructor.Mode.JSON,
             )
         return self._client
+
+    def _chat_wrapper(self, messages, **kwargs):
+        """包装 provider.chat 为 instructor 需要的 create 接口"""
+        response = self.provider.chat(messages=messages, json_mode=True)
+        # 转换为 instructor 期望的格式
+        class MockResponse:
+            def __init__(self, content):
+                self.choices = [type('Choice', (), {
+                    'message': type('Message', (), {
+                        'content': content
+                    })()
+                })()]
+        return MockResponse(response.content)
 
     def analyze(
         self,
