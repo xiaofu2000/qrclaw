@@ -120,11 +120,13 @@ class ExtractionRunner:
             if self.llm_analyzer is None:
                 self._init_llm_analyzer()
 
+            logger.warning("[ExtractionRunner] 开始调用 LLM 分析...")
+
             result = self.llm_analyzer.analyze(
                 extraction_data["index_summary"],
                 extraction_data["messages_text"],
             )
-            logger.debug(
+            logger.warning(
                 f"[ExtractionRunner] LLM分析完成: needs_update={result.needs_update}, "
                 f"pages={len(result.pages)}"
             )
