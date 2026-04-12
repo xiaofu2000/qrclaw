@@ -95,7 +95,6 @@ class WikiLLMAnalyzer:
                         {"role": "user", "content": prompt},
                     ],
                     response_model=ExtractionSchema,
-                    **self.provider.default_params,
                 )
                 return response
             except ValidationError as e:
@@ -137,7 +136,6 @@ class WikiLLMAnalyzer:
                         {"role": "user", "content": prompt},
                     ],
                     response_model=ConsolidatePageSchema,
-                    **self.provider.default_params,
                 )
                 return response
             except ValidationError as e:
