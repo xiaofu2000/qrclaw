@@ -56,14 +56,19 @@ class WikiLLMAnalyzer:
     def _chat_wrapper(self, messages, **kwargs):
         """包装 provider.chat 为 instructor 需要的 create 接口"""
         response = self.provider.chat(messages=messages, json_mode=True)
-        # 转换为 instructor 期望的格式
+        # 转换为 instructor 期望的 OpenAI 格式
+        class MockChoice:
+            def __init__(self, content):
+                self.message = type('Message', (), {'content': content})()
+                self.finish_reason = "stop"
+                self.index = 0
+
         class MockResponse:
             def __init__(self, content):
-                self.choices = [type('Choice', (), {
-                    'message': type('Message', (), {
-                        'content': content
-                    })()
-                })()]
+                self.choices = [MockChoice(content)]
+                self.model = "mock-model"
+                self.usage = type('Usage', (), {'prompt_tokens': 0, 'completion_tokens': 0, 'total_tokens': 0})()
+
         return MockResponse(response.content)
 
     def analyze(
