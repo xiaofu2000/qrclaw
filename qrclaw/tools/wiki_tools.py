@@ -71,17 +71,21 @@ def write_wiki_page(content: str) -> str:
             f"- {e['name']}：{e.get('description', '')}" for e in index_entries
         ) if index_entries else "（暂无页面）"
 
-        from qrclaw.graph.nodes.memory_extraction import (
-            EXTRACTION_PROMPT_TEMPLATE,
-            ExtractionResult,
-        )
+        from qrclaw.memory.wiki.extraction.prompts import EXTRACTION_PROMPT_TEMPLATE
+
         prompt = EXTRACTION_PROMPT_TEMPLATE.format(
             index_md=index_summary,
             messages_text=content,
         )
 
+        # 构造提取数据结构（与 runner.trigger_extraction 返回格式一致）
+        extraction_data = {
+            "index_summary": index_summary,
+            "messages_text": content,
+        }
+
         with extractor._pending_lock:
-            extractor._pending_extractions.append(ExtractionResult(prompt=prompt))
+            extractor._pending_extractions.append(extraction_data)
 
         t = threading.Thread(
             target=extractor.flush_pending,
