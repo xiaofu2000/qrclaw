@@ -131,7 +131,7 @@ class ExtractionRunner:
             return result
 
         except Exception as e:
-            logger.warning(f"[ExtractionRunner] LLM分析失败: {e}")
+            logger.warning(f"[ExtractionRunner] LLM分析失败: {e}", exc_info=True)
             return None
 
     def _init_llm_analyzer(self):

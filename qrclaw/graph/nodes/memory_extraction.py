@@ -240,8 +240,14 @@ class MemoryExtractionNode:
                 # LLM 分析（委托给 Runner）
                 extraction = runner.analyze_with_llm(extraction_data)
 
-                if extraction is None or not extraction.needs_update or not extraction.pages:
-                    logger.debug("[记忆提取] LLM 判定无需更新")
+                if extraction is None:
+                    logger.warning("[记忆提取] LLM 分析返回 None，跳过")
+                    continue
+                if not extraction.needs_update:
+                    logger.info("[记忆提取] LLM 判定无需更新")
+                    continue
+                if not extraction.pages:
+                    logger.info("[记忆提取] LLM 返回页面列表为空")
                     continue
 
                 total_pages += len(extraction.pages)
@@ -251,7 +257,7 @@ class MemoryExtractionNode:
                 success_count += written
 
             except Exception as e:
-                logger.warning(f"[记忆提取] 写入异常: {e}")
+                logger.warning(f"[记忆提取] 写入异常: {e}", exc_info=True)
 
         if success_count > 0:
             logger.info(f"[记忆提取] 批量写入完成: {success_count}/{total_pages} 页面")
