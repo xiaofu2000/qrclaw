@@ -71,6 +71,7 @@ class ConsolidatePageSchema(BaseModel):
     """页面整理结果，只包含需要重新生成的字段"""
     content: str = Field(description="整理后的页面正文（Markdown），去重合并后的精炼内容")
     description: str = Field(default="", description="一句话描述，显示在索引里")
+    tags: list[str] = Field(default_factory=list, description="根据整理后的内容重新生成的标签列表")
 
 
 class ExtractionSchema(BaseModel):
@@ -557,7 +558,7 @@ class MemoryExtractionNode:
                 name=page.name,
                 content=result.content,
                 description=result.description or page.description,
-                tags=page.tags,
+                tags=result.tags if result.tags else page.tags,
                 related=page.related,
             )
             logger.info(f"[记忆整理] 整理完成: {name}")
