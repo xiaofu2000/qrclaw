@@ -87,6 +87,7 @@ class LiteLLMProvider(LLMProvider):
         # LiteLLM 配置
         litellm.drop_params = True  # 忽略不支持的参数
         litellm.set_verbose = False
+        litellm.ssl_verify = False  # 关闭 SSL 证书验证
 
         logger.info(f"LiteLLM 渠道已初始化: model={self._model}")
 
