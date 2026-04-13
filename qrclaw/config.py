@@ -1,3 +1,4 @@
+import json
 import os
 from qrclaw.config_manager import init_config, load_config
 
@@ -53,3 +54,7 @@ LOG_TO_FILE = os.getenv("LOG_TO_FILE", "true").lower() == "true"
 LOG_TO_CONSOLE = os.getenv("LOG_TO_CONSOLE", "true").lower() == "true"
 # 控制台默认只显示 WARNING 及以上级别的日志，避免输出太多
 LOG_CONSOLE_LEVEL = os.getenv("LOG_CONSOLE_LEVEL", "WARNING")
+
+# MCP 配置
+MCP_ENABLED = os.getenv("MCP_ENABLED", "false").lower() == "true"
+MCP_SERVERS = json.loads(os.getenv("MCP_SERVERS", "[]"))

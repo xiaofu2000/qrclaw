@@ -9,6 +9,7 @@
 - ~/.qrclaw/logs/            日志文件
 """
 
+import json
 import os
 import yaml
 from pathlib import Path
@@ -55,6 +56,9 @@ DEFAULT_CONFIG = {
         "target_max_ratio": 0.25,
         "summary_max_tokens": 2560,
         "recent_max_tokens": 1536,
+    },
+    "mcp": {
+        "servers": [],
     },
 }
 
@@ -161,6 +165,13 @@ def _inject_to_env(config: dict):
     compress_config = config.get("compress", {})
     os.environ.setdefault("COMPRESS_SUMMARY_MAX_TOKENS", str(compress_config.get("summary_max_tokens", 2560)))
     os.environ.setdefault("COMPRESS_RECENT_MAX_TOKENS", str(compress_config.get("recent_max_tokens", 1536)))
+
+    # MCP 配置
+    mcp_config = config.get("mcp", {})
+    servers = mcp_config.get("servers", [])
+    os.environ.setdefault("MCP_SERVERS", json.dumps(servers, ensure_ascii=False))
+    if servers:
+        os.environ.setdefault("MCP_ENABLED", "true")
 
 
 def get_config() -> dict:
