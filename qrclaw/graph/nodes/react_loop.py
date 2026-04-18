@@ -50,6 +50,7 @@ def run_react_loop(
     on_finish: Optional[Callable[[str], None]] = None,
     console: Optional[Console] = None,
     silent: bool = False,
+    session: Optional[Session] = None,
 ) -> str:
     """
     通用 ReAct 循环核心，供 ReactLoopNode 和 MemoryExtractionNode 等复用。
@@ -63,6 +64,7 @@ def run_react_loop(
         on_finish: 完成回调，签名 (content) -> None
         console: Rich Console，silent=True 时不输出
         silent: 静默模式，不打印任何内容
+        session: Session 对象，用于更新 token 使用量
 
     Returns:
         最终 LLM 输出内容
@@ -78,6 +80,14 @@ def run_react_loop(
             except Exception as e:
                 logger.error(f"LLM 调用失败: {e}", exc_info=True)
                 raise
+
+        # 更新 token 使用量（每次 LLM 调用后都更新）
+        if session:
+            session.update_tokens(
+                prompt_tokens=response.prompt_tokens,
+                completion_tokens=response.completion_tokens,
+                total_tokens=response.total_tokens,
+            )
 
         if response.finish_reason == "stop":
             if not silent:
@@ -232,6 +242,7 @@ class ReactLoopNode:
                 on_finish=_on_finish,
                 console=console,
                 silent=False,
+                session=session,
             )
         except RuntimeError as e:
             console.print(Panel(
