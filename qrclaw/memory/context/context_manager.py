@@ -148,16 +148,18 @@ class ContextManager:
         logger.info(f"plan 初始化：{goal}，项目路径：{project_path}，共 {len(steps)} 步")
 
     def set_wiki_context(self, wiki_context: str) -> None:
-        """设置 Wiki 查询上下文（由 RouterNode 触发 LLM 精排后注入）。"""
+        """设置 Wiki 查询上下文（仅 plan 模式由 Router 触发，用于重建 System Prompt）。"""
         with self._lock:
             if self._plan_state is None:
-                logger.warning("set_wiki_context: plan_state 为空，无法设置 wiki_context")
+                logger.debug("set_wiki_context: 非 plan 模式，跳过 Wiki 注入")
                 return
             self._plan_state.wiki_context = wiki_context
+
         if wiki_context:
-            logger.info(f"Wiki 上下文已注入，长度: {len(wiki_context)} 字符")
-        # wiki_context 变化后需要重建 System Prompt
-        self.invalidate_cache()
+            logger.info(f"Wiki 上下文已缓存（{len(wiki_context)} 字符），将在下次构建 System Prompt 时注入")
+            self.invalidate_cache()
+        else:
+            logger.debug("Wiki 查询无结果，跳过 System Prompt 重建")
 
     def add_step_result(self, result) -> None:
         """线程安全地追加一个步骤结果。"""

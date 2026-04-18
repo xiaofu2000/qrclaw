@@ -112,16 +112,15 @@ class RouterNode:
                     dep_str = f"依赖 {s.depends_on}" if s.depends_on else "可并行"
                     logger.debug(f"  Step {s.id}: {s.description} [{dep_str}]")
 
-                # Wiki 查询：触发 LLM 精排获取相关页面正文
+                # Plan 模式：查询 Wiki 并注入后续 Agent 的 System Prompt
                 wiki_context = _query_wiki_context(result.goal, messages)
-
-                # 将 wiki_context 存入 ctx，PlanExecutor 会在构建 task 时注入
                 ctx = get_context_manager()
                 ctx.set_plan(plan.goal, plan.steps, plan.project_path)
-                ctx.set_wiki_context(wiki_context)
+                ctx.set_wiki_context(wiki_context)  # 标记 System Prompt 待重建
 
                 return RouteResult(route="plan", plan=plan)
 
+            # Direct 模式：不查 Wiki，快速执行
             logger.info("路由结果: direct")
             return RouteResult(route="direct")
 
