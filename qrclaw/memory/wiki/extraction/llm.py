@@ -47,15 +47,16 @@ class WikiLLMAnalyzer:
             )
         if self._client is None:
             # 适配 LiteLLMProvider，它使用 chat 方法而不是 create
+            # 使用 MD_JSON 模式，避免依赖 response_format=json_object（部分模型不支持）
             self._client = instructor.patch(
                 create=self._chat_wrapper,
-                mode=instructor.Mode.JSON,
+                mode=instructor.Mode.MD_JSON,
             )
         return self._client
 
     def _chat_wrapper(self, messages, **kwargs):
         """包装 provider.chat 为 instructor 需要的 create 接口"""
-        response = self.provider.chat(messages=messages, json_mode=True)
+        response = self.provider.chat(messages=messages)
         # 转换为 instructor 期望的 OpenAI 格式
         class MockChoice:
             def __init__(self, content):

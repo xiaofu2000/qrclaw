@@ -136,9 +136,8 @@ class LiteLLMProvider(LLMProvider):
         if tools:
             kwargs["tools"] = tools
 
-        # JSON 模式
-        if json_mode:
-            kwargs["response_format"] = {"type": "json_object"}
+        # json_mode 参数保留兼容性，实际不注入 response_format
+        # 原因：json_object 不被部分模型（如 MiniMax）支持，结构化输出统一走 instructor MD_JSON 模式
 
         # 温度参数
         if temperature is not None:
@@ -197,6 +196,10 @@ class LiteLLMProvider(LLMProvider):
         completion_tokens = getattr(usage, "completion_tokens", 0) or 0
         total_tokens = getattr(usage, "total_tokens", 0) or 0
 
+        # 提取 reasoning_content（thinking 模式模型，如 deepseek-reasoner、claude-3-7-sonnet 等）
+        # 必须原样回传给下一轮，否则 API 报错
+        reasoning_content = getattr(message, "reasoning_content", None)
+
         logger.info(f"LiteLLM 响应成功: {total_tokens} tokens")
         return LLMResponse(
             content=message.content or "",
@@ -206,6 +209,7 @@ class LiteLLMProvider(LLMProvider):
             completion_tokens=completion_tokens,
             total_tokens=total_tokens,
             raw=response,
+            reasoning_content=reasoning_content,
         )
 
     def make_instructor_kwargs(self, messages: list[dict], temperature: float = 0.1) -> dict:

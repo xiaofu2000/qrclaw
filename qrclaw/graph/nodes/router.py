@@ -32,9 +32,9 @@ def _get_instructor_client():
     """懒加载 instructor client，避免顶层 import 影响未使用 litellm 的环境。"""
     import instructor
     from litellm import completion
-    # 使用 JSON_MODE 而非默认的 TOOLS 模式
-    # MiniMax 等模型对 tool_calls 模式支持有问题，JSON_MODE 直接从 content 解析更稳定
-    return instructor.from_litellm(completion, mode=instructor.Mode.JSON)
+    # 使用 MD_JSON 模式：让模型在 markdown 代码块中返回 JSON
+    # 避免使用 JSON_MODE（需要 response_format=json_object），部分模型不支持该参数
+    return instructor.from_litellm(completion, mode=instructor.Mode.MD_JSON)
 
 
 # ── Pydantic Schema ────────────────────────────────────────────────────────────

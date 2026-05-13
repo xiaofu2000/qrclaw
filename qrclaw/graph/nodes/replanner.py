@@ -115,7 +115,8 @@ class ReplannerNode:
 
             import instructor
             from litellm import completion
-            client = instructor.from_litellm(completion, mode=instructor.Mode.JSON)
+            # 使用 MD_JSON 模式，避免依赖 response_format=json_object（部分模型不支持）
+            client = instructor.from_litellm(completion, mode=instructor.Mode.MD_JSON)
 
             kwargs = provider.make_instructor_kwargs(messages, temperature=0.1)
             kwargs["response_model"] = ReplanSchema

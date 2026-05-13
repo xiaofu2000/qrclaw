@@ -173,7 +173,8 @@ class WikiPageSelector:
 
             client = instructor.patch(
                 create=self._chat_wrapper,
-                mode=instructor.Mode.JSON,
+                # 使用 MD_JSON 模式，避免依赖 response_format=json_object（部分模型不支持）
+                mode=instructor.Mode.MD_JSON,
             )
 
             schema = client(
@@ -197,7 +198,7 @@ class WikiPageSelector:
         """包装 provider.chat 为 instructor 需要的 create 接口"""
         from qrclaw.providers import provider
 
-        response = provider.chat(messages=messages, json_mode=True)
+        response = provider.chat(messages=messages)
         # 转换为 instructor 期望的 OpenAI 格式
         class MockChoice:
             def __init__(self, content):

@@ -19,6 +19,7 @@ class LLMResponse:
     completion_tokens: int = 0
     total_tokens: int = 0
     raw: object = None                  # 原始响应对象，供需要时使用
+    reasoning_content: str | None = None  # thinking 模式的推理内容，需原样回传
 
 
 class LLMProvider(ABC):
