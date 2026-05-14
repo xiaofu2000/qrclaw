@@ -244,9 +244,19 @@ def _resolve_path(path: str) -> Path:
 # ============================================================================
 
 class ReadFileArgs(BaseModel):
-    path: str = Field(description="文件路径。沙箱内用 /workspace/文件名，或相对路径")
+    model_config = ConfigDict(populate_by_name=True)
+
+    path: str = Field(alias="file", description="文件路径。沙箱内用 /workspace/文件名，或相对路径")
     offset: int = Field(default=_DEFAULT_OFFSET, description="起始行号（1-indexed）")
     limit: int = Field(default=_DEFAULT_LIMIT, description="最大读取行数（默认500，最大2000）")
+
+    @model_validator(mode="before")
+    @classmethod
+    def _normalize_path(cls, values: dict) -> dict:
+        # 兼容模型可能传 'path' 或 'file'，统一转为 'file'（alias）
+        if "path" in values and "file" not in values:
+            values["file"] = values.pop("path")
+        return values
 
 
 class WriteFileArgs(BaseModel):
