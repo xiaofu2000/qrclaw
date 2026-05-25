@@ -110,6 +110,20 @@ class TestChatReturnsLLMResponse:
             assert result.completion_tokens == 20
             assert result.total_tokens == 30
 
+    def test_response_has_reasoning_content(self, mock_provider):
+        """验证 reasoning_content 会被保留"""
+        mock_response = MagicMock()
+        mock_response.choices = [MagicMock()]
+        mock_response.choices[0].message.content = "Final answer"
+        mock_response.choices[0].message.reasoning_content = "Hidden reasoning"
+        mock_response.choices[0].message.tool_calls = None
+        mock_response.choices[0].finish_reason = "stop"
+        mock_response.usage = MagicMock(prompt_tokens=3, completion_tokens=4, total_tokens=7)
+
+        with patch("qrclaw.providers.litellm_provider.completion", return_value=mock_response):
+            result = mock_provider.chat([{"role": "user", "content": "Hi"}])
+            assert result.reasoning_content == "Hidden reasoning"
+
 
 class TestToolCallConversion:
     """测试工具调用格式转换"""
@@ -408,6 +422,20 @@ class TestSanitize:
         cleaned = provider._sanitize(messages)
 
         assert cleaned[0]["content"] == ""
+
+    def test_sanitize_keeps_reasoning_content_when_present(self):
+        """验证 reasoning_content 不会被清洗掉"""
+        with patch("qrclaw.providers.litellm_provider.LITELLM_API_KEY", None), \
+             patch("qrclaw.providers.litellm_provider.LITELLM_MODEL", "gpt-4o"), \
+             patch("qrclaw.providers.litellm_provider.LITELLM_BASE_URL", None), \
+             patch("qrclaw.providers.litellm_provider.LITELLM_API_BASE", None), \
+             patch("qrclaw.providers.litellm_provider.LITELLM_PROXY_URL", None):
+            provider = LiteLLMProvider()
+
+        messages = [{"role": "assistant", "content": "Final", "reasoning_content": "Think"}]
+        cleaned = provider._sanitize(messages)
+
+        assert cleaned[0]["reasoning_content"] == "Think"
 
 
 class TestTemperatureParameter:

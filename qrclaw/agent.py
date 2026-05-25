@@ -69,6 +69,8 @@ def get_extractor() -> "MemoryExtractionNode | None":
 def _dump_assistant_msg(response: LLMResponse) -> dict:
     """把 LLMResponse 转成可存入 session 的 assistant 消息 dict"""
     msg: dict = {"role": "assistant", "content": response.content or ""}
+    if response.reasoning_content:
+        msg["reasoning_content"] = response.reasoning_content
     if response.tool_calls:
         tc_list = []
         for tc in response.tool_calls:

@@ -94,7 +94,7 @@ class LiteLLMProvider(LLMProvider):
     @staticmethod
     def _sanitize(messages: list[dict]) -> list[dict]:
         """过滤顶层 null 字段，避免兼容性问题"""
-        drop_if_null = {"refusal", "annotations", "audio", "function_call"}
+        drop_if_null = {"refusal", "annotations", "audio", "function_call", "reasoning_content"}
         result = []
         for msg in messages:
             cleaned = {k: v for k, v in msg.items() if not (k in drop_if_null and v is None)}
@@ -102,6 +102,19 @@ class LiteLLMProvider(LLMProvider):
                 cleaned["content"] = ""
             result.append(cleaned)
         return result
+
+    @staticmethod
+    def _extract_response_reasoning(message) -> str | None:
+        """从 LiteLLM/OpenAI 响应里提取 reasoning content。"""
+        reasoning = getattr(message, "reasoning_content", None)
+        if reasoning:
+            return reasoning
+        provider_fields = getattr(message, "provider_specific_fields", None)
+        if isinstance(provider_fields, dict):
+            reasoning = provider_fields.get("reasoning_content")
+            if reasoning:
+                return reasoning
+        return None
 
     def chat(
         self,
@@ -174,6 +187,7 @@ class LiteLLMProvider(LLMProvider):
         # 解析响应
         choice = response.choices[0]
         message = choice.message
+        reasoning_content = self._extract_response_reasoning(message)
 
         # 提取工具调用
         tool_calls = []
@@ -203,6 +217,7 @@ class LiteLLMProvider(LLMProvider):
         logger.info(f"LiteLLM 响应成功: {total_tokens} tokens")
         return LLMResponse(
             content=message.content or "",
+            reasoning_content=reasoning_content,
             tool_calls=tool_calls,
             finish_reason=finish_reason,
             prompt_tokens=prompt_tokens,

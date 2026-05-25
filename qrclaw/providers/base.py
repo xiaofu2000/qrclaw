@@ -13,6 +13,7 @@ class ToolCall:
 @dataclass
 class LLMResponse:
     content: str                        # 文本回复，无工具调用时有值
+    reasoning_content: str | None = None # 推理内容，thinking/reasoning 模式下需保留回放
     tool_calls: list[ToolCall] = field(default_factory=list)
     finish_reason: str = "stop"         # stop | tool_calls | length
     prompt_tokens: int = 0

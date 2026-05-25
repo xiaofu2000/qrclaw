@@ -99,7 +99,7 @@ def run_react_loop(
                     expand=True,
                 ))
                 _console.print()
-            messages.append({"role": "assistant", "content": response.content or ""})
+            messages.append(_dump_assistant_msg(response))
             if on_finish:
                 on_finish(response.content or "")
             return response.content or ""

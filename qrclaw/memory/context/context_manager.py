@@ -284,7 +284,7 @@ class ContextManager:
 
         保留的内容：
         - role=user 的消息（用户输入）
-        - assistant 消息中没有 tool_calls 的消息（最终纯文字回复）
+        - assistant 消息中没有 tool_calls 的消息（最终纯文字回复，保留 reasoning_content）
         """
         filtered = []
         i = 0
