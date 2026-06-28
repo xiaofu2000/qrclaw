@@ -28,13 +28,13 @@ from qrclaw.memory.wiki.extraction.prompts import (
 class WikiLLMAnalyzer:
     """Wiki LLM 分析器封装"""
 
-    def __init__(self, provider, config: ExtractionConfig):
+    def __init__(self, llm_service, config: ExtractionConfig):
         """
         Args:
-            provider: LiteLLMProvider 实例
+            llm_service: LLMService 实例
             config: ExtractionConfig 配置
         """
-        self.provider = provider
+        self.llm = llm_service
         self.config = config
         self._client = None
 
@@ -49,28 +49,10 @@ class WikiLLMAnalyzer:
             # 适配 LiteLLMProvider，它使用 chat 方法而不是 create
             # 使用 MD_JSON 模式，避免依赖 response_format=json_object（部分模型不支持）
             self._client = instructor.patch(
-                create=self._chat_wrapper,
+                create=self.llm.create_openai_like,
                 mode=instructor.Mode.MD_JSON,
             )
         return self._client
-
-    def _chat_wrapper(self, messages, **kwargs):
-        """包装 provider.chat 为 instructor 需要的 create 接口"""
-        response = self.provider.chat(messages=messages)
-        # 转换为 instructor 期望的 OpenAI 格式
-        class MockChoice:
-            def __init__(self, content):
-                self.message = type('Message', (), {'content': content})()
-                self.finish_reason = "stop"
-                self.index = 0
-
-        class MockResponse:
-            def __init__(self, content):
-                self.choices = [MockChoice(content)]
-                self.model = "mock-model"
-                self.usage = type('Usage', (), {'prompt_tokens': 0, 'completion_tokens': 0, 'total_tokens': 0})()
-
-        return MockResponse(response.content)
 
     def analyze(
         self,

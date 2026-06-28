@@ -11,8 +11,8 @@ from __future__ import annotations
 from typing import Literal
 from pydantic import BaseModel, Field
 
-from qrclaw.providers import provider
 from qrclaw.providers.litellm_provider import LiteLLMProvider
+from qrclaw.llm_service import get_llm_service
 from qrclaw.graph.nodes.router import PlanStep
 from qrclaw.memory.context.context_manager import get_context_manager
 from qrclaw.logger import get_logger
@@ -111,7 +111,8 @@ class ReplannerNode:
         messages = ctx.build_messages("replanner", replanner_instruction=_REPLANNER_INSTRUCTION)
 
         try:
-            if not isinstance(provider, LiteLLMProvider):
+            llm = get_llm_service()
+            if not llm.is_provider_type(LiteLLMProvider):
                 raise RuntimeError("Replanner 目前仅支持 LiteLLMProvider")
 
             import instructor
@@ -119,7 +120,7 @@ class ReplannerNode:
             # 使用 MD_JSON 模式，避免依赖 response_format=json_object（部分模型不支持）
             client = instructor.from_litellm(completion, mode=instructor.Mode.MD_JSON)
 
-            kwargs = provider.make_instructor_kwargs(messages, temperature=0.1)
+            kwargs = llm.make_instructor_kwargs(messages, temperature=0.1)
             kwargs["response_model"] = ReplanSchema
             kwargs["max_retries"] = 3
 

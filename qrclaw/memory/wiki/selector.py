@@ -169,10 +169,11 @@ class WikiPageSelector:
 
         # 调用 LLM（使用 instructor 结构化输出）
         try:
-            from qrclaw.providers import provider
+            from qrclaw.llm_service import get_llm_service
 
+            llm = get_llm_service()
             client = instructor.patch(
-                create=self._chat_wrapper,
+                create=llm.create_openai_like,
                 # 使用 MD_JSON 模式，避免依赖 response_format=json_object（部分模型不支持）
                 mode=instructor.Mode.MD_JSON,
             )
@@ -193,26 +194,6 @@ class WikiPageSelector:
             return SelectionResult(
                 selected_pages=[], reasoning=f"LLM 调用失败: {str(e)}"
             )
-
-    def _chat_wrapper(self, messages, **kwargs):
-        """包装 provider.chat 为 instructor 需要的 create 接口"""
-        from qrclaw.providers import provider
-
-        response = provider.chat(messages=messages)
-        # 转换为 instructor 期望的 OpenAI 格式
-        class MockChoice:
-            def __init__(self, content):
-                self.message = type('Message', (), {'content': content})()
-                self.finish_reason = "stop"
-                self.index = 0
-
-        class MockResponse:
-            def __init__(self, content):
-                self.choices = [MockChoice(content)]
-                self.model = provider._model
-                self.usage = type('Usage', (), {'prompt_tokens': 0, 'completion_tokens': 0, 'total_tokens': 0})()
-
-        return MockResponse(response.content)
 
     def _filter_messages(self, messages: list[dict]) -> list[dict]:
         """

@@ -138,9 +138,9 @@ class ExtractionRunner:
 
     def _init_llm_analyzer(self):
         """懒加载初始化 LLM analyzer"""
-        from qrclaw.providers import provider
+        from qrclaw.llm_service import get_llm_service
         from qrclaw.memory.wiki.extraction import WikiLLMAnalyzer
-        self.llm_analyzer = WikiLLMAnalyzer(provider, self.config)
+        self.llm_analyzer = WikiLLMAnalyzer(get_llm_service(), self.config)
 
     # ── 页面整理 ──────────────────────────────────────────────────────────────
 

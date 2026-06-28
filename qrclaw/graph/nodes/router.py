@@ -16,8 +16,8 @@ from __future__ import annotations
 from typing import Literal
 from pydantic import BaseModel, Field
 
-from qrclaw.providers import provider
 from qrclaw.providers.litellm_provider import LiteLLMProvider
+from qrclaw.llm_service import get_llm_service
 from qrclaw.memory.context.context_manager import get_context_manager
 from qrclaw.memory.wiki.wiki_memory import WikiMemory
 from qrclaw.logger import get_logger
@@ -85,11 +85,12 @@ class RouterNode:
         messages = ctx.build_messages("router", route_instruction=_ROUTE_INSTRUCTION)
 
         try:
-            if not isinstance(provider, LiteLLMProvider):
+            llm = get_llm_service()
+            if not llm.is_provider_type(LiteLLMProvider):
                 raise RuntimeError("Router 目前仅支持 LiteLLMProvider")
 
             client = _get_instructor_client()
-            kwargs = provider.make_instructor_kwargs(messages, temperature=0.1)
+            kwargs = llm.make_instructor_kwargs(messages, temperature=0.1)
             kwargs["response_model"] = RouteSchema
             kwargs["max_retries"] = 3
 

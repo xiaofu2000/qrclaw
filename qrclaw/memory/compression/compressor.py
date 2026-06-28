@@ -120,9 +120,9 @@ def summarize(session) -> None:
     )
 
     try:
-        from qrclaw.providers import provider
+        from qrclaw.llm_service import get_llm_service
         logger.debug(f"调用 LLM 生成摘要，目标: {COMPRESS_SUMMARY_TARGET_TOKENS} tokens")
-        resp = provider.chat([
+        resp = get_llm_service().chat([
             {"role": "user", "content": SUMMARIZE_PROMPT.format(
                 history=history_text,
                 target_tokens=COMPRESS_SUMMARY_TARGET_TOKENS,

@@ -27,7 +27,7 @@ from pydantic import BaseModel, Field
 from qrclaw.tools.registry import register
 from qrclaw.web_search.runtime import run_web_search, WebSearchError
 from qrclaw.logger import get_logger
-from qrclaw.providers import provider
+from qrclaw.llm_service import get_llm_service
 
 logger = get_logger("qrclaw.tools.web")
 
@@ -199,8 +199,7 @@ def _call_llm_sync(system_prompt: str, user_prompt: str, max_tokens: int = 20000
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt},
         ]
-        # 通过 provider 调用（支持同步和异步）
-        response = provider.chat(messages, temperature=0.1)
+        response = get_llm_service().chat(messages, temperature=0.1)
         return response.content if response else None
     except Exception as e:
         logger.warning(f"LLM 调用失败: {e}")
@@ -991,4 +990,3 @@ def web_crawl(url: str, instructions: str = "", max_pages: int = 10, use_compres
     result = "\n".join(lines)
     logger.info(f"web_crawl 完成: {url}, {len(pages)} 页, {len(result)} 字符")
     return result
-

@@ -10,36 +10,17 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.text import Text
 from rich.markdown import Markdown
-from qrclaw.config import MAX_ITERATIONS, COMPRESS_THRESHOLD
-from qrclaw.providers import provider
-from qrclaw.providers.base import LLMResponse
-from qrclaw.tools.registry import get_schemas, get_schemas_for_sub_agent, execute, need_confirm
+from qrclaw.config import MAX_ITERATIONS
+from qrclaw.tools.registry import get_schemas, get_schemas_for_sub_agent
 from qrclaw.memory.context.session import Session
 from qrclaw.memory.context.context_manager import get_context_manager
+from qrclaw.llm_service import LLMService, get_llm_service
 from qrclaw.workspace import Workspace
 from qrclaw.logger import get_logger
+from qrclaw.graph.nodes.message_codec import assistant_response_to_message, tool_result_to_message
+from qrclaw.graph.nodes.tool_runner import ToolRunner
 
 logger = get_logger("qrclaw.graph.nodes.react_loop")
-
-
-def _dump_assistant_msg(response: LLMResponse) -> dict:
-    msg: dict = {"role": "assistant", "content": response.content or ""}
-    # thinking 模式：reasoning_content 必须原样回传，否则 API 报错
-    if response.reasoning_content:
-        msg["reasoning_content"] = response.reasoning_content
-    if response.tool_calls:
-        tc_list = []
-        for tc in response.tool_calls:
-            entry = {
-                "id": tc.id,
-                "type": "function",
-                "function": {"name": tc.name, "arguments": tc.arguments},
-            }
-            if tc.thought_signature:
-                entry["__thought_signature__"] = tc.thought_signature
-            tc_list.append(entry)
-        msg["tool_calls"] = tc_list
-    return msg
 
 
 def run_react_loop(
@@ -48,9 +29,11 @@ def run_react_loop(
     max_iterations: int = MAX_ITERATIONS,
     on_tool_call: Optional[Callable[[str, str], str]] = None,
     on_finish: Optional[Callable[[str], None]] = None,
+    on_assistant_message: Optional[Callable[[dict], None]] = None,
     console: Optional[Console] = None,
     silent: bool = False,
     session: Optional[Session] = None,
+    llm_service: Optional[LLMService] = None,
 ) -> str:
     """
     通用 ReAct 循环核心，供 ReactLoopNode 和 MemoryExtractionNode 等复用。
@@ -62,6 +45,7 @@ def run_react_loop(
         on_tool_call: 工具执行回调，签名 (name, arguments) -> result
                       为 None 时使用默认 execute()
         on_finish: 完成回调，签名 (content) -> None
+        on_assistant_message: 完整 assistant 消息回调，包含 reasoning_content/tool_calls
         console: Rich Console，silent=True 时不输出
         silent: 静默模式，不打印任何内容
         session: Session 对象，用于更新 token 使用量
@@ -70,13 +54,14 @@ def run_react_loop(
         最终 LLM 输出内容
     """
     _console = console or Console()
+    llm = llm_service or get_llm_service()
 
     for iteration in range(max_iterations):
         logger.debug(f"run_react_loop 第 {iteration + 1} 轮")
 
         with _console.status("[bold yellow]思考中...[/bold yellow]", spinner="dots") if not silent else _noop_ctx():
             try:
-                response = provider.chat(messages, tools=tools)
+                response = llm.chat(messages, tools=tools)
             except Exception as e:
                 logger.error(f"LLM 调用失败: {e}", exc_info=True)
                 raise
@@ -99,7 +84,10 @@ def run_react_loop(
                     expand=True,
                 ))
                 _console.print()
-            messages.append(_dump_assistant_msg(response))
+            assistant_msg = assistant_response_to_message(response)
+            messages.append(assistant_msg)
+            if on_assistant_message:
+                on_assistant_message(assistant_msg)
             if on_finish:
                 on_finish(response.content or "")
             return response.content or ""
@@ -129,14 +117,14 @@ def run_react_loop(
                 _console.print()
 
             if not assistant_msg_saved:
-                messages.append(_dump_assistant_msg(response))
+                messages.append(assistant_response_to_message(response))
                 assistant_msg_saved = True
 
             try:
                 if on_tool_call:
                     result = on_tool_call(name, arguments)
                 else:
-                    result = execute(name, arguments)
+                    result = ToolRunner().run(name, arguments)
             except Exception as e:
                 result = f"工具执行失败: {str(e)}"
                 logger.error(f"工具执行失败: {name}, 错误: {e}", exc_info=True)
@@ -151,7 +139,7 @@ def run_react_loop(
                 ))
                 _console.print()
 
-            messages.append({"role": "tool", "tool_call_id": tc.id, "content": result})
+            messages.append(tool_result_to_message(tc.id, result))
 
     logger.warning("run_react_loop 达到最大迭代次数")
     return "错误：达到最大迭代次数"
@@ -196,36 +184,15 @@ class ReactLoopNode:
         is_sub_agent: bool = False,
     ) -> str:
         ctx = get_context_manager()
-        permission_denied_count = 0
-        MAX_PERMISSION_DENIED = 2
 
         # 仅主 agent 启用记忆提取
         memory_integration = self._get_memory_integration(workspace) if not is_sub_agent else None
 
         tools = get_schemas_for_sub_agent() if is_sub_agent else get_schemas()
+        tool_runner = ToolRunner(console=console, auto_confirm=auto_confirm)
 
-        def _tool_call(name: str, arguments: str) -> str:
-            nonlocal permission_denied_count
-            if need_confirm(name) and not auto_confirm:
-                console.print(f"[bold red]⚠ 需要确认[/bold red] 是否允许执行？(y/n) ", end="")
-                choice = input().strip().lower()
-                if choice != "y":
-                    return "用户拒绝执行此操作"
-            try:
-                result = execute(name, arguments)
-                permission_denied_count = 0
-                return result
-            except PermissionError as e:
-                permission_denied_count += 1
-                if permission_denied_count >= MAX_PERMISSION_DENIED:
-                    raise RuntimeError(f"连续 {MAX_PERMISSION_DENIED} 次权限拒绝，任务终止") from e
-                return str(e)
-            except Exception as e:
-                logger.error(f"工具执行失败: {name}, 错误: {e}", exc_info=True)
-                return f"工具执行失败: {str(e)}"
-
-        def _on_finish(content: str) -> None:
-            session.add({"role": "assistant", "content": content})
+        def _on_assistant_message(message: dict) -> None:
+            session.add(dict(message))
             if memory_integration:
                 memory_integration.on_react_loop_end(session, 0)
 
@@ -238,11 +205,12 @@ class ReactLoopNode:
                 messages=messages,
                 tools=tools,
                 max_iterations=MAX_ITERATIONS,
-                on_tool_call=_tool_call,
-                on_finish=_on_finish,
+                on_tool_call=tool_runner.run,
+                on_assistant_message=_on_assistant_message,
                 console=console,
                 silent=False,
                 session=session,
+                llm_service=get_llm_service(),
             )
         except RuntimeError as e:
             console.print(Panel(

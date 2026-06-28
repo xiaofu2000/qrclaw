@@ -210,10 +210,6 @@ class LiteLLMProvider(LLMProvider):
         completion_tokens = getattr(usage, "completion_tokens", 0) or 0
         total_tokens = getattr(usage, "total_tokens", 0) or 0
 
-        # 提取 reasoning_content（thinking 模式模型，如 deepseek-reasoner、claude-3-7-sonnet 等）
-        # 必须原样回传给下一轮，否则 API 报错
-        reasoning_content = getattr(message, "reasoning_content", None)
-
         logger.info(f"LiteLLM 响应成功: {total_tokens} tokens")
         return LLMResponse(
             content=message.content or "",
@@ -224,7 +220,6 @@ class LiteLLMProvider(LLMProvider):
             completion_tokens=completion_tokens,
             total_tokens=total_tokens,
             raw=response,
-            reasoning_content=reasoning_content,
         )
 
     def make_instructor_kwargs(self, messages: list[dict], temperature: float = 0.1) -> dict:

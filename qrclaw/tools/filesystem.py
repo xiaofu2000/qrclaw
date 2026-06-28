@@ -3,7 +3,7 @@ import re
 import subprocess
 import threading
 from pathlib import Path
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 from qrclaw.tools.registry import register
 from qrclaw.logger import get_logger
 
