@@ -7,31 +7,116 @@ import type { Conversation, Message, RunStatus } from '../lib/types'
 import { Sidebar } from '../components/Sidebar'
 import { Topbar } from '../components/Topbar'
 
-const seedConversations: Conversation[] = [
-  { id: 'default', title: '默认会话', updatedAt: '刚刚' },
-  { id: 'architecture', title: '架构止血', updatedAt: '今天' },
-]
-
-const seedMessages: Message[] = [
-  { id: 'm1', role: 'assistant', content: '我会把任务拆成可执行步骤。' },
-]
-
 export function App() {
   const api = useMemo(() => createApiClient(), [])
-  const [conversations] = useState(seedConversations)
-  const [activeConversationId] = useState('default')
-  const [messages, setMessages] = useState<Message[]>(seedMessages)
+  const [conversations, setConversations] = useState<Conversation[]>([])
+  const [activeConversationId, setActiveConversationId] = useState<string>('')
+  const [messages, setMessages] = useState<Message[]>([])
   const [status, setStatus] = useState<RunStatus>('ready')
   const [statusText, setStatusText] = useState('已连接本地服务')
 
   useEffect(() => {
-    api.health().catch(() => {
-      setStatus('error')
-      setStatusText('本地服务未连接')
-    })
+    let cancelled = false
+    async function bootstrap() {
+      try {
+        await api.health()
+        const sessions = await api.listSessions()
+        if (cancelled) {
+          return
+        }
+        const mapped = sessions.map((session) => ({
+          id: session.id,
+          title: session.id,
+          updatedAt: session.updated_at,
+          messageCount: session.message_count,
+        }))
+        setConversations(mapped)
+        if (sessions.length > 0) {
+          const first = sessions[0]
+          setActiveConversationId(first.id)
+          const detail = await api.getSession(first.id)
+          if (!cancelled) {
+            setMessages(
+              detail.messages.map((message, index) => ({
+                id: `${first.id}-${index}`,
+                role: message.role as Message['role'],
+                content: typeof message.content === 'string' ? message.content : JSON.stringify(message.content),
+              })),
+            )
+          }
+        } else {
+          const created = await api.createSession()
+          if (!cancelled) {
+            setConversations([
+              {
+                id: created.id,
+                title: created.id,
+                updatedAt: created.updated_at,
+                messageCount: created.message_count,
+              },
+            ])
+            setActiveConversationId(created.id)
+            setMessages([])
+          }
+        }
+      } catch {
+        if (!cancelled) {
+          setStatus('error')
+          setStatusText('本地服务未连接')
+        }
+      }
+    }
+
+    bootstrap()
+    return () => {
+      cancelled = true
+    }
   }, [api])
 
+  async function refreshConversations() {
+    const sessions = await api.listSessions()
+    setConversations(
+      sessions.map((session) => ({
+        id: session.id,
+        title: session.id,
+        updatedAt: session.updated_at,
+        messageCount: session.message_count,
+      })),
+    )
+  }
+
+  async function loadConversation(conversationId: string) {
+    const detail = await api.getSession(conversationId)
+    setActiveConversationId(conversationId)
+    setMessages(
+      detail.messages.map((message, index) => ({
+        id: `${conversationId}-${index}`,
+        role: message.role as Message['role'],
+        content: typeof message.content === 'string' ? message.content : JSON.stringify(message.content),
+      })),
+    )
+  }
+
+  async function handleNewChat() {
+    setStatus('busy')
+    setStatusText('新建会话中')
+    try {
+      const created = await api.createSession()
+      await refreshConversations()
+      setActiveConversationId(created.id)
+      setMessages([])
+      setStatus('ready')
+      setStatusText('已创建新会话')
+    } catch (error) {
+      setStatus('error')
+      setStatusText(error instanceof Error ? error.message : '新建会话失败')
+    }
+  }
+
   async function handleSend(content: string) {
+    if (!activeConversationId) {
+      return
+    }
     const userMessage: Message = {
       id: crypto.randomUUID(),
       role: 'user',
@@ -42,7 +127,8 @@ export function App() {
     setStatusText('运行中')
 
     try {
-      const reply = await api.chat(messages.concat(userMessage))
+      const nextMessages = [...messages, userMessage]
+      const reply = await api.chat(activeConversationId, nextMessages)
       setMessages((current) => [
         ...current,
         {
@@ -51,6 +137,7 @@ export function App() {
           content: reply,
         },
       ])
+      await refreshConversations()
       setStatus('ready')
       setStatusText('完成')
     } catch (error) {
@@ -71,7 +158,12 @@ export function App() {
     <div className="app-shell">
       <Topbar status={status} statusText={statusText} />
       <div className="workspace">
-        <Sidebar conversations={conversations} activeId={activeConversationId} />
+        <Sidebar
+          conversations={conversations}
+          activeId={activeConversationId}
+          onNewChat={handleNewChat}
+          onSelectConversation={loadConversation}
+        />
         <main className="chat-column">
           <ChatPanel messages={messages} />
           <Composer onSend={handleSend} disabled={status === 'busy'} />

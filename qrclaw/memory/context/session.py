@@ -69,6 +69,11 @@ def delete_session(session_id: str, sessions_dir: Path) -> bool:
     return False
 
 
+def count_tokens(messages: list[dict]) -> int:
+    """兼容旧接口：计算消息列表 token 数。"""
+    return count_messages_tokens(messages)
+
+
 
 class Session:
     def __init__(self, sessions_dir: Path, session_id: str = None, resume: bool = True):

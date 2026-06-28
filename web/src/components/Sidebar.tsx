@@ -4,16 +4,18 @@ import type { Conversation } from '../lib/types'
 type SidebarProps = {
   conversations: Conversation[]
   activeId: string
+  onNewChat: () => void
+  onSelectConversation: (conversationId: string) => void
 }
 
-export function Sidebar({ conversations, activeId }: SidebarProps) {
+export function Sidebar({ conversations, activeId, onNewChat, onSelectConversation }: SidebarProps) {
   return (
     <aside className="sidebar">
       <div className="sidebar-header">会话</div>
-      <button className="new-chat" type="button">
+      <button className="new-chat" type="button" onClick={onNewChat}>
         新建任务
       </button>
-      <ConversationList conversations={conversations} activeId={activeId} />
+      <ConversationList conversations={conversations} activeId={activeId} onSelect={onSelectConversation} />
     </aside>
   )
 }
