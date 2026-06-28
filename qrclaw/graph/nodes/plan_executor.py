@@ -21,6 +21,7 @@ from rich.panel import Panel
 from rich.text import Text
 from qrclaw.memory.context.session import Session
 from qrclaw.memory.context.step_result import StepResult
+from qrclaw.memory.context.events import SessionEvent
 from qrclaw.memory.context.context_manager import get_context_manager
 from qrclaw.workspace import Workspace
 from qrclaw.graph.executor import get_next_layer
@@ -46,6 +47,7 @@ class PlanExecutorNode:
     ) -> str:
         ctx = get_context_manager()
         ps = ctx.plan_state
+        session.add_event(SessionEvent(kind="status", title="规划执行开始", content=ps.goal))
 
         while ps.remaining:
             layer = get_next_layer(ps.remaining)
@@ -58,6 +60,7 @@ class PlanExecutorNode:
 
             if is_serial:
                 step = layer[0]
+                session.add_event(SessionEvent(kind="status", title="执行中", content=step.description))
                 console.print(f"[yellow]→ {step.description} (串行)[/yellow]")
                 result = self._run_serial(step, ps.goal, ps.past_steps, workspace, run_sub_agent_fn, console)
                 ctx.add_step_result(StepResult(
@@ -66,6 +69,7 @@ class PlanExecutorNode:
                     output=result,
                 ))
             else:
+                session.add_event(SessionEvent(kind="status", title="执行中", content=f"并行执行 {len(layer)} 个步骤"))
                 console.print(f"[yellow]→ 并行执行 {len(layer)} 个步骤[/yellow]")
                 for step in layer:
                     console.print(f"  [dim]Step {step.id}:[/dim] {step.description}")
@@ -84,10 +88,12 @@ class PlanExecutorNode:
             # 不管 remaining 是否为空，都让 Replanner 评估一次
             # 避免最后一层并行完成后跳过 Replanner 直接交给主 agent
             console.print("\n[dim]🔄 重新评估剩余计划...[/dim]")
+            session.add_event(SessionEvent(kind="status", title="重规划中", content="正在评估剩余计划"))
             new_remaining = self.replanner.run()
 
             if new_remaining is None:
                 console.print("[bold green]✅ Replanner 判断目标已达成[/bold green]\n")
+                session.add_event(SessionEvent(kind="status", title="重规划完成", content="目标已达成"))
                 ps.remaining = []
                 break
 
@@ -104,9 +110,16 @@ class PlanExecutorNode:
         summary = "\n".join(summary_lines)
 
         session.add({
-            "role": "user",
+            "role": "assistant",
+            "kind": "execution_report",
             "content": f"以上是任务「{ps.goal}」的执行结果，请根据这些结果给出最终的整合回复。\n\n{summary}",
         })
+        session.add_event(SessionEvent(
+            kind="execution_report",
+            title="执行汇报",
+            content=summary,
+            collapsed=True,
+        ))
         ctx.clear_plan()
         return react_loop_fn()
 

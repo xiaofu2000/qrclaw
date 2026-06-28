@@ -15,7 +15,9 @@ export function Sidebar({ conversations, activeId, onNewChat, onSelectConversati
       <button className="new-chat" type="button" onClick={onNewChat}>
         新建任务
       </button>
-      <ConversationList conversations={conversations} activeId={activeId} onSelect={onSelectConversation} />
+      <div className="sidebar-list">
+        <ConversationList conversations={conversations} activeId={activeId} onSelect={onSelectConversation} />
+      </div>
     </aside>
   )
 }

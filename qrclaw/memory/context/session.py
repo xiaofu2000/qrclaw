@@ -4,8 +4,24 @@ from datetime import datetime
 from pathlib import Path
 from qrclaw.logger import get_logger
 from qrclaw.memory.token_utils import count_messages_tokens
+from qrclaw.memory.context.events import SessionEvent
 
 logger = get_logger("qrclaw.memory.session")
+
+
+def _normalize_message(message: dict) -> dict:
+    """规范化消息格式，确保 execution/assistant/user 都能带上稳定类型。"""
+    if "kind" not in message:
+        role = message.get("role")
+        if role == "user":
+            message["kind"] = "user"
+        elif role == "assistant":
+            message["kind"] = "assistant"
+        elif role == "tool":
+            message["kind"] = "tool"
+        else:
+            message["kind"] = "message"
+    return message
 
 
 def list_sessions(sessions_dir: Path) -> list[dict]:
@@ -26,7 +42,11 @@ def list_sessions(sessions_dir: Path) -> list[dict]:
     ):
         try:
             data = json.loads(path.read_text(encoding="utf-8"))
-            msg_count = len([m for m in data if m.get("role") != "system"])
+            if isinstance(data, dict):
+                raw_messages = data.get("messages", [])
+                msg_count = len([m for m in raw_messages if m.get("role") != "system"])
+            else:
+                msg_count = len([m for m in data if m.get("role") != "system"])
             mtime = datetime.fromtimestamp(path.stat().st_mtime).strftime("%Y-%m-%d %H:%M")
             sessions.append({
                 "id": path.stem,
@@ -107,6 +127,7 @@ class Session:
             logger.info(f"创建新会话: {self.session_id}")
 
         self.messages: list[dict] = []
+        self.events: list[dict] = []
 
         # 上下文使用情况
         self.prompt_tokens = 0
@@ -124,12 +145,20 @@ class Session:
 
     def add(self, message: dict):
         """追加一条消息，并立即存盘。自动注入 uuid 用于记忆提取截断。"""
+        message = _normalize_message(dict(message))
         if 'uuid' not in message:
             message['uuid'] = uuid.uuid4().hex[:12]
         self.messages.append(message)
         self.prompt_tokens = count_messages_tokens(self.messages)
         self._save()
         logger.debug(f"添加消息: {message.get('role', 'unknown')}, 当前会话消息数: {len(self.messages)}")
+
+    def add_event(self, event: SessionEvent | dict):
+        payload = event.__dict__ if isinstance(event, SessionEvent) else dict(event)
+        payload.setdefault("created_at", datetime.now().isoformat())
+        self.events.append(payload)
+        self._save()
+        logger.debug(f"添加事件: {payload.get('kind', 'event')}")
 
     def update_tokens(self, prompt_tokens: int, completion_tokens: int, total_tokens: int):
         """更新 token 使用情况"""
@@ -145,6 +174,7 @@ class Session:
         self.prompt_tokens = 0
         self.completion_tokens = 0
         self.total_tokens = 0
+        self.events = []
         if self._path.exists():
             self._path.unlink()
             logger.debug(f"删除会话文件: {self._path}")
@@ -152,7 +182,7 @@ class Session:
     def _save(self):
         try:
             self._path.write_text(
-                json.dumps(self.messages, ensure_ascii=False, indent=2),
+                json.dumps({"messages": self.messages, "events": self.events}, ensure_ascii=False, indent=2),
                 encoding="utf-8"
             )
             logger.debug(f"会话保存成功: {self._path}")
@@ -164,8 +194,15 @@ class Session:
         if self._path.exists():
             try:
                 data = json.loads(self._path.read_text(encoding="utf-8"))
+                if isinstance(data, dict):
+                    messages = data.get("messages", [])
+                    events = data.get("events", [])
+                else:
+                    messages = data
+                    events = []
                 # 过滤掉旧历史里的 system 消息，system prompt 由 agent 实时生成
-                self.messages = [m for m in data if m.get("role") != "system"]
+                self.messages = [_normalize_message(m) for m in messages if m.get("role") != "system"]
+                self.events = [dict(event) for event in events]
                 # 精确计算已加载消息的 token 数
                 self.prompt_tokens = count_messages_tokens(self.messages)
                 logger.info(f"加载历史会话: {len(self.messages)} 条消息, {self.prompt_tokens} tokens")

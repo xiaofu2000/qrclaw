@@ -3,15 +3,25 @@ import { ChatPanel } from '../features/chat/ChatPanel'
 import { InspectorPanel } from '../features/inspector/InspectorPanel'
 import { Composer } from '../features/composer/Composer'
 import { createApiClient } from '../lib/api'
-import type { Conversation, Message, RunStatus } from '../lib/types'
+import type { Conversation, Message, RunStatus, SessionDetail } from '../lib/types'
 import { Sidebar } from '../components/Sidebar'
 import { Topbar } from '../components/Topbar'
+
+function normalizeMessage(message: { role: string; content: string; kind?: string }, index: number, sessionId: string): Message {
+  return {
+    id: `${sessionId}-${index}`,
+    role: message.role as Message['role'],
+    kind: message.kind as Message['kind'],
+    content: message.content ?? '',
+  }
+}
 
 export function App() {
   const api = useMemo(() => createApiClient(), [])
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [activeConversationId, setActiveConversationId] = useState<string>('')
   const [messages, setMessages] = useState<Message[]>([])
+  const [activeSession, setActiveSession] = useState<SessionDetail | null>(null)
   const [status, setStatus] = useState<RunStatus>('ready')
   const [statusText, setStatusText] = useState('已连接本地服务')
 
@@ -36,12 +46,19 @@ export function App() {
           setActiveConversationId(first.id)
           const detail = await api.getSession(first.id)
           if (!cancelled) {
+            setActiveSession(detail)
             setMessages(
-              detail.messages.map((message, index) => ({
-                id: `${first.id}-${index}`,
-                role: message.role as Message['role'],
-                content: typeof message.content === 'string' ? message.content : JSON.stringify(message.content),
-              })),
+              detail.messages.map((message, index) =>
+                normalizeMessage(
+                  {
+                    role: message.role,
+                    content: typeof message.content === 'string' ? message.content : JSON.stringify(message.content),
+                    kind: message.kind,
+                  },
+                  index,
+                  first.id,
+                ),
+              ),
             )
           }
         } else {
@@ -56,6 +73,7 @@ export function App() {
               },
             ])
             setActiveConversationId(created.id)
+            setActiveSession(created)
             setMessages([])
           }
         }
@@ -88,12 +106,19 @@ export function App() {
   async function loadConversation(conversationId: string) {
     const detail = await api.getSession(conversationId)
     setActiveConversationId(conversationId)
+    setActiveSession(detail)
     setMessages(
-      detail.messages.map((message, index) => ({
-        id: `${conversationId}-${index}`,
-        role: message.role as Message['role'],
-        content: typeof message.content === 'string' ? message.content : JSON.stringify(message.content),
-      })),
+      detail.messages.map((message, index) =>
+        normalizeMessage(
+          {
+            role: message.role,
+            content: typeof message.content === 'string' ? message.content : JSON.stringify(message.content),
+            kind: message.kind,
+          },
+          index,
+          conversationId,
+        ),
+      ),
     )
   }
 
@@ -104,6 +129,7 @@ export function App() {
       const created = await api.createSession()
       await refreshConversations()
       setActiveConversationId(created.id)
+      setActiveSession(created)
       setMessages([])
       setStatus('ready')
       setStatusText('已创建新会话')
@@ -129,11 +155,14 @@ export function App() {
     try {
       const nextMessages = [...messages, userMessage]
       const reply = await api.chat(activeConversationId, nextMessages)
+      const updated = await api.getSession(activeConversationId)
+      setActiveSession(updated)
       setMessages((current) => [
         ...current,
         {
           id: crypto.randomUUID(),
           role: 'assistant',
+          kind: 'assistant',
           content: reply,
         },
       ])
@@ -146,6 +175,7 @@ export function App() {
         {
           id: crypto.randomUUID(),
           role: 'assistant',
+          kind: 'assistant',
           content: `请求失败：${error instanceof Error ? error.message : String(error)}`,
         },
       ])
@@ -165,10 +195,12 @@ export function App() {
           onSelectConversation={loadConversation}
         />
         <main className="chat-column">
-          <ChatPanel messages={messages} />
+          <div className="chat-stage">
+            <ChatPanel messages={messages} />
+          </div>
           <Composer onSend={handleSend} disabled={status === 'busy'} />
         </main>
-        <InspectorPanel />
+        <InspectorPanel session={activeSession} />
       </div>
     </div>
   )
