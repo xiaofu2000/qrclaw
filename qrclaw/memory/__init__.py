@@ -48,7 +48,7 @@ from qrclaw.memory.compression import (
     truncate,
 )
 
-# ContextManager 延迟导入（依赖 qrclaw.prompt，可能导致循环导入）
+# ContextManager 延迟导入（避免 context 层在包初始化阶段触发复杂依赖）
 ContextManager = None
 try:
     from qrclaw.memory.context.context_manager import ContextManager

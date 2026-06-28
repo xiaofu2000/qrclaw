@@ -16,6 +16,7 @@ from __future__ import annotations
 from typing import Literal
 from pydantic import BaseModel, Field
 
+from qrclaw.prompts import ROUTE_INSTRUCTION
 from qrclaw.providers.litellm_provider import LiteLLMProvider
 from qrclaw.llm_service import get_llm_service
 from qrclaw.memory.context.context_manager import get_context_manager
@@ -23,9 +24,6 @@ from qrclaw.memory.wiki.wiki_memory import WikiMemory
 from qrclaw.logger import get_logger
 
 logger = get_logger("qrclaw.graph.nodes.router")
-
-# 用户指令
-_ROUTE_INSTRUCTION = """请根据以上对话判断并输出 JSON。"""
 
 
 def _get_instructor_client():
@@ -82,7 +80,7 @@ class RouterNode:
     def run(self, user_input: str) -> RouteResult:
         logger.info(f"Router 判断路由: {user_input[:60]}...")
         ctx = get_context_manager()
-        messages = ctx.build_messages("router", route_instruction=_ROUTE_INSTRUCTION)
+        messages = ctx.build_messages("router", route_instruction=ROUTE_INSTRUCTION)
 
         try:
             llm = get_llm_service()

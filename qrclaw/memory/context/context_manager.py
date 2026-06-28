@@ -17,74 +17,21 @@ ContextManager —— 统一上下文管理中心
     ctx = get_context_manager()
     messages = ctx.build_messages("react")
 """
-import threading
 from dataclasses import dataclass, field
+import threading
 from qrclaw.memory.context.session import Session
 from qrclaw.memory.compression.compressor import summarize
 from qrclaw.config import COMPRESS_THRESHOLD
 from qrclaw.workspace import Workspace
-from qrclaw.prompt import build_system_prompt
+from qrclaw.prompt_builder import build_system_prompt
+from qrclaw.memory.context.message_builder import (
+    build_react_messages,
+    build_router_messages,
+    build_replanner_messages,
+)
 from qrclaw.logger import get_logger
 
 logger = get_logger("qrclaw.memory.context_manager")
-
-# Router 专用系统提示词
-_ROUTER_SYSTEM_PROMPT = """【系统指令】根据以上对话，判断最新一条用户消息是否需要制定执行计划，只返回 JSON，不要其他内容。
-
-重要：你的输出必须是且仅是一个 JSON 对象，禁止输出任何自然语言、解释或 Markdown。不要回答用户的问题，只做路由判断。
-
-【判断规则】
-需要计划（route="plan"）的情况：
-1. 任务含 3 个及以上明确步骤
-2. 任务涉及多个文件、模块或方向，可以并行处理
-3. 任务需要先探索环境再决定后续步骤
-4. 任务明确要求分阶段完成
-
-不需要计划（route="direct"）的情况：
-1. 简单问答、解释、翻译
-2. 单个文件操作
-3. 单条命令执行
-4. 闲聊
-
-【输出格式】
-必须先输出 "thought" 字段进行逻辑推理，再输出 route 结论。
-
-【目标设定法则 (Definition of Done)】
-当你提取用户的请求并生成 `goal`（终极目标）时，必须严格遵守以下验收标准：
-1. 【用户意图为准】：只有用户明确说了"写入文件""保存""导出""生成文件""产出文档"时，goal 才可以包含"写入磁盘"。
-   用户说"看看""分析""帮我查""汇报""讲一下"时，goal 只需要描述分析目标，绝对不画蛇添足加"写入磁盘"。
-2. 【口头汇报也是交付】：分析、调研、代码审查类任务，最终用对话直接汇报结果就是完成。
-   不要强制创建文件来存放本可以用几段话讲清楚的内容。
-
-简单任务只返回：
-{
-  "thought": "简要分析用户的意图，说明为什么这是一个简单任务。",
-  "route": "direct"
-}
-
-复杂任务返回（同时生成执行计划）：
-{
-  "thought": "分析任务的复杂度和包含的物理步骤，梳理出需要并行的模块和依赖关系。分析当前用户的目标路径。强制自我审查：目标路径是否是一个全新的目录？如果是，必须要写绝对路径！",
-  "route": "plan",
-  "project_path": "从对话上下文中推断出的项目根目录绝对路径，如 /Users/xxx/myproject",
-  "goal": "任务目标的简短描述",
-  "steps": [
-    {"id": 1, "description": "步骤描述，如果有路径必须是绝对路径", "depends_on": []},
-    {"id": 2, "description": "步骤描述，如果有路径必须是绝对路径", "depends_on": [1]},
-    {"id": 3, "description": "步骤描述，如果有路径必须是绝对路径", "depends_on": []},
-    {"id": 4, "description": "步骤描述，如果有路径必须是绝对路径", "depends_on": [2, 3]}
-  ]
-}
-
-【规划规则】
-- 每个步骤具体、可执行，一步只做一件事
-- depends_on 填前置步骤 id，没有依赖填空数组
-- 无依赖的步骤会被并行执行，有依赖的步骤串行等待
-- 【动态规划视野（战争迷雾）】：你不必强制生成全部步骤。如果缺乏上下文（如未知目录），只需生成 1~2 个探测步骤（如 ls, find），绝不要凭空猜测后续！如果情报充足，请尽可能多地规划可并行的独立步骤。
-- 需要汇总或综合分析前置步骤结果的步骤，必须在 depends_on 中列出所有它依赖的步骤 id
-- 【上下文隔离与防幻觉原则】：执行步骤的子 agent 看不到对话历史，因此对于用户明确提供的已知信息（目录、参数等），必须直接写入描述中实现自包含。
-- 【严禁瞎编具体细节】：对于需要前置步骤（depends_on）动态搜索才能得知的未知信息（如具体文件名），绝对禁止在描述中盲目猜测或举例（例如禁止写"如 session.py"）。必须指示子 agent："使用前置步骤 [id] 传递过来的结果进行处理"。
-- 步骤描述要足够详细，相当于给一个全新的 agent 下达完整任务指令：包括做什么、怎么做、目标是什么、输出什么"""
 
 
 @dataclass
@@ -262,53 +209,12 @@ class ContextManager:
     # ── 私有组装方法 ──────────────────────────────────────────────────
 
     def _build_react_messages(self) -> list[dict]:
-        return [{"role": "system", "content": self._get_system_prompt()}, *self.session.messages]
+        return build_react_messages(self._get_system_prompt(), self.session.messages)
 
     def _build_router_messages(self, route_instruction: str) -> list[dict]:
-        """
-        为 Router 构建消息。
-        过滤掉工具调用和工具返回，只保留用户对话和系统提示。
-        """
-        filtered = self._filter_for_router(self.session.messages)
-        messages = [{"role": "system", "content": _ROUTER_SYSTEM_PROMPT}, *filtered]
-        messages.append({"role": "user", "content": route_instruction})
-        return messages
-
-    def _filter_for_router(self, messages: list[dict]) -> list[dict]:
-        """
-        过滤消息，只保留用户输入和 assistant 最终纯文字回复。
-
-        过滤掉的内容：
-        - role=tool 的消息（工具返回）
-        - assistant 消息中带有 tool_calls 的消息（含中间推理 content 一并丢弃）
-
-        保留的内容：
-        - role=user 的消息（用户输入）
-        - assistant 消息中没有 tool_calls 的消息（最终纯文字回复，保留 reasoning_content）
-        """
-        filtered = []
-        i = 0
-        while i < len(messages):
-            msg = messages[i]
-            role = msg.get("role")
-
-            if role == "user":
-                # 用户消息直接保留
-                filtered.append(msg)
-
-            elif role == "assistant":
-                # 有 tool_calls 的消息（包含中间推理）直接丢弃
-                if not msg.get("tool_calls"):
-                    filtered.append(msg)
-
-            # role=tool 的消息直接跳过
-
-            i += 1
-
-        return filtered
+        return build_router_messages(self.session.messages, route_instruction)
 
     def _build_replanner_messages(self, replanner_instruction: str = "", **kwargs) -> list[dict]:
-        from qrclaw.graph.nodes.replanner import _REPLANNER_PROMPT
         ps = self._plan_state
         if ps is None:
             raise ValueError("plan_state 为空，无法构建 replanner prompt")
@@ -320,15 +226,10 @@ class ContextManager:
         remaining_text = "\n".join(
             f"- Step {s.id}: {s.description}" for s in ps.remaining
         ) or "（无剩余步骤）"
-
-        prompt = (
-            _REPLANNER_PROMPT
-            .replace("{goal}", ps.goal)
-            .replace("{project_path}", ps.project_path or "（未指定，请从战报中推断）")
-            .replace("{past_steps}", past_text)
-            .replace("{remaining_steps}", remaining_text)
+        return build_replanner_messages(
+            goal=ps.goal,
+            project_path=ps.project_path,
+            past_steps_text=past_text,
+            remaining_steps_text=remaining_text,
+            replanner_instruction=replanner_instruction,
         )
-        messages = [{"role": "user", "content": prompt}]
-        if replanner_instruction:
-            messages.append({"role": "user", "content": replanner_instruction})
-        return messages

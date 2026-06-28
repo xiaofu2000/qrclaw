@@ -112,7 +112,7 @@ class PlanExecutorNode:
         session.add({
             "role": "assistant",
             "kind": "execution_report",
-            "content": f"以上是任务「{ps.goal}」的执行结果，请根据这些结果给出最终的整合回复。\n\n{summary}",
+            "content": f"执行汇报：任务「{ps.goal}」已完成。\n\n{summary}",
         })
         session.add_event(SessionEvent(
             kind="execution_report",
@@ -138,7 +138,7 @@ class PlanExecutorNode:
             f"{project_path_hint}"
             f"{prior_context}\n\n"
             f"【当前任务】{step.description}\n\n"
-            f"【要求】只完成当前任务。完成后返回详细的结果摘要，不准写MD文档，如果有路径请使用绝对路径，禁止使用相对路径，包括：做了什么、发现了什么、产出了哪些文件。"
+            f"【要求】只完成当前任务。完成后返回简洁的纯文本结果摘要，不要主动写 Markdown 文档或 .md 文件；如果用户明确要求文档，再按需求输出。如果有路径请使用绝对路径，禁止使用相对路径，包括：做了什么、发现了什么、产出了哪些文件。"
         )
         result, _ = run_sub_agent_fn(
             task, workspace, f"step-{step.id}",
@@ -168,7 +168,7 @@ class PlanExecutorNode:
                 f"{project_path_hint}\n\n"
                 f"【步骤】{step.description}"
                 f"{prior_context}\n\n"
-                f"【要求】完成上述步骤。完成后返回详细的结果摘要，不准写MD文档，包括：做了什么、发现了什么、产出了哪些文件。"
+                f"【要求】完成上述步骤。完成后返回简洁的纯文本结果摘要，不要主动写 Markdown 文档或 .md 文件；如果用户明确要求文档，再按需求输出。包括：做了什么、发现了什么、产出了哪些文件。"
             )
             try:
                 result, _ = run_sub_agent_fn(
