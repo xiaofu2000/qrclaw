@@ -23,6 +23,12 @@ console = Console()
 
 
 def main() -> None:
+    import sys
+    if len(sys.argv) > 1 and sys.argv[1] == "serve":
+        from qrclaw.server.cli import serve
+        serve(sys.argv[2:])
+        return
+
     parser = argparse.ArgumentParser(prog="qrclaw", add_help=False)
     parser.add_argument("-a", "--agent", default="default", metavar="ID",
                         help="指定 agent ID（默认: default）")
@@ -165,11 +171,13 @@ def _print_help() -> None:
     console.print("[bold cyan]QRClaw Agent[/bold cyan]")
     console.print()
     console.print("用法: qrclaw [-a <agentID>] [--no-heartbeat] [-n]")
+    console.print("      qrclaw serve [--host 127.0.0.1] [--port 8765]")
     console.print()
     console.print("选项:")
     console.print("  -a, --agent <ID>     指定 agent ID（默认: default）")
     console.print("  --no-heartbeat       禁用心跳机制")
     console.print("  -n, --new-session    创建新会话，不恢复历史")
+    console.print("  serve                启动本地 OpenAI-compatible API 服务")
     console.print()
     console.print("运行时命令:")
     console.print("  /agent list                列出所有 agent")
