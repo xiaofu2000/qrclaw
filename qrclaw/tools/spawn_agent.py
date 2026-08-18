@@ -60,7 +60,12 @@ class SpawnAgentArgs(BaseModel):
 )
 def spawn_agent(agent_id: str, task: str) -> str:
     """在后台线程启动子 agent"""
-    from qrclaw.agent import get_workspace, run_sub_agent, is_sub_agent
+    from qrclaw.agent import (
+        get_execution_context,
+        get_workspace,
+        is_sub_agent,
+        run_sub_agent,
+    )
     from qrclaw.workspace import Workspace
     from qrclaw.sandbox import is_sandbox_enabled
 
@@ -75,6 +80,16 @@ def spawn_agent(agent_id: str, task: str) -> str:
 
     # 获取父 agent 的工作空间（子 agent 共享）
     parent_workspace = get_workspace() or Workspace("default")
+    parent_execution_context = get_execution_context()
+    child_execution_context = None
+    if parent_execution_context is not None:
+        child_execution_context = parent_execution_context.child_agent(
+            name=agent_id,
+            task=task,
+        )
+    sandbox_agent_id = (
+        child_execution_context.agent_id if child_execution_context is not None else agent_id
+    )
     
     # 检查是否需要创建沙箱
     sandbox_enabled = is_sandbox_enabled(agent_id)
@@ -89,19 +104,27 @@ def spawn_agent(agent_id: str, task: str) -> str:
             # 创建沙箱（如果启用）
             if sandbox_enabled:
                 from pathlib import Path
-                try:
-                    from qrclaw.sandbox import create_sandbox
-                    create_sandbox(
-                        agent_id=agent_id,
-                        workspace=Path(parent_workspace.root),
-                    )
-                    sandbox_created = True
-                    logger.info(f"已为子 agent {agent_id} 创建沙箱")
-                except Exception as e:
-                    logger.warning(f"为子 agent {agent_id} 创建沙箱失败: {e}")
+                from qrclaw.sandbox import create_sandbox
+                sandbox_workspace = (
+                    Path(child_execution_context.workspace_path)
+                    if child_execution_context is not None
+                    and child_execution_context.workspace_path
+                    else Path(parent_workspace.root)
+                )
+                create_sandbox(
+                    agent_id=sandbox_agent_id,
+                    workspace=sandbox_workspace,
+                )
+                sandbox_created = True
+                logger.info(f"已为子 agent {agent_id} 创建沙箱")
             
             # 执行子 agent（共享父 agent 的工作空间）
-            result = run_sub_agent(task, parent_workspace, agent_id)
+            result, _ = run_sub_agent(
+                task,
+                parent_workspace,
+                agent_id,
+                execution_context=child_execution_context,
+            )
             
             with _task_pool_lock:
                 _task_pool[agent_id]["status"] = "done"
@@ -131,8 +154,8 @@ def spawn_agent(agent_id: str, task: str) -> str:
             if sandbox_created:
                 try:
                     from qrclaw.sandbox import destroy_sandbox, sandbox_manager
-                    if sandbox_manager.has_sandbox(agent_id):
-                        destroy_sandbox(agent_id)
+                    if sandbox_manager.has_sandbox(sandbox_agent_id):
+                        destroy_sandbox(sandbox_agent_id)
                         logger.info(f"已销毁子 agent {agent_id} 的沙箱")
                 except Exception as e:
                     logger.warning(f"销毁子 agent {agent_id} 的沙箱失败: {e}")

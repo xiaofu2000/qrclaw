@@ -82,6 +82,7 @@ class MemoryExtractionNode:
     ):
         self.memory = memory
         self.config = config or DEFAULT_CONFIG
+        self._llm_analyzer = llm_analyzer
 
         # 状态追踪
         self._tokens_at_last_extraction: int = 0
@@ -112,7 +113,7 @@ class MemoryExtractionNode:
             self._runner = ExtractionRunner(
                 wiki_memory=self.memory,
                 config=self.config,
-                llm_analyzer=None,  # Runner 内部懒加载
+                llm_analyzer=self._llm_analyzer,
             )
         return self._runner
 
@@ -146,7 +147,12 @@ class MemoryExtractionNode:
 
         # 工具调用阈值：委托给 strategies 模块统计
         tool_calls = count_tool_calls_since(messages, since_uuid=self._last_message_uuid)
-        if tool_calls < self.config.tool_calls_between_updates:
+        last_message = messages[-1] if messages else None
+        if isinstance(last_message, dict):
+            last_has_tool_call = bool(last_message.get("tool_calls"))
+        else:
+            last_has_tool_call = bool(getattr(last_message, "tool_calls", None))
+        if tool_calls < self.config.tool_calls_between_updates and last_has_tool_call:
             logger.warning(
                 f"[记忆提取] 工具调用不足 | {tool_calls} < {self.config.tool_calls_between_updates}"
             )

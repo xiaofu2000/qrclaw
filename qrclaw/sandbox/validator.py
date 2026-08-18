@@ -33,21 +33,21 @@ def validate_mount_path(host_path: str) -> bool:
     try:
         path = Path(host_path).expanduser().resolve()
         path_str = str(path)
-        
-        # 检查黑名单
-        for blocked in BLOCKED_HOST_PATHS:
-            if path_str.startswith(blocked):
-                raise PathValidationError(
-                    f"🚫 [Sandbox] 禁止挂载敏感路径: {host_path}\n"
-                    f"   匹配规则: {blocked}"
-                )
-        
-        # 检查 Docker socket
+
         if "docker.sock" in path_str:
             raise PathValidationError(
                 f"🚫 [Sandbox] 禁止挂载 Docker socket: {host_path}\n"
                 f"   这将导致容器逃逸风险"
             )
+        
+        # 检查黑名单
+        for blocked in BLOCKED_HOST_PATHS:
+            blocked_path = Path(blocked).resolve()
+            if path == blocked_path or blocked_path in path.parents:
+                raise PathValidationError(
+                    f"🚫 [Sandbox] 禁止挂载敏感路径: {host_path}\n"
+                    f"   匹配规则: {blocked}"
+                )
         
         logger.debug(f"挂载路径验证通过: {host_path}")
         return True

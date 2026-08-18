@@ -12,6 +12,7 @@ from qrclaw.graph.nodes.memory_extraction import (
     MemoryExtractionIntegration,
 )
 from qrclaw.memory.wiki.extraction.config import ExtractionConfig
+from qrclaw.memory.wiki.extraction.schemas import ExtractionSchema, WikiPageSchema
 
 
 class MockMessage:
@@ -28,6 +29,8 @@ class MockMemory:
     def __init__(self):
         self.entries = []
         self.saved = []
+        self.index = MagicMock()
+        self.index.all_entries.return_value = []
 
     def save_entry(self, name, description, content, memory_type):
         self.saved.append({
@@ -42,6 +45,24 @@ class MockMemory:
         if memory_type:
             return [e for e in self.entries if e.get("type") == memory_type]
         return self.entries
+
+    def save_page(self, name, content, description="", tags=None, related=None):
+        """记录新建 Wiki 页面。"""
+        self.saved.append({
+            "name": name,
+            "description": description,
+            "content": content,
+            "tags": tags or [],
+            "related": related or [],
+        })
+        return True
+
+    def append_page(self, name, content, tags=None, related=None):
+        """记录追加 Wiki 页面。"""
+        return self.save_page(name, content, tags=tags, related=related)
+
+    def fuzzy_find_name(self, name):
+        return None
 
 
 class TestShouldExtract:
@@ -170,58 +191,75 @@ class TestCheckAndExtract:
 class TestLLMAnalysis:
     """测试 LLM 分析集成"""
 
-    @patch("qrclaw.providers.provider")
-    def test_analyze_with_llm_success(self, mock_provider):
+    def test_analyze_with_llm_success(self):
         """测试：LLM 分析成功"""
-        mock_provider.chat.return_value = MagicMock(
-            content="类型: PROJECT\n描述: 用户喜欢简洁回复\n内容: 用户多次强调不要废话"
+        analyzer = MagicMock()
+        analyzer.analyze.return_value = ExtractionSchema(
+            needs_update=True,
+            pages=[],
         )
-
         mock_memory = MockMemory()
-        extractor = MemoryExtractionNode(mock_memory)
+        extractor = MemoryExtractionNode(mock_memory, llm_analyzer=analyzer)
 
-        result = extractor._analyze_with_llm("请分析...")
+        result = extractor._get_runner().analyze_with_llm({
+            "index_summary": "暂无页面",
+            "messages_text": "请分析",
+        })
 
-        assert "PROJECT" in result
-        mock_provider.chat.assert_called_once()
+        assert result.needs_update is True
+        analyzer.analyze.assert_called_once_with("暂无页面", "请分析")
 
-    @patch("qrclaw.providers.provider")
-    def test_analyze_with_llm_no_extraction_needed(self, mock_provider):
+    def test_analyze_with_llm_no_extraction_needed(self):
         """测试：LLM 判定无需提取"""
-        mock_provider.chat.return_value = MagicMock(content="无需提取")
-
+        analyzer = MagicMock()
+        analyzer.analyze.return_value = ExtractionSchema(needs_update=False, pages=[])
         mock_memory = MockMemory()
-        extractor = MemoryExtractionNode(mock_memory)
+        extractor = MemoryExtractionNode(mock_memory, llm_analyzer=analyzer)
 
-        result = extractor._analyze_with_llm("请分析...")
+        result = extractor._get_runner().analyze_with_llm({
+            "index_summary": "暂无页面",
+            "messages_text": "请分析",
+        })
 
-        assert result.strip() == "无需提取"
+        assert result.needs_update is False
 
-    @patch("qrclaw.providers.provider")
-    def test_analyze_with_llm_failure(self, mock_provider):
+    def test_analyze_with_llm_failure(self):
         """测试：LLM 调用失败"""
-        mock_provider.chat.side_effect = Exception("API Error")
-
+        analyzer = MagicMock()
+        analyzer.analyze.side_effect = Exception("API Error")
         mock_memory = MockMemory()
-        extractor = MemoryExtractionNode(mock_memory)
+        extractor = MemoryExtractionNode(mock_memory, llm_analyzer=analyzer)
 
-        result = extractor._analyze_with_llm("请分析...")
+        result = extractor._get_runner().analyze_with_llm({
+            "index_summary": "暂无页面",
+            "messages_text": "请分析",
+        })
 
-        assert result == "无需提取"
+        assert result is None
 
 
 class TestFlushPending:
     """测试批量写入"""
 
-    @patch("qrclaw.providers.provider")
-    def test_flush_pending_success(self, mock_provider):
+    def test_flush_pending_success(self):
         """测试：批量写入成功"""
-        mock_provider.chat.return_value = MagicMock(
-            content="类型: USER\n描述: 测试偏好\n内容: 用户偏好简洁风格"
+        analyzer = MagicMock()
+        analyzer.analyze.return_value = ExtractionSchema(
+            needs_update=True,
+            pages=[
+                WikiPageSchema(
+                    action="create",
+                    name="用户偏好",
+                    description="测试偏好",
+                    content="用户偏好简洁风格",
+                    tags=["user"],
+                    related=[],
+                )
+            ],
         )
 
         mock_memory = MockMemory()
-        extractor = MemoryExtractionNode(mock_memory)
+        extractor = MemoryExtractionNode(mock_memory, llm_analyzer=analyzer)
 
         # 手动加入一个待处理项（Wiki 架构用 tags 替代 memory_type）
         with extractor._pending_lock:

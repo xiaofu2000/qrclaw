@@ -43,11 +43,16 @@ class PlanExecutorNode:
         auto_confirm: bool,
         run_sub_agent_fn,
         react_loop_fn,
+        execution_context=None,
     ) -> str:
         ctx = get_context_manager()
         ps = ctx.plan_state
+        known_steps = {str(step.id): step for step in ps.remaining}
+        revision = 1
 
         while ps.remaining:
+            if execution_context is not None:
+                execution_context.check_cancelled()
             layer = get_next_layer(ps.remaining)
             if not layer:
                 logger.error("剩余步骤存在循环依赖，中止执行")
@@ -59,17 +64,56 @@ class PlanExecutorNode:
             if is_serial:
                 step = layer[0]
                 console.print(f"[yellow]→ {step.description} (串行)[/yellow]")
-                result = self._run_serial(step, ps.goal, ps.past_steps, workspace, run_sub_agent_fn, console)
+                if execution_context is not None:
+                    execution_context.publish(
+                        "step.started",
+                        {"step_id": str(step.id), "description": step.description},
+                    )
+                try:
+                    result = self._run_serial(
+                        step,
+                        ps.goal,
+                        ps.past_steps,
+                        workspace,
+                        run_sub_agent_fn,
+                        console,
+                        execution_context,
+                    )
+                except Exception as exc:
+                    if execution_context is not None:
+                        execution_context.publish(
+                            "step.failed",
+                            {"step_id": str(step.id), "error": str(exc)},
+                        )
+                    raise
                 ctx.add_step_result(StepResult(
                     step_id=step.id,
                     description=step.description,
                     output=result,
                 ))
+                if execution_context is not None:
+                    execution_context.publish(
+                        "step.completed",
+                        {"step_id": str(step.id), "output": result},
+                    )
             else:
                 console.print(f"[yellow]→ 并行执行 {len(layer)} 个步骤[/yellow]")
                 for step in layer:
                     console.print(f"  [dim]Step {step.id}:[/dim] {step.description}")
-                results = self._run_parallel(layer, ps.goal, ps.past_steps, workspace, run_sub_agent_fn, console)
+                    if execution_context is not None:
+                        execution_context.publish(
+                            "step.started",
+                            {"step_id": str(step.id), "description": step.description},
+                        )
+                results = self._run_parallel(
+                    layer,
+                    ps.goal,
+                    ps.past_steps,
+                    workspace,
+                    run_sub_agent_fn,
+                    console,
+                    execution_context,
+                )
                 for step in layer:
                     ctx.add_step_result(StepResult(
                         step_id=step.id,
@@ -93,6 +137,28 @@ class PlanExecutorNode:
 
             if new_remaining != ps.remaining:
                 console.print(f"[cyan]📝 Replanner 调整了计划")
+                for step in new_remaining:
+                    known_steps[str(step.id)] = step
+                revision += 1
+                if execution_context is not None:
+                    execution_context.publish(
+                        "plan.updated",
+                        {
+                            "plan_id": execution_context.plan_id or execution_context.new_id("plan"),
+                            "goal": ps.goal,
+                            "project_path": ps.project_path,
+                            "steps": [
+                                {
+                                    "step_id": step_id,
+                                    "description": item.description,
+                                    "depends_on": [str(value) for value in item.depends_on],
+                                    "status": "pending",
+                                }
+                                for step_id, item in known_steps.items()
+                            ],
+                            "revision": revision,
+                        },
+                    )
             ctx.update_remaining(new_remaining)
 
         # 所有步骤执行完毕，把 past_steps 汇总写入主 session，交主 agent 整合
@@ -110,7 +176,16 @@ class PlanExecutorNode:
         ctx.clear_plan()
         return react_loop_fn()
 
-    def _run_serial(self, step, goal: str, past_steps: list[StepResult], workspace, run_sub_agent_fn, console) -> str:
+    def _run_serial(
+        self,
+        step,
+        goal: str,
+        past_steps: list[StepResult],
+        workspace,
+        run_sub_agent_fn,
+        console,
+        execution_context=None,
+    ) -> str:
         prior_context = ""
         if past_steps:
             prior_context = "\n\n【前置步骤结果】\n" + "\n---\n".join(
@@ -127,14 +202,31 @@ class PlanExecutorNode:
             f"【当前任务】{step.description}\n\n"
             f"【要求】只完成当前任务。完成后返回详细的结果摘要，不准写MD文档，如果有路径请使用绝对路径，禁止使用相对路径，包括：做了什么、发现了什么、产出了哪些文件。"
         )
+        child_context = None
+        if execution_context is not None:
+            child_context = execution_context.child_agent(
+                name=f"步骤 {step.id}",
+                task=task,
+                step_id=str(step.id),
+            )
         result, _ = run_sub_agent_fn(
             task, workspace, f"step-{step.id}",
             console=console,
+            execution_context=child_context,
         )
         logger.info(f"Step {step.id} 串行完成")
         return result
 
-    def _run_parallel(self, layer, goal: str, past_steps: list[StepResult], workspace, run_sub_agent_fn, console) -> dict[int, str]:
+    def _run_parallel(
+        self,
+        layer,
+        goal: str,
+        past_steps: list[StepResult],
+        workspace,
+        run_sub_agent_fn,
+        console,
+        execution_context=None,
+    ) -> dict[int, str]:
         results: dict[int, str] = {}
         lock = threading.Lock()
         notify_queue: queue.Queue = queue.Queue()
@@ -158,18 +250,36 @@ class PlanExecutorNode:
                 f"【要求】完成上述步骤。完成后返回详细的结果摘要，不准写MD文档，包括：做了什么、发现了什么、产出了哪些文件。"
             )
             try:
+                child_context = None
+                if execution_context is not None:
+                    child_context = execution_context.child_agent(
+                        name=f"步骤 {step.id}",
+                        task=task,
+                        step_id=str(step.id),
+                    )
                 result, _ = run_sub_agent_fn(
                     task, workspace, f"step-{step.id}",
                     console=None,
+                    execution_context=child_context,
                 )
                 with lock:
                     results[step.id] = result
                 notify_queue.put(("ok", step.id, step.description, result))
+                if execution_context is not None:
+                    execution_context.publish(
+                        "step.completed",
+                        {"step_id": str(step.id), "output": result},
+                    )
             except Exception as e:
                 logger.error(f"Step {step.id} 执行失败: {e}", exc_info=True)
                 with lock:
                     results[step.id] = f"执行失败: {e}"
                 notify_queue.put(("err", step.id, step.description, str(e)))
+                if execution_context is not None:
+                    execution_context.publish(
+                        "step.failed",
+                        {"step_id": str(step.id), "error": str(e)},
+                    )
 
         threads = [
             threading.Thread(target=_run, args=(step,), name=f"plan-step-{step.id}", daemon=True)
@@ -179,6 +289,9 @@ class PlanExecutorNode:
             t.start()
         for t in threads:
             t.join()
+
+        if execution_context is not None:
+            execution_context.check_cancelled()
 
         # 打印结果
         while not notify_queue.empty():

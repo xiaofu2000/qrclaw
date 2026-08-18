@@ -177,7 +177,7 @@ def _print_help() -> None:
     console.print("  -a, --agent <ID>     指定 agent ID（默认: default）")
     console.print("  --no-heartbeat       禁用心跳机制")
     console.print("  -n, --new-session    创建新会话，不恢复历史")
-    console.print("  serve                启动本地 OpenAI-compatible API 服务")
+    console.print("  serve                启动本地工作台 API 服务")
     console.print()
     console.print("运行时命令:")
     console.print("  /agent list                列出所有 agent")

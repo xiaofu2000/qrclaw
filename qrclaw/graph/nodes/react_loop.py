@@ -19,6 +19,7 @@ from qrclaw.workspace import Workspace
 from qrclaw.logger import get_logger
 from qrclaw.graph.nodes.message_codec import assistant_response_to_message, tool_result_to_message
 from qrclaw.graph.nodes.tool_runner import ToolRunner
+from qrclaw.execution.context import RunCancelled
 
 logger = get_logger("qrclaw.graph.nodes.react_loop")
 
@@ -34,6 +35,7 @@ def run_react_loop(
     silent: bool = False,
     session: Optional[Session] = None,
     llm_service: Optional[LLMService] = None,
+    execution_context=None,
 ) -> str:
     """
     通用 ReAct 循环核心，供 ReactLoopNode 和 MemoryExtractionNode 等复用。
@@ -59,6 +61,13 @@ def run_react_loop(
     for iteration in range(max_iterations):
         logger.debug(f"run_react_loop 第 {iteration + 1} 轮")
 
+        if execution_context is not None:
+            execution_context.check_cancelled()
+            execution_context.publish(
+                "agent.progress",
+                {"current_action": f"正在进行第 {iteration + 1} 轮模型调用"},
+            )
+
         with _console.status("[bold yellow]思考中...[/bold yellow]", spinner="dots") if not silent else _noop_ctx():
             try:
                 response = llm.chat(messages, tools=tools)
@@ -73,8 +82,25 @@ def run_react_loop(
                 completion_tokens=response.completion_tokens,
                 total_tokens=response.total_tokens,
             )
+        if execution_context is not None:
+            execution_context.publish(
+                "usage.updated",
+                {
+                    "prompt_tokens": response.prompt_tokens,
+                    "completion_tokens": response.completion_tokens,
+                    "total_tokens": response.total_tokens,
+                },
+            )
 
         if response.finish_reason == "stop":
+            if execution_context is not None:
+                execution_context.publish(
+                    "agent.progress",
+                    {
+                        "current_action": "正在整理最终结果",
+                        "decision_summary": "当前执行路径已经完成，准备返回可验证的结果",
+                    },
+                )
             if not silent:
                 _console.print()
                 _console.print(Panel(
@@ -98,9 +124,19 @@ def run_react_loop(
         assistant_msg_saved = False
 
         for tc in response.tool_calls:
+            if execution_context is not None:
+                execution_context.check_cancelled()
             name = tc.name
             arguments = tc.arguments
             logger.info(f"工具调用: {name}")
+            if execution_context is not None:
+                execution_context.publish(
+                    "agent.progress",
+                    {
+                        "current_action": f"准备调用工具 {name}",
+                        "decision_summary": f"模型选择调用 {name} 继续完成当前任务",
+                    },
+                )
 
             if not silent:
                 try:
@@ -125,6 +161,8 @@ def run_react_loop(
                     result = on_tool_call(name, arguments)
                 else:
                     result = ToolRunner().run(name, arguments)
+            except RunCancelled:
+                raise
             except Exception as e:
                 result = f"工具执行失败: {str(e)}"
                 logger.error(f"工具执行失败: {name}, 错误: {e}", exc_info=True)
@@ -182,6 +220,7 @@ class ReactLoopNode:
         workspace: Workspace,
         auto_confirm: bool = False,
         is_sub_agent: bool = False,
+        execution_context=None,
     ) -> str:
         ctx = get_context_manager()
 
@@ -189,7 +228,11 @@ class ReactLoopNode:
         memory_integration = self._get_memory_integration(workspace) if not is_sub_agent else None
 
         tools = get_schemas_for_sub_agent() if is_sub_agent else get_schemas()
-        tool_runner = ToolRunner(console=console, auto_confirm=auto_confirm)
+        tool_runner = ToolRunner(
+            console=console,
+            auto_confirm=auto_confirm,
+            execution_context=execution_context,
+        )
 
         def _on_assistant_message(message: dict) -> None:
             session.add(dict(message))
@@ -211,7 +254,10 @@ class ReactLoopNode:
                 silent=False,
                 session=session,
                 llm_service=get_llm_service(),
+                execution_context=execution_context,
             )
+        except RunCancelled:
+            raise
         except RuntimeError as e:
             console.print(Panel(
                 f"[bold red]{e}[/bold red]",

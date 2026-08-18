@@ -8,6 +8,14 @@ from qrclaw.memory.token_utils import count_messages_tokens
 logger = get_logger("qrclaw.memory.session")
 
 
+def count_tokens(messages: list[dict]) -> int:
+    """计算会话消息的 Token 数，保留为会话模块的公开能力。"""
+
+    if not messages:
+        return 2
+    return count_messages_tokens(messages)
+
+
 def list_sessions(sessions_dir: Path) -> list[dict]:
     """
     列出指定目录下所有已保存的会话。

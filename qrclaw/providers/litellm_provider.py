@@ -149,8 +149,8 @@ class LiteLLMProvider(LLMProvider):
         if tools:
             kwargs["tools"] = tools
 
-        # json_mode 参数保留兼容性，实际不注入 response_format
-        # 原因：json_object 不被部分模型（如 MiniMax）支持，结构化输出统一走 instructor MD_JSON 模式
+        if json_mode:
+            kwargs["response_format"] = {"type": "json_object"}
 
         # 温度参数
         if temperature is not None:

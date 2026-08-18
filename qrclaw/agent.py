@@ -47,6 +47,18 @@ def get_agent_id() -> str | None:
     return ws.agent_id if ws else None
 
 
+def set_execution_context(context) -> None:
+    """设置当前线程的结构化运行上下文。"""
+
+    _thread_local.execution_context = context
+
+
+def get_execution_context():
+    """获取当前线程的结构化运行上下文。"""
+
+    return getattr(_thread_local, "execution_context", None)
+
+
 # ── 全局 Extractor 注册表 ──────────────────────────────────────────────
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
@@ -181,12 +193,16 @@ def run(
     console: Console,
     workspace: Workspace,
     auto_confirm: bool = False,
+    execution_context=None,
 ):
     global _mcp_manager
     logger.info(f"收到用户输入: {user_input[:100]}...")
 
     set_session(session)
     set_workspace(workspace)
+    previous_execution_context = get_execution_context()
+    if execution_context is not None:
+        set_execution_context(execution_context)
     session.add({"role": "user", "content": user_input})
 
     # 主 agent 初始化 ContextManager 单例
@@ -207,11 +223,13 @@ def run(
             auto_confirm=auto_confirm,
             is_sub_agent=is_sub_agent(),
             run_sub_agent_fn=run_sub_agent,
+            execution_context=execution_context,
         )
     finally:
         # 清理：仅当本次 run 初始化了 MCP 时才关闭
         if _mcp_initialized_this_run:
             _cleanup_mcp()
+        set_execution_context(previous_execution_context)
 
 
 def run_sub_agent(
@@ -219,6 +237,7 @@ def run_sub_agent(
     workspace: Workspace,
     agent_id: str,
     console: Console | None = None,
+    execution_context=None,
 ) -> tuple[str, Session]:
     """
     启动子 agent，返回 (结果字符串, 子session)。
@@ -254,9 +273,31 @@ def run_sub_agent(
     )
 
     try:
-        result = run(task, sub_session, sub_console, workspace, auto_confirm=True)
+        if execution_context is not None:
+            execution_context.publish(
+                "agent.started",
+                {
+                    "name": execution_context.agent_name,
+                    "task": task,
+                    "step_id": execution_context.step_id,
+                },
+            )
+        result = run(
+            task,
+            sub_session,
+            sub_console,
+            workspace,
+            auto_confirm=execution_context is None,
+            execution_context=execution_context,
+        )
         result = result or "子 agent 未返回结果"
+        if execution_context is not None:
+            execution_context.publish("agent.completed", {"result": result})
         logger.info(f"子 agent {agent_id} 执行完毕，结果长度: {len(result)} 字符")
+    except Exception as exc:
+        if execution_context is not None:
+            execution_context.publish("agent.failed", {"error": str(exc)})
+        raise
     finally:
         set_agent_depth(current_depth)
         # 恢复主线程的 ContextManager

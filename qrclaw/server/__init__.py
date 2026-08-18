@@ -1,2 +1,1 @@
-"""Local HTTP server adapter for qrclaw."""
-
+"""QRClaw 本地工作台服务。"""
