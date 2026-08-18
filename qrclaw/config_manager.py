@@ -75,13 +75,16 @@ CONFIG_HEADER = """# ═══════════════════�
 
 
 def ensure_config_dir():
-    """确保配置目录存在"""
-    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+    """确保配置目录存在，并限制为仅当前用户可访问。"""
+    CONFIG_DIR.mkdir(parents=True, exist_ok=True, mode=0o700)
+    CONFIG_DIR.chmod(0o700)
 
 
 def _write_config(config: dict):
-    """写入配置文件"""
+    """写入配置文件，并保护其中的 API 密钥等敏感信息。"""
     ensure_config_dir()
+    CONFIG_FILE.touch(mode=0o600, exist_ok=True)
+    CONFIG_FILE.chmod(0o600)
     with open(CONFIG_FILE, "w", encoding="utf-8") as f:
         f.write(CONFIG_HEADER)
         yaml.dump(config, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
