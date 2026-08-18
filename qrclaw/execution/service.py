@@ -223,6 +223,20 @@ class RunService:
         if existing_id:
             return self.get_snapshot(existing_id)
 
+        active_statuses = {
+            RunStatus.QUEUED,
+            RunStatus.ROUTING,
+            RunStatus.RUNNING,
+            RunStatus.WAITING_APPROVAL,
+            RunStatus.CANCELLING,
+        }
+        with self._handles_lock:
+            if any(
+                handle.projector.snapshot.run.status in active_statuses
+                for handle in self._handles.values()
+            ):
+                raise RuntimeError("本地服务已有运行中的任务，请等待其结束或先取消")
+
         run_id = f"run_{uuid.uuid4().hex}"
         snapshot = create_snapshot(run_id, conversation_id, content)
         self.store.create_run(snapshot, client_request_id)

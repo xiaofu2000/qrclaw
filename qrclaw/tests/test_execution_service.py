@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import time
+import threading
+
+import pytest
 
 from qrclaw.execution.models import RunStatus
 from qrclaw.execution.service import RunService
@@ -178,3 +181,30 @@ def test_cancel_request_reaches_execution_context(tmp_path):
     event_types = [event.type for event in service.get_events(run.run.run_id, 0)]
     assert "run.status_changed" in event_types
     assert event_types[-1] == "run.cancelled"
+
+
+def test_only_one_top_level_run_can_execute(tmp_path):
+    """顶层 Run 串行化，避免进程级 MCP 与工具状态互相污染。"""
+
+    release = threading.Event()
+
+    def blocking_runner(**kwargs):
+        while not release.wait(0.01):
+            kwargs["execution_context"].check_cancelled()
+        return "完成"
+
+    workspace = Workspace(agent_id="test", _root=tmp_path / "agent")
+    service = RunService(
+        workspace=workspace,
+        database_path=tmp_path / "runtime.sqlite3",
+        agent_runner=blocking_runner,
+    )
+    first_conversation = service.create_conversation("会话一", str(tmp_path))
+    second_conversation = service.create_conversation("会话二", str(tmp_path))
+    first = service.start_run(first_conversation["conversation_id"], "任务一", "first")
+
+    with pytest.raises(RuntimeError, match="已有运行中的任务"):
+        service.start_run(second_conversation["conversation_id"], "任务二", "second")
+
+    release.set()
+    assert _wait_terminal(service, first.run.run_id).run.status == RunStatus.COMPLETED

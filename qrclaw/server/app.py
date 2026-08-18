@@ -215,7 +215,10 @@ def create_app(service: RunService | None = None) -> FastAPI:
                     "file_changes",
                     "settings",
                 ],
-                "limits": {"approval_decisions": ["allow_once", "deny"]},
+                "limits": {
+                    "approval_decisions": ["allow_once", "deny"],
+                    "max_concurrent_runs": 1,
+                },
             },
             request,
         )
@@ -280,6 +283,8 @@ def create_app(service: RunService | None = None) -> FastAPI:
             )
         except KeyError as exc:
             raise ApiError("conversation_not_found", "找不到指定会话", 404) from exc
+        except RuntimeError as exc:
+            raise ApiError("run_conflict", str(exc), 409, retryable=True) from exc
         return _success(
             {"run_id": snapshot.run.run_id, "status": snapshot.run.status.value},
             request,

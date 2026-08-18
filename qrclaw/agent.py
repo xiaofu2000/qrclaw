@@ -99,7 +99,6 @@ def _dump_assistant_msg(response: LLMResponse) -> dict:
 
 
 from qrclaw.graph.runner import GraphRunner
-_runner = GraphRunner()
 
 
 # ── MCP 全局状态 ──────────────────────────────────────────────────────
@@ -215,7 +214,8 @@ def run(
         _mcp_initialized_this_run = _init_mcp()
 
     try:
-        return _runner.run(
+        runner = GraphRunner()
+        return runner.run(
             user_input=user_input,
             session=session,
             console=console,
