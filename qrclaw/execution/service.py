@@ -286,12 +286,16 @@ class RunService:
                 execution_context=root_context,
             )
             root_context.check_cancelled()
-            message_id = f"msg_{uuid.uuid4().hex}"
-            root_context.publish("assistant.delta", {"message_id": message_id, "delta": result or ""})
-            root_context.publish(
-                "assistant.completed",
-                {"message_id": message_id, "content": result or ""},
-            )
+            if not root_context.assistant_completed:
+                message_id = f"msg_{uuid.uuid4().hex}"
+                root_context.publish(
+                    "assistant.delta",
+                    {"message_id": message_id, "delta": result or ""},
+                )
+                root_context.publish(
+                    "assistant.completed",
+                    {"message_id": message_id, "content": result or ""},
+                )
             root_context.publish("agent.completed", {"result": result or ""})
             root_context.publish("run.completed", {})
             logger.info("任务执行完成：%s", run_id)

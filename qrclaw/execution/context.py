@@ -71,6 +71,8 @@ class ExecutionContext:
     parent_agent_id: str | None = None
     step_id: str | None = None
     plan_id: str | None = None
+    assistant_message_id: str | None = None
+    assistant_completed: bool = False
 
     def publish(self, event_type: str, data: dict[str, Any] | None = None) -> None:
         """发布一条归属于当前 Agent 的结构化事件。"""
@@ -93,6 +95,8 @@ class ExecutionContext:
             parent_agent_id=self.agent_id,
             step_id=step_id,
             sandbox_profile=name,
+            assistant_message_id=None,
+            assistant_completed=False,
         )
 
     @staticmethod

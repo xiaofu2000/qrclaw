@@ -68,9 +68,29 @@ def run_react_loop(
                 {"current_action": f"正在进行第 {iteration + 1} 轮模型调用"},
             )
 
+        streamed_parts: list[str] = []
+        message_id = None
+        if execution_context is not None:
+            message_id = execution_context.new_id("msg")
+
+        def _on_delta(delta: str) -> None:
+            """把模型文本增量立即发布给当前运行。"""
+
+            if execution_context is None or not message_id or not delta:
+                return
+            execution_context.check_cancelled()
+            streamed_parts.append(delta)
+            execution_context.publish(
+                "assistant.delta",
+                {"message_id": message_id, "delta": delta},
+            )
+
         with _console.status("[bold yellow]思考中...[/bold yellow]", spinner="dots") if not silent else _noop_ctx():
             try:
-                response = llm.chat(messages, tools=tools)
+                chat_kwargs = {"messages": messages, "tools": tools}
+                if execution_context is not None:
+                    chat_kwargs["on_delta"] = _on_delta
+                response = llm.chat(**chat_kwargs)
             except Exception as e:
                 logger.error(f"LLM 调用失败: {e}", exc_info=True)
                 raise
@@ -94,6 +114,14 @@ def run_react_loop(
 
         if response.finish_reason == "stop":
             if execution_context is not None:
+                if response.content and not streamed_parts:
+                    _on_delta(response.content)
+                execution_context.publish(
+                    "assistant.completed",
+                    {"message_id": message_id, "content": response.content or ""},
+                )
+                execution_context.assistant_message_id = message_id
+                execution_context.assistant_completed = True
                 execution_context.publish(
                     "agent.progress",
                     {

@@ -7,7 +7,6 @@ logger = get_logger("qrclaw.providers")
 
 _REGISTRY = {
     "litellm": "qrclaw.providers.litellm_provider.LiteLLMProvider",
-    "vertex": "qrclaw.providers.vertex.VertexProvider",
 }
 
 
