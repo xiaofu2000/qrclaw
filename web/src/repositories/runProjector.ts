@@ -1,5 +1,5 @@
 import type { EventEnvelopeDto } from '../models/protocol'
-import type { Agent, Approval, Plan, RunSnapshot, ToolCall } from '../models/workbench'
+import type { Agent, Approval, Plan, PlanStep, RunSnapshot, ToolCall } from '../models/workbench'
 
 /** 从事件数据中安全读取字符串。 */
 function text(data: Record<string, unknown>, key: string, fallback = ''): string {
@@ -18,6 +18,13 @@ function record(data: Record<string, unknown>, key: string): Record<string, unkn
 /** 把 plan.created / plan.updated 的协议数据转换为领域计划。 */
 function mapEventPlan(data: Record<string, unknown>): Plan {
   const steps = Array.isArray(data.steps) ? data.steps : []
+  const stepStatuses: PlanStep['status'][] = [
+    'pending',
+    'running',
+    'completed',
+    'failed',
+    'cancelled',
+  ]
   return {
     id: text(data, 'plan_id'),
     goal: text(data, 'goal'),
@@ -31,7 +38,9 @@ function mapEventPlan(data: Record<string, unknown>): Plan {
         dependsOn: Array.isArray(step.depends_on)
           ? step.depends_on.filter((item): item is string => typeof item === 'string')
           : [],
-        status: 'pending' as const,
+        status: stepStatuses.includes(step.status as PlanStep['status'])
+          ? step.status as PlanStep['status']
+          : 'pending',
         output: null,
       }
     }),
@@ -310,4 +319,3 @@ function finishOpenItems(
   }
   snapshot.pendingApprovals = []
 }
-
