@@ -47,6 +47,7 @@ export type WorkbenchViewModel = {
   cancelRun: () => Promise<void>
   resolveApproval: (approvalId: string, decision: 'allow_once' | 'deny') => Promise<void>
   retry: () => Promise<void>
+  dismissError: () => void
   configureAccessToken: (token: string) => void
   saveSettings: (input: SettingsInput) => Promise<void>
   testModelConnection: () => Promise<string>
@@ -54,6 +55,13 @@ export type WorkbenchViewModel = {
   setCreateConversationOpen: (open: boolean) => void
   selectAgent: (id: string | null) => void
 }
+
+type WorkbenchError = {
+  code: string | null
+  message: string
+}
+
+const RUN_CONFLICT_VISIBLE_MS = 5000
 
 /** 创建与部署方式无关的 WebSocket 地址。 */
 function eventUrl(): string {
@@ -86,7 +94,7 @@ export function useWorkbenchViewModel(): WorkbenchViewModel {
   const [historyMessages, setHistoryMessages] = useState<Message[]>([])
   const [snapshot, setSnapshot] = useState<RunSnapshot | null>(null)
   const [connection, setConnection] = useState<ConnectionState>('connecting')
-  const [error, setError] = useState<string | null>(null)
+  const [error, setError] = useState<WorkbenchError | null>(null)
   const [authRequired, setAuthRequired] = useState(false)
   const [settings, setSettings] = useState<Settings | null>(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
@@ -105,18 +113,36 @@ export function useWorkbenchViewModel(): WorkbenchViewModel {
 
   const reportError = useCallback((reason: unknown) => {
     const message = reason instanceof Error ? reason.message : String(reason)
-    setError(message)
+    setError({
+      code: reason instanceof ApiError ? reason.code : null,
+      message,
+    })
     if (reason instanceof ApiError && reason.code === 'invalid_access_token') {
       setAuthRequired(true)
       setSettingsOpen(true)
     }
   }, [])
 
+  /** 运行冲突属于瞬时状态，不能作为永久错误残留在页面上。 */
+  const clearRunConflict = useCallback(() => {
+    setError((current) => current?.code === 'run_conflict' ? null : current)
+  }, [])
+
+  /** 主动关闭当前错误提示。 */
+  const dismissError = useCallback(() => setError(null), [])
+
+  useEffect(() => {
+    if (error?.code !== 'run_conflict') return
+    const timeout = window.setTimeout(clearRunConflict, RUN_CONFLICT_VISIBLE_MS)
+    return () => window.clearTimeout(timeout)
+  }, [clearRunConflict, error])
+
   const connectRun = useCallback(
     (run: RunSnapshot) => {
       unsubscribeRef.current?.()
       setSnapshot(run)
       if (!isRunActive(run.run.status)) {
+        clearRunConflict()
         setConnection('connected')
         return
       }
@@ -125,14 +151,15 @@ export function useWorkbenchViewModel(): WorkbenchViewModel {
         (next) => {
           setSnapshot(next)
           if (!isRunActive(next.run.status)) {
+            clearRunConflict()
             setConnection('connected')
           }
         },
         setConnection,
-        setError,
+        (message) => setError({ code: 'event_connection_error', message }),
       )
     },
-    [dependencies.runs],
+    [clearRunConflict, dependencies.runs],
   )
 
   const loadConversation = useCallback(
@@ -363,7 +390,7 @@ export function useWorkbenchViewModel(): WorkbenchViewModel {
     messages: mergeMessages(historyMessages, snapshot),
     snapshot,
     connection,
-    error,
+    error: error?.message ?? null,
     authRequired,
     settings,
     settingsOpen,
@@ -379,6 +406,7 @@ export function useWorkbenchViewModel(): WorkbenchViewModel {
     cancelRun,
     resolveApproval,
     retry: bootstrap,
+    dismissError,
     configureAccessToken,
     saveSettings,
     testModelConnection,
@@ -387,4 +415,3 @@ export function useWorkbenchViewModel(): WorkbenchViewModel {
     selectAgent: setSelectedAgentId,
   }
 }
-

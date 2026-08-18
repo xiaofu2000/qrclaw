@@ -18,7 +18,7 @@ export function WorkbenchView({ viewModel: vm }: WorkbenchViewProps) {
   const running = isRunActive(vm.snapshot?.run.status)
   return <div className={`app-shell ${approval ? 'approval-open' : ''}`}>
     <Topbar workspaceTitle={vm.activeConversation?.workspacePath ?? ''} connection={vm.connection} run={vm.snapshot?.run ?? null} canCancel={vm.canCancel} onCancel={() => void vm.cancelRun()} onOpenSettings={() => vm.setSettingsOpen(true)} />
-    {vm.error && <div className="error-banner" role="alert"><span>{vm.error}</span><button type="button" onClick={() => void vm.retry()}>重试</button></div>}
+    {vm.error && <div className="error-banner" role="alert"><span>{vm.error}</span><button type="button" onClick={() => void vm.retry()}>重试</button><button type="button" onClick={vm.dismissError}>关闭</button></div>}
     <div className="workspace">
       <Sidebar conversations={vm.conversations} activeId={vm.activeConversation?.id ?? null} disabled={vm.operationPending} onNewConversation={() => vm.setCreateConversationOpen(true)} onSelectConversation={(id) => void vm.selectConversation(id)} onRenameConversation={(id, title) => void vm.renameConversation(id, title)} onDeleteConversation={(id) => void vm.deleteConversation(id)} />
       <main className="chat-column"><div className="conversation-heading"><strong>{vm.activeConversation?.title ?? 'QRClaw 工作台'}</strong>{vm.loading && <span>正在加载…</span>}</div><ChatPanel messages={vm.messages} snapshot={vm.snapshot} selectedAgent={vm.selectedAgent} onSelectAgent={vm.selectAgent} /><Composer onSend={vm.sendMessage} disabled={!vm.canSend} running={running} /></main>
@@ -29,4 +29,3 @@ export function WorkbenchView({ viewModel: vm }: WorkbenchViewProps) {
     {vm.settingsOpen && <SettingsDialog authRequired={vm.authRequired} settings={vm.settings} pending={vm.operationPending} onClose={() => vm.setSettingsOpen(false)} onSaveToken={vm.configureAccessToken} onSaveSettings={(input) => void vm.saveSettings(input)} onTest={vm.testModelConnection} />}
   </div>
 }
-
