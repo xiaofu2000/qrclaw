@@ -1,5 +1,11 @@
 import { mapConversation, mapMessage, mapSettings } from '../models/mappers'
-import type { Conversation, Message, Settings, SettingsInput } from '../models/workbench'
+import type {
+  Conversation,
+  DirectoryListing,
+  Message,
+  Settings,
+  SettingsInput,
+} from '../models/workbench'
 import { ApiService } from '../services/apiService'
 
 const ACTIVE_CONVERSATION_KEY = 'qrclaw.activeConversation'
@@ -19,6 +25,16 @@ export class WorkbenchRepository {
 
   async createConversation(title: string, workspacePath: string): Promise<Conversation> {
     return mapConversation(await this.api.createConversation(title, workspacePath))
+  }
+
+  async browseDirectories(path = ''): Promise<DirectoryListing> {
+    const listing = await this.api.browseDirectories(path)
+    return {
+      currentPath: listing.current_path,
+      parentPath: listing.parent_path,
+      homePath: listing.home_path,
+      directories: listing.directories,
+    }
   }
 
   async renameConversation(id: string, title: string): Promise<Conversation> {

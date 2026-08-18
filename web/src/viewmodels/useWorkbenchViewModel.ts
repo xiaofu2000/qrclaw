@@ -3,6 +3,7 @@ import type {
   Agent,
   ConnectionState,
   Conversation,
+  DirectoryListing,
   Message,
   RunSnapshot,
   Settings,
@@ -41,6 +42,7 @@ export type WorkbenchViewModel = {
   canCancel: boolean
   selectConversation: (id: string) => Promise<void>
   createConversation: (input: CreateConversationInput) => Promise<void>
+  browseDirectories: (path?: string) => Promise<DirectoryListing>
   renameConversation: (id: string, title: string) => Promise<void>
   deleteConversation: (id: string) => Promise<void>
   sendMessage: (content: string) => Promise<void>
@@ -257,6 +259,12 @@ export function useWorkbenchViewModel(): WorkbenchViewModel {
     [conversations, dependencies.workbench, loadConversation, reportError],
   )
 
+  /** 读取本地目录列表，供工作区选择器使用。 */
+  const browseDirectories = useCallback(
+    (path = '') => dependencies.workbench.browseDirectories(path),
+    [dependencies.workbench],
+  )
+
   const renameConversation = useCallback(
     async (id: string, title: string) => {
       if (!title.trim()) return
@@ -400,6 +408,7 @@ export function useWorkbenchViewModel(): WorkbenchViewModel {
     canCancel: isRunActive(snapshot?.run.status) && snapshot?.run.status !== 'cancelling',
     selectConversation,
     createConversation,
+    browseDirectories,
     renameConversation,
     deleteConversation,
     sendMessage,

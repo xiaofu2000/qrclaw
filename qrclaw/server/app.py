@@ -207,6 +207,7 @@ def create_app(service: RunService | None = None) -> FastAPI:
                 "protocol_version": "1",
                 "features": [
                     "conversations",
+                    "directory_browser",
                     "run_snapshots",
                     "run_events",
                     "tool_approvals",
@@ -234,6 +235,16 @@ def create_app(service: RunService | None = None) -> FastAPI:
         except ValueError as exc:
             raise ApiError("invalid_workspace_path", str(exc), 422) from exc
         return _success(conversation, request, status_code=201)
+
+    @application.get(f"{API_PREFIX}/filesystem/directories")
+    async def browse_directories(request: Request, path: str | None = None):
+        """浏览本地目录，供新建任务时选择工作区。"""
+
+        try:
+            listing = runtime.browse_directories(path)
+        except ValueError as exc:
+            raise ApiError("invalid_directory_path", str(exc), 422) from exc
+        return _success(listing, request)
 
     @application.get(f"{API_PREFIX}/conversations/{{conversation_id}}")
     async def get_conversation(conversation_id: str, request: Request):

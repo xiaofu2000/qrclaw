@@ -153,6 +153,29 @@ class RunService:
         normalized = str(workspace)
         return self.store.create_conversation(title=title, workspace_path=normalized)
 
+    def browse_directories(self, path: str | None = None) -> dict[str, Any]:
+        """返回本地目录选择器所需的当前目录、父目录和子目录。"""
+
+        current = Path(path).expanduser().resolve() if path else Path.home().resolve()
+        if not current.exists() or not current.is_dir():
+            raise ValueError("选择的工作区不存在或不是目录")
+        try:
+            directories = [
+                {"name": entry.name, "path": str(entry.resolve())}
+                for entry in current.iterdir()
+                if entry.is_dir()
+            ]
+        except OSError as exc:
+            raise ValueError("没有权限读取这个目录") from exc
+        directories.sort(key=lambda item: item["name"].casefold())
+        parent = current.parent if current.parent != current else None
+        return {
+            "current_path": str(current),
+            "parent_path": str(parent) if parent else None,
+            "home_path": str(Path.home().resolve()),
+            "directories": directories,
+        }
+
     def list_conversations(self) -> list[dict[str, Any]]:
         """返回全部会话。"""
 

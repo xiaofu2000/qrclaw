@@ -15,6 +15,13 @@ export type Conversation = {
   updatedAt: string
 }
 
+export type DirectoryListing = {
+  currentPath: string
+  parentPath: string | null
+  homePath: string
+  directories: Array<{ name: string; path: string }>
+}
+
 export type Message = {
   id: string
   role: 'user' | 'assistant' | 'tool' | 'system'
@@ -131,4 +138,3 @@ export function isRunActive(status: RunStatusDto | undefined): boolean {
       ['queued', 'routing', 'running', 'waiting_approval', 'cancelling'].includes(status),
   )
 }
-

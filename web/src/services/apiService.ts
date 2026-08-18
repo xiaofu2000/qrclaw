@@ -3,6 +3,7 @@ import type {
   ApiResponse,
   CapabilitiesDto,
   ConversationDto,
+  DirectoryListingDto,
   MessageDto,
   RunSnapshotDto,
   SettingsDto,
@@ -56,6 +57,11 @@ export class ApiService {
       method: 'POST',
       body: { title, workspace_path: workspacePath },
     })
+  }
+
+  async browseDirectories(path = ''): Promise<DirectoryListingDto> {
+    const query = path ? `?path=${encodeURIComponent(path)}` : ''
+    return this.request(`/filesystem/directories${query}`)
   }
 
   async updateConversation(conversationId: string, title: string): Promise<ConversationDto> {

@@ -25,7 +25,7 @@ export function WorkbenchView({ viewModel: vm }: WorkbenchViewProps) {
       <InspectorPanel snapshot={vm.snapshot} selectedAgent={vm.selectedAgent} onCloseAgent={() => vm.selectAgent(null)} />
     </div>
     {approval && <ToolApprovalDialog approval={approval} agent={approvalAgent} pending={vm.operationPending} onResolve={(decision) => void vm.resolveApproval(approval.id, decision)} />}
-    {vm.createConversationOpen && !vm.authRequired && <NewConversationDialog defaultWorkspace={vm.settings?.defaultWorkspace ?? ''} pending={vm.operationPending} onClose={() => vm.setCreateConversationOpen(false)} onSubmit={(input) => void vm.createConversation(input)} />}
+    {vm.createConversationOpen && !vm.authRequired && <NewConversationDialog defaultWorkspace={vm.settings?.defaultWorkspace ?? ''} pending={vm.operationPending} onBrowseWorkspace={vm.browseDirectories} onClose={() => vm.setCreateConversationOpen(false)} onSubmit={(input) => void vm.createConversation(input)} />}
     {vm.settingsOpen && <SettingsDialog authRequired={vm.authRequired} settings={vm.settings} pending={vm.operationPending} onClose={() => vm.setSettingsOpen(false)} onSaveToken={vm.configureAccessToken} onSaveSettings={(input) => void vm.saveSettings(input)} onTest={vm.testModelConnection} />}
   </div>
 }

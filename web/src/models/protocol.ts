@@ -163,6 +163,13 @@ export type CapabilitiesDto = {
   limits: Record<string, unknown>
 }
 
+export type DirectoryListingDto = {
+  current_path: string
+  parent_path: string | null
+  home_path: string
+  directories: Array<{ name: string; path: string }>
+}
+
 export type SettingsDto = {
   provider: string
   model: string
@@ -173,4 +180,3 @@ export type SettingsDto = {
   log_level: string
   sandbox_enabled: boolean
 }
-
