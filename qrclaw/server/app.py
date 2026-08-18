@@ -361,6 +361,12 @@ def create_app(service: RunService | None = None) -> FastAPI:
         config_manager.set_config("log.level", payload.log_level)
         if payload.api_key is not None:
             config_manager.set_config("llm.api_key", payload.api_key)
+        from qrclaw.providers import reload_provider
+
+        try:
+            reload_provider()
+        except ValueError as exc:
+            raise ApiError("unsupported_provider", str(exc), 422) from exc
         return await get_settings(request)
 
     @application.post(f"{API_PREFIX}/settings/test-connection")

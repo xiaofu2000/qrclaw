@@ -77,3 +77,28 @@ def test_streaming_tool_call_merges_fragments():
     assert response.tool_calls[0].id == "call_1"
     assert response.tool_calls[0].name == "run_shell"
     assert response.tool_calls[0].arguments == '{"command":"echo test"}'
+
+
+def test_reload_provider_uses_latest_settings():
+    """保存设置后应立即使用磁盘中的最新模型配置。"""
+
+    import qrclaw.providers as providers
+
+    original = providers.provider
+    settings = {
+        "llm": {
+            "provider": "litellm",
+            "api_key": "new-key",
+            "model": "openai/new-model",
+            "base_url": "https://example.test/v1",
+            "proxy_url": "",
+        }
+    }
+    try:
+        with patch("qrclaw.config_manager.get_config", return_value=settings):
+            reloaded = providers.reload_provider()
+        assert reloaded._api_key == "new-key"
+        assert reloaded._model == "openai/new-model"
+        assert reloaded._base_url == "https://example.test/v1"
+    finally:
+        providers.provider = original

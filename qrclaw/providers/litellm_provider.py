@@ -77,13 +77,28 @@ class LiteLLMProvider(LLMProvider):
     - 详见 https://docs.litellm.ai/docs/providers
     """
 
-    def __init__(self):
-        self._api_key = LITELLM_API_KEY
-        self._base_url = LITELLM_BASE_URL or LITELLM_API_BASE or None
-        self._proxy_url = LITELLM_PROXY_URL or None
+    def __init__(
+        self,
+        *,
+        api_key: str | None = None,
+        model: str | None = None,
+        base_url: str | None = None,
+        proxy_url: str | None = None,
+    ):
+        """使用显式设置或进程启动配置初始化 Provider。"""
+
+        self._api_key = LITELLM_API_KEY if api_key is None else api_key
+        configured_base_url = (
+            LITELLM_BASE_URL or LITELLM_API_BASE
+            if base_url is None
+            else base_url
+        )
+        self._base_url = configured_base_url or None
+        self._proxy_url = (LITELLM_PROXY_URL if proxy_url is None else proxy_url) or None
+        configured_model = LITELLM_MODEL if model is None else model
 
         # 自动推断 provider 前缀
-        self._model = _infer_provider(LITELLM_MODEL, self._base_url)
+        self._model = _infer_provider(configured_model, self._base_url)
 
         # LiteLLM 配置
         litellm.drop_params = True  # 忽略不支持的参数

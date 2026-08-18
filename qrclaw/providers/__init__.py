@@ -23,4 +23,26 @@ def _load_provider() -> LLMProvider:
     return cls()
 
 
+def reload_provider() -> LLMProvider:
+    """根据磁盘中的最新设置重建全局 Provider。"""
+
+    global provider
+
+    from qrclaw import config_manager
+
+    config = config_manager.get_config()
+    llm = config.get("llm", {})
+    provider_name = llm.get("provider", "litellm")
+    if provider_name != "litellm":
+        raise ValueError(f"不支持的模型渠道: {provider_name}")
+    provider = LiteLLMProvider(
+        api_key=str(llm.get("api_key", "")),
+        model=str(llm.get("model", "")),
+        base_url=str(llm.get("base_url", "")),
+        proxy_url=str(llm.get("proxy_url", "")),
+    )
+    logger.info("模型渠道配置已重新加载")
+    return provider
+
+
 provider: LLMProvider = _load_provider()
