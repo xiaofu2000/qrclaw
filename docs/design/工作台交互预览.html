@@ -1,0 +1,2346 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; style-src 'unsafe-inline' blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; img-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; font-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; media-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; worker-src blob:; connect-src blob: data:; frame-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<title>Qrclaw Workbench Wireframes</title>
+<style>:root{color-scheme:light dark;background:light-dark(rgb(255 255 255), rgb(24 24 24))}html,body{margin:0}body{box-sizing:border-box;padding:1rem;background:inherit}iframe{display:block;width:100%;height:calc(100vh - 2rem);margin:0 auto;border:0}</style>
+</head>
+<body>
+<iframe sandbox="allow-scripts" referrerpolicy="no-referrer" title="Qrclaw Workbench Wireframes" srcdoc="&lt;!doctype html&gt;
+&lt;html lang=&quot;en&quot;&gt;
+&lt;head&gt;
+&lt;meta charset=&quot;utf-8&quot;&gt;
+&lt;meta name=&quot;viewport&quot; content=&quot;width=device-width, initial-scale=1&quot;&gt;
+&lt;meta name=&quot;referrer&quot; content=&quot;no-referrer&quot;&gt;
+&lt;meta http-equiv=&quot;Content-Security-Policy&quot; content=&quot;default-src &#x27;none&#x27;; script-src &#x27;unsafe-inline&#x27; &#x27;unsafe-eval&#x27; &#x27;wasm-unsafe-eval&#x27; blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; style-src &#x27;unsafe-inline&#x27; blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; img-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; font-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; media-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; worker-src blob:; connect-src blob: data:; frame-src &#x27;none&#x27;; object-src &#x27;none&#x27;; base-uri &#x27;none&#x27;; form-action &#x27;none&#x27;&quot;&gt;
+&lt;title&gt;Qrclaw Workbench Wireframes&lt;/title&gt;
+&lt;style&gt;:root {
+  color-scheme: light dark;
+  background-color: var(
+    --background,
+    var(--color-background-primary, light-dark(rgb(255 255 255), rgb(24 24 24)))
+  ) !important;
+
+  /* Agent-facing contract; keep in sync with SKILL.md. */
+  --background: var(
+    --color-background-primary,
+    light-dark(rgb(255 255 255), rgb(24 24 24))
+  );
+  --foreground: var(
+    --color-text-primary,
+    light-dark(rgb(26 28 31), rgb(255 255 255))
+  );
+  --card: color-mix(in oklab, var(--foreground) 5%, var(--background));
+  --card-foreground: var(
+    --color-text-primary,
+    light-dark(rgb(26 28 31), rgb(255 255 255))
+  );
+  --popover: var(
+    --color-background-secondary,
+    light-dark(rgb(255 255 255), rgb(45 45 45))
+  );
+  --popover-foreground: var(
+    --color-text-primary,
+    light-dark(rgb(26 28 31), rgb(255 255 255))
+  );
+  --primary: var(
+    --color-text-info,
+    light-dark(rgb(51 156 255), rgb(131 195 255))
+  );
+  --primary-foreground: var(
+    --color-text-inverse,
+    light-dark(rgb(255 255 255), rgb(13 13 13))
+  );
+  --secondary: var(
+    --color-background-secondary,
+    light-dark(rgb(255 255 255 / 96%), rgb(54 54 54 / 96%))
+  );
+  --secondary-foreground: var(
+    --color-text-primary,
+    light-dark(rgb(26 28 31), rgb(255 255 255))
+  );
+  --muted: color-mix(in srgb, var(--foreground) 10%, transparent);
+  --muted-foreground: var(
+    --color-text-secondary,
+    light-dark(rgb(26 28 31 / 49.4%), rgb(255 255 255 / 49.8%))
+  );
+  --accent: var(
+    --color-background-info,
+    light-dark(rgb(229 242 255), rgb(13 39 63))
+  );
+  --accent-foreground: var(
+    --color-text-info,
+    light-dark(rgb(51 156 255), rgb(131 195 255))
+  );
+  --destructive: var(
+    --color-text-warning,
+    light-dark(rgb(226 85 7), rgb(255 133 73))
+  );
+  --border: var(
+    --color-border-secondary,
+    light-dark(rgb(26 28 31 / 8%), rgb(255 255 255 / 8.2%))
+  );
+  --input: var(
+    --color-border-primary,
+    light-dark(
+      rgb(26 28 31 / 11.8%),
+      color-mix(in oklab, rgb(0 0 0) 10%, transparent)
+    )
+  );
+  --ring: var(
+    --color-ring-primary,
+    light-dark(rgb(51 156 255), rgb(131 195 255 / 76%))
+  );
+  --font-size-base: var(--font-text-md-size, 14px);
+  --blue: light-dark(rgb(51 156 255), rgb(51 156 255));
+  --orange: light-dark(rgb(226 85 7), rgb(251 106 34));
+  --green: light-dark(rgb(0 162 64), rgb(64 201 119));
+  --red: light-dark(rgb(224 46 42), rgb(255 103 100));
+  --purple: light-dark(rgb(146 79 247), rgb(173 123 249));
+  --yellow: light-dark(rgb(255 195 0), rgb(255 210 64));
+  --viz-series-1: var(--primary);
+  --viz-series-2: light-dark(rgb(243 136 59), rgb(245 154 86));
+  --viz-series-3: light-dark(rgb(93 201 119), rgb(116 213 139));
+  --viz-series-4: light-dark(rgb(235 119 177), rgb(240 143 192));
+  --viz-series-5: light-dark(rgb(155 121 236), rgb(170 145 239));
+  --viz-series-6: light-dark(rgb(58 185 177), rgb(90 203 194));
+
+  /* Internal implementation variables; not part of the agent contract. */
+  --font-sans: -apple-system, system-ui, &quot;Segoe UI&quot;, sans-serif;
+  --font-mono:
+    ui-monospace, SFMono-Regular, &quot;SF Mono&quot;, Menlo, Consolas, &quot;Liberation Mono&quot;,
+    monospace;
+  --font-size-normal: max(11px, var(--font-size-base));
+  --font-size-tooltip: calc(var(--font-size-base) - 1px);
+  --font-size-small: max(11px, calc(var(--font-size-base) - 2px));
+  --font-size-h1: calc(var(--font-size-normal) * 1.7142857143);
+  --font-size-h2: calc(var(--font-size-normal) * 1.4285714286);
+  --font-size-h3: calc(var(--font-size-normal) * 1.2857142857);
+  --font-weight-normal: 430;
+  --font-weight-medium: 500;
+  --line-height-normal: calc(var(--font-size-normal) * 1.5);
+  --line-height-tooltip: calc(var(--font-size-tooltip) * 1.4285714286);
+  --line-height-small: calc(var(--font-size-small) + 4px);
+  --radius: var(--border-radius-lg, 12.5px);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-2xl: calc(var(--radius) * 1.6);
+  --radius-full: 9999px;
+  --shadow-sm: 0 1px 2px -1px rgb(0 0 0 / 8%);
+  --checkmark-image: url(&quot;data:image/svg+xml,%3Csvg xmlns=&#x27;http://www.w3.org/2000/svg&#x27; viewBox=&#x27;0 0 17 17&#x27;%3E%3Cpath d=&#x27;M12.8961 3.64101C13.1297 3.41418 13.4984 3.37523 13.7779 3.56581C14.0571 3.75635 14.1554 4.11331 14.0299 4.41347L13.9615 4.53847L7.71151 13.7045C7.59411 13.8767 7.4063 13.9877 7.19881 14.0072C6.99136 14.0267 6.78564 13.9533 6.63826 13.806L2.88826 10.056L2.79842 9.9457C2.6192 9.67407 2.64927 9.30496 2.88826 9.06581C3.12738 8.82669 3.49647 8.79676 3.76815 8.97597L3.8785 9.06581L7.03084 12.2182L12.8053 3.74941L12.8961 3.64101Z&#x27;/%3E%3C/svg%3E&quot;);
+
+  /* Legacy aliases; not part of the current agent contract. */
+  --viz-bg: transparent;
+  --viz-panel: var(--card);
+  --viz-border: var(--border);
+  --viz-text: var(--foreground);
+  --viz-muted: var(--muted-foreground);
+  --viz-accent: var(--primary);
+  --viz-accent-text: var(--primary-foreground);
+  --viz-accent-bg: var(--accent);
+  --viz-font-size: var(--font-size-base);
+  --viz-warning: var(--destructive);
+}
+
+:root[data-theme=&quot;light&quot;] {
+  color-scheme: light;
+}
+
+:root[data-theme=&quot;dark&quot;] {
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html &gt; body {
+  /* Preserve MCP aliases for older inline renderers without creating :root cycles. */
+  --color-background-primary: var(
+    --background,
+    light-dark(rgb(255 255 255), rgb(24 24 24))
+  );
+  --color-text-primary: var(
+    --foreground,
+    light-dark(rgb(26 28 31), rgb(255 255 255))
+  );
+  --color-border-secondary: var(
+    --border,
+    light-dark(rgb(26 28 31 / 8%), rgb(255 255 255 / 8.2%))
+  );
+
+  margin: 0;
+  padding: 5px;
+  color: var(--foreground);
+  background: transparent !important;
+  font-family: var(--font-sans);
+  font-size: var(--font-size-normal);
+  font-weight: var(--font-weight-normal);
+  line-height: var(--line-height-normal);
+}
+
+a {
+  color: color-mix(in srgb, var(--viz-accent) 80%, var(--viz-text) 20%);
+  cursor: pointer;
+  font-weight: var(--font-weight-medium, 500);
+  text-decoration: none;
+  text-underline-offset: 2px;
+}
+
+a:is(:hover, :focus-visible) {
+  text-decoration-line: underline;
+  text-decoration-style: dashed;
+  text-decoration-thickness: 0.5px;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+p {
+  margin-block: 0;
+}
+
+h1 {
+  font-size: var(--font-size-h1);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.25;
+}
+
+h2 {
+  font-size: var(--font-size-h2);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.25;
+}
+
+h3,
+h4,
+h5,
+h6 {
+  font-size: var(--font-size-h3);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.3;
+}
+
+b,
+strong,
+th {
+  font-weight: var(--font-weight-medium);
+}
+
+code:not(pre code) {
+  display: inline;
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  corner-shape: superellipse(1.5);
+  background: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+  overflow-wrap: anywhere;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+  word-break: break-word;
+}
+
+.table-responsive {
+  width: 100%;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  color: var(--foreground);
+  font: inherit;
+  text-align: start;
+}
+
+.table :is(th, td) {
+  padding-block: 10px;
+  padding-inline: 0 24px;
+  overflow-wrap: anywhere;
+  border-bottom: 1px solid var(--border);
+  text-align: start;
+  vertical-align: top;
+}
+
+.table-responsive &gt; .table :is(th, td) {
+  overflow-wrap: break-word;
+}
+
+.table :is(th, td):last-child {
+  padding-inline-end: 0;
+}
+
+.table :is(caption, thead th) {
+  font-weight: 600;
+}
+
+.table thead th {
+  padding-block: 8px;
+  border-bottom-color: color-mix(in srgb, var(--foreground) 16%, transparent);
+}
+
+.table tbody tr:last-child :is(th, td) {
+  border-bottom: 0;
+}
+
+.table.table-sm :is(th, td) {
+  padding-block: 6px;
+}
+
+.table.table-sm :is(th, td):not(:last-child) {
+  padding-inline-end: 16px;
+}
+
+.table :is(.text-end, [align=&quot;right&quot;]) {
+  text-align: end;
+  font-variant-numeric: tabular-nums;
+}
+
+.table :is(.text-center, [align=&quot;center&quot;]) {
+  text-align: center;
+}
+
+.table .text-nowrap {
+  white-space: nowrap;
+}
+
+#widget {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+  padding: 0;
+  background: transparent !important;
+}
+
+.card {
+  min-width: 0;
+  padding: 12px;
+  overflow: hidden;
+  overflow-wrap: break-word;
+  border-radius: var(--radius-2xl);
+  corner-shape: superellipse(1.5);
+  color: var(--card-foreground);
+  background: var(--card);
+}
+
+#widget &gt; :not(.card, .progress) {
+  width: 100% !important;
+  max-width: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.tooltip {
+  position: fixed;
+  z-index: 50;
+  top: 0;
+  left: 0;
+  width: max-content;
+  max-width: min(
+    20rem,
+    var(--tooltip-available-width, calc(100vw - 10px)),
+    calc(100vw - 10px)
+  );
+  max-height: min(
+    var(--tooltip-available-height, calc(100vh - 10px)),
+    calc(100vh - 10px)
+  );
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  corner-shape: superellipse(1.5);
+  color: var(--popover-foreground);
+  background: var(--popover);
+  box-shadow: none;
+  font-size: var(--font-size-tooltip);
+  line-height: var(--line-height-tooltip);
+  overflow-wrap: break-word;
+  white-space: normal;
+  pointer-events: none;
+  user-select: none;
+}
+
+.viz-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(max(180px, 24%), 1fr));
+  gap: 10px;
+}
+
+.viz-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.viz-stat-value {
+  font-size: var(--font-size-h2);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.25;
+}
+
+.viz-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.progress {
+  display: flex;
+  height: 6px;
+  overflow: hidden;
+  border: 0;
+  border-radius: var(--radius-full);
+  background: var(--muted);
+}
+
+.progress-bar {
+  height: 100%;
+  flex-shrink: 0;
+  border: 0;
+  background: var(--viz-series-1);
+}
+
+.viz-badge {
+  padding: 3px 8px;
+  border-radius: var(--radius-full);
+  color: var(--accent-foreground);
+  background: var(--accent);
+  font-weight: var(--font-weight-medium);
+}
+
+small,
+.text-small,
+.viz-badge {
+  font-size: var(--font-size-small);
+  line-height: var(--line-height-small);
+}
+
+.text-muted {
+  color: var(--muted-foreground);
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.viz-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.viz-controls &gt; .form-label {
+  display: grid;
+  min-width: min(100%, 260px);
+  flex: 1 1 280px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 2px 12px;
+  margin-bottom: 0;
+}
+
+.viz-controls &gt; .form-label &gt; :is(.form-control, .form-range, .form-select) {
+  grid-column: 1 / -1;
+}
+
+.btn,
+.form-check-input,
+.form-control,
+.form-range,
+.form-select {
+  font: inherit;
+}
+
+.btn {
+  appearance: button;
+  display: inline-flex;
+  inline-size: fit-content;
+  max-inline-size: 100%;
+  min-height: 28px;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  margin: 0;
+  padding: 0 8px;
+  -webkit-app-region: no-drag;
+  border: 1px solid var(--input);
+  border-radius: var(--radius-lg);
+  corner-shape: superellipse(1.5);
+  color: var(--secondary-foreground);
+  background: var(--secondary);
+  cursor: var(--cursor-interaction, pointer);
+  text-align: center;
+  text-decoration: none;
+  white-space: nowrap;
+  user-select: none;
+  -webkit-font-smoothing: antialiased;
+}
+
+.btn:is(.btn-block, .viz-tile) {
+  inline-size: 100%;
+}
+
+.btn.viz-tile {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+a.btn {
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.btn:not(:disabled):hover {
+  background: color-mix(in srgb, var(--foreground) 6%, var(--secondary));
+}
+
+.btn-primary {
+  border-color: transparent;
+  color: var(--primary-foreground);
+  background: var(--foreground);
+  background-clip: padding-box;
+}
+
+.btn-primary .text-muted {
+  color: color-mix(in srgb, var(--primary-foreground) 50%, transparent);
+}
+
+.btn-primary:not(:disabled):hover {
+  background: color-mix(in srgb, var(--foreground) 80%, transparent);
+  background-clip: padding-box;
+}
+
+.btn-ghost {
+  border-color: transparent;
+  color: var(--muted-foreground);
+  background: transparent;
+}
+
+.btn-ghost:not(:disabled):hover {
+  color: var(--foreground);
+  background: color-mix(in srgb, var(--foreground) 6%, var(--secondary));
+}
+
+.btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+[data-lucide] {
+  stroke-width: 1.6;
+}
+
+.form-label {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--foreground);
+}
+
+.form-control {
+  display: block;
+  width: 100%;
+  min-height: 28px;
+  padding: 0 8px;
+  outline: none;
+  border: 1px solid var(--input);
+  border-radius: var(--radius-lg);
+  corner-shape: superellipse(1.5);
+  color: var(--foreground);
+  background: var(--secondary);
+}
+
+.form-control::placeholder {
+  color: var(--muted-foreground);
+}
+
+.form-control[type=&quot;file&quot;] {
+  padding: 0;
+  overflow: hidden;
+  cursor: var(--cursor-interaction, pointer);
+}
+
+.form-control[type=&quot;file&quot;]::file-selector-button {
+  min-height: 26px;
+  margin-right: 8px;
+  padding: 0 8px;
+  border: 0;
+  border-right: 1px solid var(--input);
+  color: var(--secondary-foreground);
+  background: var(--secondary);
+  cursor: inherit;
+  font: inherit;
+}
+
+.form-control[type=&quot;file&quot;]:not(:disabled):hover::file-selector-button {
+  background: color-mix(in srgb, var(--foreground) 6%, var(--secondary));
+}
+
+.form-control-color[type=&quot;color&quot;] {
+  width: 40px;
+  height: 28px;
+  padding: 3px;
+  cursor: var(--cursor-interaction, pointer);
+}
+
+.form-control-color[type=&quot;color&quot;]::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+
+.form-control-color[type=&quot;color&quot;]::-webkit-color-swatch {
+  border: 0;
+  border-radius: calc(var(--radius-lg) - 4px);
+  corner-shape: superellipse(1.5);
+}
+
+textarea.form-control {
+  height: auto;
+  min-height: 72px;
+  padding: 8px 10px;
+  resize: vertical;
+}
+
+.form-control:focus-visible {
+  border-color: var(--ring);
+  box-shadow: inset 0 0 0 1px var(--ring);
+}
+
+.form-control:disabled,
+.form-select:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.form-select {
+  appearance: none;
+  display: block;
+  width: 100%;
+  min-height: 28px;
+  margin: 0;
+  padding: 0 32px 0 8px;
+  outline: none;
+  border: 1px solid var(--input);
+  border-radius: var(--radius-lg);
+  corner-shape: superellipse(1.5);
+  color: var(--foreground);
+  background-color: var(--secondary);
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--muted-foreground) 50%),
+    linear-gradient(135deg, var(--muted-foreground) 50%, transparent 50%);
+  background-position:
+    calc(100% - 14px) 50%,
+    calc(100% - 10px) 50%;
+  background-repeat: no-repeat;
+  background-size: 4px 4px;
+  cursor: var(--cursor-interaction, default);
+}
+
+.form-select:not(:disabled):hover {
+  background-color: color-mix(in srgb, var(--foreground) 6%, var(--secondary));
+}
+
+.form-select:focus-visible {
+  border-color: var(--ring);
+  box-shadow: inset 0 0 0 1px var(--ring);
+}
+
+.form-check {
+  display: flex;
+  min-height: 20px;
+  align-items: center;
+  gap: 6px;
+}
+
+.form-check-input {
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
+  margin: 0;
+  border: 1px solid var(--input);
+  color: var(--primary-foreground);
+  background-color: transparent;
+  cursor: var(--cursor-interaction, default);
+  transition:
+    background-color 150ms,
+    border-color 150ms,
+    box-shadow 150ms;
+}
+
+.form-check:not(.form-switch) .form-check-input[type=&quot;checkbox&quot;] {
+  border-color: var(--input);
+  border-radius: var(--radius-sm);
+  corner-shape: superellipse(1.5);
+  background-color: var(--secondary);
+  box-shadow: var(--shadow-sm);
+}
+
+.form-check:not(.form-switch)
+  .form-check-input:not(:disabled):not(:checked):hover {
+  background-color: var(--card);
+}
+
+.form-check:not(.form-switch) .form-check-input[type=&quot;checkbox&quot;]:checked {
+  border-color: var(--primary);
+  background-color: var(--primary);
+}
+
+.form-check:not(.form-switch)
+  .form-check-input[type=&quot;checkbox&quot;]:checked::before {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: var(--primary-foreground);
+  content: &quot;&quot;;
+  mask: var(--checkmark-image) center / 12px 12px no-repeat;
+}
+
+.form-check-input[type=&quot;radio&quot;] {
+  width: 14px;
+  height: 14px;
+  border-radius: var(--radius-full);
+}
+
+.form-check-input[type=&quot;radio&quot;]:checked {
+  border: 2px solid var(--primary);
+  background:
+    radial-gradient(circle, var(--primary-foreground) 0 2.5px, transparent 3px),
+    var(--primary);
+}
+
+.form-check:not(.form-switch) .form-check-input:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+.form-check:not(.form-switch) .form-check-input:disabled {
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.form-check:not(.form-switch) .form-check-input:disabled + .form-check-label {
+  cursor: not-allowed;
+}
+
+.form-switch .form-check-input:disabled,
+.form-switch .form-check-input:disabled + .form-check-label {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.form-check-label {
+  color: var(--foreground);
+  cursor: var(--cursor-interaction, default);
+}
+
+.form-switch .form-check-input {
+  position: relative;
+  width: 32px;
+  height: 20px;
+  border: 0;
+  border-radius: var(--radius-full);
+  background: var(--muted);
+  box-shadow: none;
+  transition: background-color 200ms cubic-bezier(0, 0, 0.2, 1);
+}
+
+.form-switch .form-check-input::before {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  width: 16px;
+  height: 16px;
+  box-sizing: border-box;
+  border: 1px solid light-dark(var(--primary-foreground), var(--foreground));
+  border-radius: var(--radius-full);
+  background: light-dark(var(--primary-foreground), var(--foreground));
+  box-shadow: var(--shadow-sm);
+  content: &quot;&quot;;
+  transform: translate(2px, -50%);
+  transition: transform 200ms cubic-bezier(0, 0, 0.2, 1);
+}
+
+.form-switch .form-check-input:checked {
+  background: var(--primary);
+}
+
+.form-switch .form-check-input:checked::before {
+  transform: translate(14px, -50%);
+}
+
+.form-switch .form-check-input:focus-visible {
+  box-shadow: 0 0 0 2px var(--ring);
+}
+
+.form-range {
+  appearance: none;
+  display: block;
+  width: 100%;
+  height: 28px;
+  flex: 1;
+  margin: 0;
+  padding: 0;
+  outline: none;
+  border: 0;
+  accent-color: var(--primary);
+  background: linear-gradient(
+      color-mix(in srgb, var(--foreground) 7%, transparent),
+      color-mix(in srgb, var(--foreground) 7%, transparent)
+    )
+    center / 100% 2px no-repeat;
+}
+
+.form-range::-webkit-slider-runnable-track {
+  height: 28px;
+  background: transparent;
+}
+
+.form-range::-webkit-slider-thumb {
+  appearance: none;
+  width: 20px;
+  height: 20px;
+  margin-top: 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  background: light-dark(var(--primary-foreground), var(--foreground));
+}
+
+.form-range:focus-visible::-webkit-slider-thumb {
+  border-color: var(--ring);
+  box-shadow: inset 0 0 0 1px var(--ring);
+}
+
+.form-range::-moz-range-track {
+  height: 28px;
+  background: transparent;
+}
+
+.form-range::-moz-range-thumb {
+  width: 20px;
+  height: 20px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  background: light-dark(var(--primary-foreground), var(--foreground));
+}
+
+.form-range:focus-visible::-moz-range-thumb {
+  border-color: var(--ring);
+  box-shadow: inset 0 0 0 1px var(--ring);
+}
+
+.form-range:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.btn:not(.btn-primary, .viz-tile):is(
+  [aria-pressed=&quot;true&quot;],
+  [aria-selected=&quot;true&quot;],
+  .is-selected
+) {
+  border-color: var(--primary);
+  color: var(--primary-foreground);
+  background: var(--primary);
+}
+
+.btn.viz-tile:is([aria-pressed=&quot;true&quot;], [aria-selected=&quot;true&quot;], .is-selected) {
+  border-color: var(--primary);
+  box-shadow: inset 0 0 0 1px var(--primary);
+}
+
+.btn:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+svg {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
+#widget &gt; svg {
+  width: 100%;
+}
+
+/* Model-authored chart rules can otherwise stretch icons after these styles load. */
+svg.lucide {
+  display: block;
+  width: 16px !important;
+  height: 16px !important;
+  flex: none;
+  margin: 0 !important;
+  stroke-width: 1.6;
+}
+
+.text-warning,
+.text-destructive {
+  color: var(--destructive);
+}
+
+html&gt;body{padding:0}&lt;/style&gt;
+&lt;/head&gt;
+&lt;body&gt;
+&lt;style&gt;
+  #qrclaw-wireframes {
+    width: 100%;
+    color: #e8ebf0;
+    font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, &quot;Segoe UI&quot;, sans-serif;
+  }
+
+  #qrclaw-wireframes * {
+    box-sizing: border-box;
+  }
+
+  #qrclaw-wireframes .qrwf-state-switcher {
+    display: flex;
+    gap: 6px;
+    margin: 0 0 10px;
+    padding: 4px;
+    width: fit-content;
+    border: 1px solid #29313d;
+    border-radius: 9px;
+    background: #11161d;
+  }
+
+  #qrclaw-wireframes .qrwf-state-switcher button {
+    border: 0;
+    border-radius: 6px;
+    padding: 7px 12px;
+    color: #8f99a8;
+    background: transparent;
+    font: inherit;
+    font-size: 12px;
+    cursor: pointer;
+  }
+
+  #qrclaw-wireframes .qrwf-state-switcher button[aria-pressed=&quot;true&quot;] {
+    color: #f5f7fa;
+    background: #263141;
+  }
+
+  #qrclaw-wireframes .qrwf-screen {
+    display: none;
+  }
+
+  #qrclaw-wireframes .qrwf-screen[data-active=&quot;true&quot;] {
+    display: block;
+  }
+
+  #qrclaw-wireframes .qrwf-window {
+    position: relative;
+    width: 100%;
+    height: 700px;
+    overflow: hidden;
+    border: 1px solid #303846;
+    border-radius: 12px;
+    background: #0c0f14;
+    box-shadow: 0 14px 42px rgba(0, 0, 0, 0.28);
+  }
+
+  #qrclaw-wireframes .qrwf-titlebar {
+    height: 46px;
+    display: grid;
+    grid-template-columns: 190px 1fr 260px;
+    align-items: center;
+    border-bottom: 1px solid #242b35;
+    background: #11151b;
+  }
+
+  #qrclaw-wireframes .qrwf-brand {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    padding-left: 15px;
+    font-size: 13px;
+    font-weight: 700;
+  }
+
+  #qrclaw-wireframes .qrwf-brand-mark {
+    width: 23px;
+    height: 23px;
+    display: grid;
+    place-items: center;
+    border: 1px solid #50647f;
+    border-radius: 6px;
+    color: #91b8ff;
+    font-size: 11px;
+  }
+
+  #qrclaw-wireframes .qrwf-project-title {
+    color: #aab3c0;
+    text-align: center;
+    font-size: 12px;
+  }
+
+  #qrclaw-wireframes .qrwf-title-actions {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 12px;
+    padding-right: 14px;
+    font-size: 11px;
+  }
+
+  #qrclaw-wireframes .qrwf-connection {
+    color: #74d8a0;
+  }
+
+  #qrclaw-wireframes .qrwf-layout {
+    height: calc(100% - 46px);
+    display: grid;
+    grid-template-columns: 190px minmax(0, 1fr) 280px;
+  }
+
+  #qrclaw-wireframes .qrwf-sidebar {
+    overflow: hidden;
+    border-right: 1px solid #242b35;
+    background: #10141a;
+    padding: 12px 10px;
+  }
+
+  #qrclaw-wireframes .qrwf-new-task {
+    width: 100%;
+    padding: 8px 10px;
+    border: 1px solid #3a4c65;
+    border-radius: 7px;
+    color: #dbe8ff;
+    background: #192332;
+    font: inherit;
+    font-size: 11px;
+    text-align: left;
+  }
+
+  #qrclaw-wireframes .qrwf-side-label {
+    margin: 16px 8px 7px;
+    color: #687484;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+  }
+
+  #qrclaw-wireframes .qrwf-conversation {
+    width: 100%;
+    margin-bottom: 3px;
+    padding: 8px;
+    border: 0;
+    border-radius: 6px;
+    color: #99a4b2;
+    background: transparent;
+    font: inherit;
+    font-size: 10px;
+    text-align: left;
+  }
+
+  #qrclaw-wireframes .qrwf-conversation[data-selected=&quot;true&quot;] {
+    color: #edf2fa;
+    background: #1b222c;
+  }
+
+  #qrclaw-wireframes .qrwf-conversation span {
+    display: block;
+    margin-top: 3px;
+    color: #5f6b79;
+    font-size: 9px;
+  }
+
+  #qrclaw-wireframes .qrwf-side-link {
+    display: flex;
+    justify-content: space-between;
+    padding: 7px 8px;
+    color: #8d98a7;
+    font-size: 10px;
+  }
+
+  #qrclaw-wireframes .qrwf-main {
+    min-width: 0;
+    display: grid;
+    grid-template-rows: 1fr auto;
+    background: #0d1117;
+  }
+
+  #qrclaw-wireframes .qrwf-timeline {
+    overflow-y: auto;
+    padding: 18px 22px 24px;
+  }
+
+  #qrclaw-wireframes .qrwf-thread-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 18px;
+  }
+
+  #qrclaw-wireframes .qrwf-thread-heading strong {
+    font-size: 14px;
+  }
+
+  #qrclaw-wireframes .qrwf-run-state {
+    color: #91b8ff;
+    font-size: 10px;
+  }
+
+  #qrclaw-wireframes .qrwf-user-message {
+    max-width: 78%;
+    margin-left: auto;
+    padding: 10px 12px;
+    border: 1px solid #34475f;
+    border-radius: 10px 10px 3px 10px;
+    color: #dfe8f4;
+    background: #182333;
+    font-size: 11px;
+    line-height: 1.55;
+  }
+
+  #qrclaw-wireframes .qrwf-event-stack {
+    position: relative;
+    margin-top: 18px;
+    padding-left: 24px;
+  }
+
+  #qrclaw-wireframes .qrwf-event-stack::before {
+    content: &quot;&quot;;
+    position: absolute;
+    top: 8px;
+    bottom: 8px;
+    left: 7px;
+    width: 1px;
+    background: #2a3442;
+  }
+
+  #qrclaw-wireframes .qrwf-event-row {
+    position: relative;
+    margin-bottom: 10px;
+    padding: 10px 12px;
+    border: 1px solid #252e39;
+    border-radius: 8px;
+    background: #11161d;
+  }
+
+  #qrclaw-wireframes .qrwf-event-row::before {
+    content: &quot;&quot;;
+    position: absolute;
+    left: -22px;
+    top: 14px;
+    width: 9px;
+    height: 9px;
+    border: 2px solid #0d1117;
+    border-radius: 50%;
+    background: #718199;
+  }
+
+  #qrclaw-wireframes .qrwf-event-row[data-tone=&quot;active&quot;]::before {
+    background: #67a1ff;
+    box-shadow: 0 0 0 3px rgba(103, 161, 255, .12);
+  }
+
+  #qrclaw-wireframes .qrwf-event-row[data-tone=&quot;done&quot;]::before {
+    background: #62c88a;
+  }
+
+  #qrclaw-wireframes .qrwf-event-row[data-tone=&quot;warn&quot;]::before {
+    background: #f1b55b;
+  }
+
+  #qrclaw-wireframes .qrwf-event-title {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    color: #d9dee7;
+    font-size: 11px;
+    font-weight: 650;
+  }
+
+  #qrclaw-wireframes .qrwf-event-title span {
+    color: #657181;
+    font-size: 9px;
+    font-weight: 500;
+  }
+
+  #qrclaw-wireframes .qrwf-event-description {
+    margin-top: 5px;
+    color: #8994a3;
+    font-size: 10px;
+    line-height: 1.5;
+  }
+
+  #qrclaw-wireframes .qrwf-agent-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 7px;
+    margin-top: 8px;
+  }
+
+  #qrclaw-wireframes .qrwf-agent-item {
+    padding: 8px;
+    border: 1px solid #2b3643;
+    border-radius: 7px;
+    background: #0e1319;
+  }
+
+  #qrclaw-wireframes .qrwf-agent-item[data-selected=&quot;true&quot;] {
+    border-color: #4a6f9f;
+    background: #131d29;
+  }
+
+  #qrclaw-wireframes .qrwf-agent-name {
+    display: flex;
+    justify-content: space-between;
+    color: #cad2dd;
+    font-size: 10px;
+  }
+
+  #qrclaw-wireframes .qrwf-agent-current {
+    margin-top: 5px;
+    color: #707c8b;
+    font-size: 9px;
+  }
+
+  #qrclaw-wireframes .qrwf-status-running {
+    color: #78aaff;
+  }
+
+  #qrclaw-wireframes .qrwf-status-done {
+    color: #66cd90;
+  }
+
+  #qrclaw-wireframes .qrwf-tool-line {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    gap: 8px;
+    align-items: center;
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px solid #252d37;
+    color: #8b96a5;
+    font-size: 9px;
+  }
+
+  #qrclaw-wireframes .qrwf-tool-name {
+    color: #b7c8df;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+
+  #qrclaw-wireframes .qrwf-composer {
+    padding: 12px 18px;
+    border-top: 1px solid #242b35;
+    background: #0f1319;
+  }
+
+  #qrclaw-wireframes .qrwf-input-shell {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 10px;
+    align-items: end;
+    min-height: 54px;
+    padding: 9px 10px;
+    border: 1px solid #35404e;
+    border-radius: 9px;
+    background: #151a22;
+  }
+
+  #qrclaw-wireframes .qrwf-input-placeholder {
+    color: #657181;
+    font-size: 10px;
+  }
+
+  #qrclaw-wireframes .qrwf-send {
+    padding: 7px 10px;
+    border: 0;
+    border-radius: 6px;
+    color: #dbe8ff;
+    background: #315d96;
+    font-size: 10px;
+  }
+
+  #qrclaw-wireframes .qrwf-inspector {
+    overflow-y: auto;
+    border-left: 1px solid #242b35;
+    background: #10141a;
+  }
+
+  #qrclaw-wireframes .qrwf-inspector-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    height: 43px;
+    padding: 0 13px;
+    border-bottom: 1px solid #242b35;
+    color: #d9dfe8;
+    font-size: 11px;
+    font-weight: 650;
+  }
+
+  #qrclaw-wireframes .qrwf-inspector-tabs {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    border-bottom: 1px solid #242b35;
+  }
+
+  #qrclaw-wireframes .qrwf-inspector-tab {
+    padding: 9px 2px;
+    color: #687484;
+    text-align: center;
+    font-size: 9px;
+  }
+
+  #qrclaw-wireframes .qrwf-inspector-tab[data-selected=&quot;true&quot;] {
+    color: #b9d2fb;
+    box-shadow: inset 0 -2px #5c92df;
+  }
+
+  #qrclaw-wireframes .qrwf-inspector-body {
+    padding: 13px;
+  }
+
+  #qrclaw-wireframes .qrwf-inspector-section {
+    margin-bottom: 16px;
+  }
+
+  #qrclaw-wireframes .qrwf-inspector-label {
+    margin-bottom: 6px;
+    color: #687484;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: .05em;
+    text-transform: uppercase;
+  }
+
+  #qrclaw-wireframes .qrwf-inspector-value {
+    color: #bdc6d2;
+    font-size: 10px;
+    line-height: 1.5;
+  }
+
+  #qrclaw-wireframes .qrwf-progress-track {
+    height: 4px;
+    margin-top: 8px;
+    overflow: hidden;
+    border-radius: 4px;
+    background: #252d37;
+  }
+
+  #qrclaw-wireframes .qrwf-progress-fill {
+    width: 56%;
+    height: 100%;
+    background: #5e94de;
+  }
+
+  #qrclaw-wireframes .qrwf-step-list {
+    display: grid;
+    gap: 7px;
+  }
+
+  #qrclaw-wireframes .qrwf-step-item {
+    display: grid;
+    grid-template-columns: 16px 1fr;
+    gap: 7px;
+    color: #8d98a6;
+    font-size: 9px;
+    line-height: 1.45;
+  }
+
+  #qrclaw-wireframes .qrwf-step-index {
+    width: 16px;
+    height: 16px;
+    display: grid;
+    place-items: center;
+    border: 1px solid #3a4553;
+    border-radius: 50%;
+    font-size: 8px;
+  }
+
+  #qrclaw-wireframes .qrwf-step-item[data-state=&quot;done&quot;] .qrwf-step-index {
+    border-color: #4c9369;
+    color: #6ed195;
+  }
+
+  #qrclaw-wireframes .qrwf-step-item[data-state=&quot;active&quot;] .qrwf-step-index {
+    border-color: #5c8cc8;
+    color: #8cbaff;
+  }
+
+  #qrclaw-wireframes .qrwf-agent-summary {
+    padding: 10px;
+    border: 1px solid #2b3643;
+    border-radius: 7px;
+    background: #121821;
+    color: #aeb8c5;
+    font-size: 10px;
+    line-height: 1.55;
+  }
+
+  #qrclaw-wireframes .qrwf-agent-event {
+    display: grid;
+    grid-template-columns: 46px 1fr;
+    gap: 8px;
+    padding: 7px 0;
+    border-bottom: 1px solid #222a34;
+    color: #8f9aa8;
+    font-size: 9px;
+  }
+
+  #qrclaw-wireframes .qrwf-agent-event time {
+    color: #596473;
+  }
+
+  #qrclaw-wireframes .qrwf-agent-event strong {
+    display: block;
+    color: #bac4d1;
+    font-weight: 600;
+  }
+
+  #qrclaw-wireframes .qrwf-code-block {
+    margin-top: 7px;
+    padding: 8px;
+    overflow: hidden;
+    border: 1px solid #29323e;
+    border-radius: 6px;
+    color: #b8c9df;
+    background: #0b0f14;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 9px;
+    white-space: nowrap;
+  }
+
+  #qrclaw-wireframes .qrwf-dimmed {
+    filter: brightness(.48);
+    pointer-events: none;
+  }
+
+  #qrclaw-wireframes .qrwf-approval-overlay {
+    position: absolute;
+    inset: 46px 0 0;
+    z-index: 5;
+    display: grid;
+    place-items: center;
+    padding: 24px;
+    background: rgba(5, 7, 10, .64);
+    backdrop-filter: blur(2px);
+  }
+
+  #qrclaw-wireframes .qrwf-approval-dialog {
+    width: min(520px, 88%);
+    overflow: hidden;
+    border: 1px solid #57492f;
+    border-radius: 11px;
+    background: #14171c;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, .55);
+  }
+
+  #qrclaw-wireframes .qrwf-approval-head {
+    display: flex;
+    gap: 11px;
+    padding: 15px 16px;
+    border-bottom: 1px solid #34302a;
+    background: #1c1915;
+  }
+
+  #qrclaw-wireframes .qrwf-warning-mark {
+    width: 26px;
+    height: 26px;
+    display: grid;
+    place-items: center;
+    flex: 0 0 auto;
+    border: 1px solid #8b6730;
+    border-radius: 7px;
+    color: #f1b55b;
+    font-size: 13px;
+  }
+
+  #qrclaw-wireframes .qrwf-approval-title {
+    color: #f0e6d5;
+    font-size: 12px;
+    font-weight: 700;
+  }
+
+  #qrclaw-wireframes .qrwf-approval-subtitle {
+    margin-top: 3px;
+    color: #9b8e7c;
+    font-size: 9px;
+  }
+
+  #qrclaw-wireframes .qrwf-approval-body {
+    padding: 15px 16px;
+  }
+
+  #qrclaw-wireframes .qrwf-approval-meta {
+    display: grid;
+    grid-template-columns: 78px 1fr;
+    gap: 9px;
+    margin-bottom: 9px;
+    color: #b2bbc7;
+    font-size: 10px;
+  }
+
+  #qrclaw-wireframes .qrwf-approval-meta span:first-child {
+    color: #687484;
+  }
+
+  #qrclaw-wireframes .qrwf-command-preview {
+    margin: 12px 0;
+    padding: 11px;
+    border: 1px solid #333d49;
+    border-radius: 7px;
+    color: #d2e1f5;
+    background: #0b0f14;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 10px;
+  }
+
+  #qrclaw-wireframes .qrwf-risk-note {
+    padding: 9px 10px;
+    border-left: 2px solid #d29a49;
+    color: #b9aa96;
+    background: #1d1a16;
+    font-size: 9px;
+    line-height: 1.5;
+  }
+
+  #qrclaw-wireframes .qrwf-approval-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    padding: 12px 16px;
+    border-top: 1px solid #292f38;
+    background: #11151a;
+  }
+
+  #qrclaw-wireframes .qrwf-approval-actions button {
+    padding: 8px 13px;
+    border-radius: 6px;
+    font: inherit;
+    font-size: 10px;
+  }
+
+  #qrclaw-wireframes .qrwf-reject {
+    border: 1px solid #3c4654;
+    color: #b8c1cd;
+    background: transparent;
+  }
+
+  #qrclaw-wireframes .qrwf-allow {
+    border: 1px solid #976d31;
+    color: #fff1d7;
+    background: #62491f;
+  }
+
+  @media (max-width: 820px) {
+    #qrclaw-wireframes .qrwf-titlebar {
+      grid-template-columns: 150px 1fr 180px;
+    }
+
+    #qrclaw-wireframes .qrwf-layout {
+      grid-template-columns: 150px minmax(0, 1fr) 230px;
+    }
+
+    #qrclaw-wireframes .qrwf-agent-grid {
+      grid-template-columns: 1fr;
+    }
+  }
+
+  /* QRClaw 固定浅色主题 */
+  #qrclaw-wireframes {
+    color: #1f2937;
+  }
+
+  #qrclaw-wireframes .qrwf-state-switcher {
+    border-color: #d9e1eb;
+    background: #f5f7fa;
+  }
+
+  #qrclaw-wireframes .qrwf-state-switcher button {
+    color: #68778a;
+  }
+
+  #qrclaw-wireframes .qrwf-state-switcher button[aria-pressed=&quot;true&quot;] {
+    color: #215b9d;
+    background: #ffffff;
+    box-shadow: 0 1px 3px rgba(31, 55, 85, .12);
+  }
+
+  #qrclaw-wireframes .qrwf-window {
+    border-color: #d5dde7;
+    background: #ffffff;
+    box-shadow: 0 14px 42px rgba(34, 55, 80, .12);
+  }
+
+  #qrclaw-wireframes .qrwf-titlebar {
+    border-bottom-color: #e2e7ee;
+    background: #f8fafc;
+  }
+
+  #qrclaw-wireframes .qrwf-brand-mark {
+    border-color: #8eb4df;
+    color: #2e6fb4;
+    background: #edf5ff;
+  }
+
+  #qrclaw-wireframes .qrwf-project-title {
+    color: #637185;
+  }
+
+  #qrclaw-wireframes .qrwf-connection {
+    color: #23845a;
+  }
+
+  #qrclaw-wireframes .qrwf-sidebar {
+    border-right-color: #e2e7ee;
+    background: #f7f9fc;
+  }
+
+  #qrclaw-wireframes .qrwf-new-task {
+    border-color: #b9cce3;
+    color: #235f9f;
+    background: #edf5ff;
+  }
+
+  #qrclaw-wireframes .qrwf-side-label {
+    color: #8592a4;
+  }
+
+  #qrclaw-wireframes .qrwf-conversation {
+    color: #647286;
+  }
+
+  #qrclaw-wireframes .qrwf-conversation[data-selected=&quot;true&quot;] {
+    color: #1d3551;
+    background: #e9f1fb;
+  }
+
+  #qrclaw-wireframes .qrwf-conversation span {
+    color: #8a96a6;
+  }
+
+  #qrclaw-wireframes .qrwf-side-link {
+    color: #647286;
+  }
+
+  #qrclaw-wireframes .qrwf-main {
+    background: #ffffff;
+  }
+
+  #qrclaw-wireframes .qrwf-run-state {
+    color: #2e72bd;
+  }
+
+  #qrclaw-wireframes .qrwf-user-message {
+    border-color: #bed3eb;
+    color: #23415f;
+    background: #edf5ff;
+  }
+
+  #qrclaw-wireframes .qrwf-event-stack::before {
+    background: #d6dee8;
+  }
+
+  #qrclaw-wireframes .qrwf-event-row {
+    border-color: #dfe5ec;
+    background: #ffffff;
+    box-shadow: 0 1px 2px rgba(42, 64, 90, .04);
+  }
+
+  #qrclaw-wireframes .qrwf-event-row::before {
+    border-color: #ffffff;
+    background: #98a5b5;
+  }
+
+  #qrclaw-wireframes .qrwf-event-row[data-tone=&quot;active&quot;]::before {
+    background: #397fcb;
+    box-shadow: 0 0 0 3px rgba(57, 127, 203, .13);
+  }
+
+  #qrclaw-wireframes .qrwf-event-row[data-tone=&quot;done&quot;]::before {
+    background: #31a06b;
+  }
+
+  #qrclaw-wireframes .qrwf-event-row[data-tone=&quot;warn&quot;]::before {
+    background: #dc9227;
+  }
+
+  #qrclaw-wireframes .qrwf-event-title {
+    color: #263446;
+  }
+
+  #qrclaw-wireframes .qrwf-event-title span {
+    color: #8793a3;
+  }
+
+  #qrclaw-wireframes .qrwf-event-description {
+    color: #68778a;
+  }
+
+  #qrclaw-wireframes .qrwf-agent-item {
+    border-color: #dbe3ec;
+    background: #f9fbfd;
+  }
+
+  #qrclaw-wireframes .qrwf-agent-item[data-selected=&quot;true&quot;] {
+    border-color: #8cb4df;
+    background: #edf5ff;
+  }
+
+  #qrclaw-wireframes .qrwf-agent-name {
+    color: #334155;
+  }
+
+  #qrclaw-wireframes .qrwf-agent-current {
+    color: #7a8798;
+  }
+
+  #qrclaw-wireframes .qrwf-status-running {
+    color: #2f74bd;
+  }
+
+  #qrclaw-wireframes .qrwf-status-done {
+    color: #27865b;
+  }
+
+  #qrclaw-wireframes .qrwf-tool-line {
+    border-top-color: #e1e7ee;
+    color: #788697;
+  }
+
+  #qrclaw-wireframes .qrwf-tool-name {
+    color: #285f9c;
+  }
+
+  #qrclaw-wireframes .qrwf-composer {
+    border-top-color: #e1e6ed;
+    background: #f8fafc;
+  }
+
+  #qrclaw-wireframes .qrwf-input-shell {
+    border-color: #cad4df;
+    background: #ffffff;
+  }
+
+  #qrclaw-wireframes .qrwf-input-placeholder {
+    color: #8996a6;
+  }
+
+  #qrclaw-wireframes .qrwf-send {
+    color: #ffffff;
+    background: #3376ba;
+  }
+
+  #qrclaw-wireframes .qrwf-inspector {
+    border-left-color: #e2e7ee;
+    background: #f8fafc;
+  }
+
+  #qrclaw-wireframes .qrwf-inspector-head {
+    border-bottom-color: #e2e7ee;
+    color: #2b3748;
+  }
+
+  #qrclaw-wireframes .qrwf-inspector-tabs {
+    border-bottom-color: #e2e7ee;
+  }
+
+  #qrclaw-wireframes .qrwf-inspector-tab {
+    color: #8995a4;
+  }
+
+  #qrclaw-wireframes .qrwf-inspector-tab[data-selected=&quot;true&quot;] {
+    color: #2a68aa;
+    box-shadow: inset 0 -2px #4a88ca;
+  }
+
+  #qrclaw-wireframes .qrwf-inspector-label {
+    color: #8995a4;
+  }
+
+  #qrclaw-wireframes .qrwf-inspector-value {
+    color: #4d5b6d;
+  }
+
+  #qrclaw-wireframes .qrwf-progress-track {
+    background: #e2e8ef;
+  }
+
+  #qrclaw-wireframes .qrwf-progress-fill {
+    background: #4b88ca;
+  }
+
+  #qrclaw-wireframes .qrwf-step-item {
+    color: #68778a;
+  }
+
+  #qrclaw-wireframes .qrwf-step-index {
+    border-color: #c9d3df;
+    background: #ffffff;
+  }
+
+  #qrclaw-wireframes .qrwf-step-item[data-state=&quot;done&quot;] .qrwf-step-index {
+    border-color: #75b892;
+    color: #27865b;
+  }
+
+  #qrclaw-wireframes .qrwf-step-item[data-state=&quot;active&quot;] .qrwf-step-index {
+    border-color: #78a8d7;
+    color: #2f74bd;
+  }
+
+  #qrclaw-wireframes .qrwf-agent-summary {
+    border-color: #d8e2ed;
+    color: #526174;
+    background: #f2f7fc;
+  }
+
+  #qrclaw-wireframes .qrwf-agent-event {
+    border-bottom-color: #e2e7ee;
+    color: #68778a;
+  }
+
+  #qrclaw-wireframes .qrwf-agent-event time {
+    color: #929dac;
+  }
+
+  #qrclaw-wireframes .qrwf-agent-event strong {
+    color: #36475a;
+  }
+
+  #qrclaw-wireframes .qrwf-code-block {
+    border-color: #d6dee8;
+    color: #315d8d;
+    background: #f5f8fb;
+  }
+
+  #qrclaw-wireframes .qrwf-dimmed {
+    filter: brightness(.92);
+  }
+
+  #qrclaw-wireframes .qrwf-approval-overlay {
+    background: rgba(232, 237, 244, .72);
+  }
+
+  #qrclaw-wireframes .qrwf-approval-dialog {
+    border-color: #d8c6a6;
+    background: #ffffff;
+    box-shadow: 0 20px 60px rgba(51, 63, 79, .22);
+  }
+
+  #qrclaw-wireframes .qrwf-approval-head {
+    border-bottom-color: #eadfce;
+    background: #fffaf2;
+  }
+
+  #qrclaw-wireframes .qrwf-warning-mark {
+    border-color: #d5a452;
+    color: #b97513;
+    background: #fff5df;
+  }
+
+  #qrclaw-wireframes .qrwf-approval-title {
+    color: #4a3a25;
+  }
+
+  #qrclaw-wireframes .qrwf-approval-subtitle {
+    color: #8f806d;
+  }
+
+  #qrclaw-wireframes .qrwf-approval-meta {
+    color: #465568;
+  }
+
+  #qrclaw-wireframes .qrwf-approval-meta span:first-child {
+    color: #8995a4;
+  }
+
+  #qrclaw-wireframes .qrwf-command-preview {
+    border-color: #d8e0e9;
+    color: #2f5e8f;
+    background: #f5f8fb;
+  }
+
+  #qrclaw-wireframes .qrwf-risk-note {
+    border-left-color: #d99a3f;
+    color: #745d3c;
+    background: #fff8ec;
+  }
+
+  #qrclaw-wireframes .qrwf-approval-actions {
+    border-top-color: #e2e7ee;
+    background: #f8fafc;
+  }
+
+  #qrclaw-wireframes .qrwf-reject {
+    border-color: #cbd5e0;
+    color: #566579;
+    background: #ffffff;
+  }
+
+  #qrclaw-wireframes .qrwf-allow {
+    border-color: #c3862d;
+    color: #ffffff;
+    background: #bd7a1d;
+  }
+&lt;/style&gt;
+
+&lt;div id=&quot;qrclaw-wireframes&quot;&gt;
+  &lt;div class=&quot;qrwf-state-switcher&quot; aria-label=&quot;界面状态&quot;&gt;
+    &lt;button type=&quot;button&quot; aria-pressed=&quot;true&quot; data-show-state=&quot;running&quot;&gt;计划执行&lt;/button&gt;
+    &lt;button type=&quot;button&quot; aria-pressed=&quot;false&quot; data-show-state=&quot;agent&quot;&gt;子 Agent 详情&lt;/button&gt;
+    &lt;button type=&quot;button&quot; aria-pressed=&quot;false&quot; data-show-state=&quot;approval&quot;&gt;工具授权&lt;/button&gt;
+  &lt;/div&gt;
+
+  &lt;section class=&quot;qrwf-screen&quot; data-mock-state=&quot;running&quot; data-active=&quot;true&quot; aria-label=&quot;计划执行中的工作台&quot;&gt;
+    &lt;div class=&quot;qrwf-window&quot;&gt;
+      &lt;header class=&quot;qrwf-titlebar&quot;&gt;
+        &lt;div class=&quot;qrwf-brand&quot;&gt;&lt;span class=&quot;qrwf-brand-mark&quot;&gt;QR&lt;/span&gt;QRClaw&lt;/div&gt;
+        &lt;div class=&quot;qrwf-project-title&quot;&gt;qrclaw · develop&lt;/div&gt;
+        &lt;div class=&quot;qrwf-title-actions&quot;&gt;&lt;span class=&quot;qrwf-connection&quot;&gt;● 本地服务已连接&lt;/span&gt;&lt;span&gt;设置&lt;/span&gt;&lt;/div&gt;
+      &lt;/header&gt;
+      &lt;div class=&quot;qrwf-layout&quot;&gt;
+        &lt;aside class=&quot;qrwf-sidebar&quot;&gt;
+          &lt;button class=&quot;qrwf-new-task&quot; type=&quot;button&quot;&gt;＋ 新建任务&lt;/button&gt;
+          &lt;div class=&quot;qrwf-side-label&quot;&gt;今天&lt;/div&gt;
+          &lt;button class=&quot;qrwf-conversation&quot; type=&quot;button&quot; data-selected=&quot;true&quot;&gt;可视化客户端方案&lt;span&gt;运行中 · 14:32&lt;/span&gt;&lt;/button&gt;
+          &lt;button class=&quot;qrwf-conversation&quot; type=&quot;button&quot;&gt;项目依赖检查&lt;span&gt;已完成 · 13:08&lt;/span&gt;&lt;/button&gt;
+          &lt;button class=&quot;qrwf-conversation&quot; type=&quot;button&quot;&gt;记忆系统分析&lt;span&gt;昨天&lt;/span&gt;&lt;/button&gt;
+          &lt;div class=&quot;qrwf-side-label&quot;&gt;工作区&lt;/div&gt;
+          &lt;div class=&quot;qrwf-side-link&quot;&gt;&lt;span&gt;Agent&lt;/span&gt;&lt;span&gt;3&lt;/span&gt;&lt;/div&gt;
+          &lt;div class=&quot;qrwf-side-link&quot;&gt;&lt;span&gt;Wiki 记忆&lt;/span&gt;&lt;span&gt;12&lt;/span&gt;&lt;/div&gt;
+          &lt;div class=&quot;qrwf-side-link&quot;&gt;&lt;span&gt;Skills&lt;/span&gt;&lt;span&gt;8&lt;/span&gt;&lt;/div&gt;
+        &lt;/aside&gt;
+        &lt;main class=&quot;qrwf-main&quot;&gt;
+          &lt;div class=&quot;qrwf-timeline&quot;&gt;
+            &lt;div class=&quot;qrwf-thread-heading&quot;&gt;&lt;strong&gt;可视化客户端方案&lt;/strong&gt;&lt;span class=&quot;qrwf-run-state&quot;&gt;● 计划执行中 · 02:14&lt;/span&gt;&lt;/div&gt;
+            &lt;div class=&quot;qrwf-user-message&quot;&gt;分析当前项目，为可视化客户端制定第一阶段实施方案。&lt;/div&gt;
+            &lt;div class=&quot;qrwf-event-stack&quot;&gt;
+              &lt;article class=&quot;qrwf-event-row&quot; data-tone=&quot;done&quot;&gt;
+                &lt;div class=&quot;qrwf-event-title&quot;&gt;路由：计划执行 &lt;span&gt;14:30:02&lt;/span&gt;&lt;/div&gt;
+                &lt;div class=&quot;qrwf-event-description&quot;&gt;任务包含架构、前端和安全边界，需要拆分为 3 个步骤。&lt;/div&gt;
+              &lt;/article&gt;
+              &lt;article class=&quot;qrwf-event-row&quot; data-tone=&quot;done&quot;&gt;
+                &lt;div class=&quot;qrwf-event-title&quot;&gt;计划已创建 &lt;span&gt;3 个步骤&lt;/span&gt;&lt;/div&gt;
+                &lt;div class=&quot;qrwf-event-description&quot;&gt;① 现状分析　② 协议设计　③ MVP 任务拆分&lt;/div&gt;
+              &lt;/article&gt;
+              &lt;article class=&quot;qrwf-event-row&quot; data-tone=&quot;active&quot;&gt;
+                &lt;div class=&quot;qrwf-event-title&quot;&gt;步骤 1：现状分析 &lt;span&gt;2 / 3 Agent 完成&lt;/span&gt;&lt;/div&gt;
+                &lt;div class=&quot;qrwf-agent-grid&quot;&gt;
+                  &lt;div class=&quot;qrwf-agent-item&quot;&gt;
+                    &lt;div class=&quot;qrwf-agent-name&quot;&gt;后端分析 &lt;span class=&quot;qrwf-status-done&quot;&gt;✓ 完成&lt;/span&gt;&lt;/div&gt;
+                    &lt;div class=&quot;qrwf-agent-current&quot;&gt;读取 18 个文件，发现 2 套 API 入口&lt;/div&gt;
+                  &lt;/div&gt;
+                  &lt;div class=&quot;qrwf-agent-item&quot; data-selected=&quot;true&quot;&gt;
+                    &lt;div class=&quot;qrwf-agent-name&quot;&gt;依赖分析 &lt;span class=&quot;qrwf-status-running&quot;&gt;● 运行中&lt;/span&gt;&lt;/div&gt;
+                    &lt;div class=&quot;qrwf-agent-current&quot;&gt;正在检查 pyproject.toml 与 uv.lock&lt;/div&gt;
+                  &lt;/div&gt;
+                  &lt;div class=&quot;qrwf-agent-item&quot;&gt;
+                    &lt;div class=&quot;qrwf-agent-name&quot;&gt;前端分析 &lt;span class=&quot;qrwf-status-done&quot;&gt;✓ 完成&lt;/span&gt;&lt;/div&gt;
+                    &lt;div class=&quot;qrwf-agent-current&quot;&gt;React 原型缺少 API 与类型层&lt;/div&gt;
+                  &lt;/div&gt;
+                &lt;/div&gt;
+                &lt;div class=&quot;qrwf-tool-line&quot;&gt;&lt;span&gt;14:32:07&lt;/span&gt;&lt;span class=&quot;qrwf-tool-name&quot;&gt;run_shell&lt;/span&gt;&lt;span&gt;uv lock --check&lt;/span&gt;&lt;/div&gt;
+              &lt;/article&gt;
+              &lt;article class=&quot;qrwf-event-row&quot;&gt;
+                &lt;div class=&quot;qrwf-event-title&quot;&gt;步骤 2：运行协议设计 &lt;span&gt;等待步骤 1&lt;/span&gt;&lt;/div&gt;
+              &lt;/article&gt;
+            &lt;/div&gt;
+          &lt;/div&gt;
+          &lt;div class=&quot;qrwf-composer&quot;&gt;
+            &lt;div class=&quot;qrwf-input-shell&quot;&gt;&lt;span class=&quot;qrwf-input-placeholder&quot;&gt;任务运行中，可以补充要求……&lt;/span&gt;&lt;button class=&quot;qrwf-send&quot; type=&quot;button&quot;&gt;发送&lt;/button&gt;&lt;/div&gt;
+          &lt;/div&gt;
+        &lt;/main&gt;
+        &lt;aside class=&quot;qrwf-inspector&quot;&gt;
+          &lt;div class=&quot;qrwf-inspector-head&quot;&gt;&lt;span&gt;任务检查器&lt;/span&gt;&lt;span&gt;×&lt;/span&gt;&lt;/div&gt;
+          &lt;div class=&quot;qrwf-inspector-tabs&quot;&gt;&lt;div class=&quot;qrwf-inspector-tab&quot; data-selected=&quot;true&quot;&gt;概览&lt;/div&gt;&lt;div class=&quot;qrwf-inspector-tab&quot;&gt;计划&lt;/div&gt;&lt;div class=&quot;qrwf-inspector-tab&quot;&gt;Agent&lt;/div&gt;&lt;div class=&quot;qrwf-inspector-tab&quot;&gt;变更&lt;/div&gt;&lt;/div&gt;
+          &lt;div class=&quot;qrwf-inspector-body&quot;&gt;
+            &lt;section class=&quot;qrwf-inspector-section&quot;&gt;&lt;div class=&quot;qrwf-inspector-label&quot;&gt;运行状态&lt;/div&gt;&lt;div class=&quot;qrwf-inspector-value&quot;&gt;计划执行 · 步骤 1 / 3&lt;div class=&quot;qrwf-progress-track&quot;&gt;&lt;div class=&quot;qrwf-progress-fill&quot;&gt;&lt;/div&gt;&lt;/div&gt;&lt;/div&gt;&lt;/section&gt;
+            &lt;section class=&quot;qrwf-inspector-section&quot;&gt;&lt;div class=&quot;qrwf-inspector-label&quot;&gt;目标&lt;/div&gt;&lt;div class=&quot;qrwf-inspector-value&quot;&gt;制定可执行的可视化客户端第一阶段方案&lt;/div&gt;&lt;/section&gt;
+            &lt;section class=&quot;qrwf-inspector-section&quot;&gt;&lt;div class=&quot;qrwf-inspector-label&quot;&gt;计划步骤&lt;/div&gt;&lt;div class=&quot;qrwf-step-list&quot;&gt;
+              &lt;div class=&quot;qrwf-step-item&quot; data-state=&quot;active&quot;&gt;&lt;span class=&quot;qrwf-step-index&quot;&gt;1&lt;/span&gt;&lt;span&gt;现状分析&lt;br&gt;&lt;span class=&quot;qrwf-status-running&quot;&gt;3 个子 Agent&lt;/span&gt;&lt;/span&gt;&lt;/div&gt;
+              &lt;div class=&quot;qrwf-step-item&quot;&gt;&lt;span class=&quot;qrwf-step-index&quot;&gt;2&lt;/span&gt;&lt;span&gt;运行协议设计&lt;br&gt;等待步骤 1&lt;/span&gt;&lt;/div&gt;
+              &lt;div class=&quot;qrwf-step-item&quot;&gt;&lt;span class=&quot;qrwf-step-index&quot;&gt;3&lt;/span&gt;&lt;span&gt;MVP 任务拆分&lt;br&gt;等待步骤 2&lt;/span&gt;&lt;/div&gt;
+            &lt;/div&gt;&lt;/section&gt;
+            &lt;section class=&quot;qrwf-inspector-section&quot;&gt;&lt;div class=&quot;qrwf-inspector-label&quot;&gt;资源&lt;/div&gt;&lt;div class=&quot;qrwf-inspector-value&quot;&gt;3 个 Agent · 12 次工具调用&lt;br&gt;18.4k Token · 02:14&lt;/div&gt;&lt;/section&gt;
+          &lt;/div&gt;
+        &lt;/aside&gt;
+      &lt;/div&gt;
+    &lt;/div&gt;
+  &lt;/section&gt;
+
+  &lt;section class=&quot;qrwf-screen&quot; data-mock-state=&quot;agent&quot; data-active=&quot;false&quot; aria-label=&quot;子 Agent 详情&quot;&gt;
+    &lt;div class=&quot;qrwf-window&quot;&gt;
+      &lt;header class=&quot;qrwf-titlebar&quot;&gt;
+        &lt;div class=&quot;qrwf-brand&quot;&gt;&lt;span class=&quot;qrwf-brand-mark&quot;&gt;QR&lt;/span&gt;QRClaw&lt;/div&gt;
+        &lt;div class=&quot;qrwf-project-title&quot;&gt;qrclaw · develop&lt;/div&gt;
+        &lt;div class=&quot;qrwf-title-actions&quot;&gt;&lt;span class=&quot;qrwf-connection&quot;&gt;● 本地服务已连接&lt;/span&gt;&lt;span&gt;设置&lt;/span&gt;&lt;/div&gt;
+      &lt;/header&gt;
+      &lt;div class=&quot;qrwf-layout&quot;&gt;
+        &lt;aside class=&quot;qrwf-sidebar&quot;&gt;
+          &lt;button class=&quot;qrwf-new-task&quot; type=&quot;button&quot;&gt;＋ 新建任务&lt;/button&gt;
+          &lt;div class=&quot;qrwf-side-label&quot;&gt;今天&lt;/div&gt;
+          &lt;button class=&quot;qrwf-conversation&quot; type=&quot;button&quot; data-selected=&quot;true&quot;&gt;可视化客户端方案&lt;span&gt;运行中 · 14:32&lt;/span&gt;&lt;/button&gt;
+          &lt;button class=&quot;qrwf-conversation&quot; type=&quot;button&quot;&gt;项目依赖检查&lt;span&gt;已完成 · 13:08&lt;/span&gt;&lt;/button&gt;
+          &lt;div class=&quot;qrwf-side-label&quot;&gt;工作区&lt;/div&gt;
+          &lt;div class=&quot;qrwf-side-link&quot;&gt;&lt;span&gt;Agent&lt;/span&gt;&lt;span&gt;3&lt;/span&gt;&lt;/div&gt;
+          &lt;div class=&quot;qrwf-side-link&quot;&gt;&lt;span&gt;Wiki 记忆&lt;/span&gt;&lt;span&gt;12&lt;/span&gt;&lt;/div&gt;
+          &lt;div class=&quot;qrwf-side-link&quot;&gt;&lt;span&gt;Skills&lt;/span&gt;&lt;span&gt;8&lt;/span&gt;&lt;/div&gt;
+        &lt;/aside&gt;
+        &lt;main class=&quot;qrwf-main&quot;&gt;
+          &lt;div class=&quot;qrwf-timeline&quot;&gt;
+            &lt;div class=&quot;qrwf-thread-heading&quot;&gt;&lt;strong&gt;依赖分析 Agent&lt;/strong&gt;&lt;span class=&quot;qrwf-run-state&quot;&gt;● 运行中 · 00:46&lt;/span&gt;&lt;/div&gt;
+            &lt;article class=&quot;qrwf-event-row&quot; data-tone=&quot;active&quot;&gt;
+              &lt;div class=&quot;qrwf-event-title&quot;&gt;结构化思考摘要 &lt;span&gt;刚刚更新&lt;/span&gt;&lt;/div&gt;
+              &lt;div class=&quot;qrwf-event-description&quot;&gt;发现 pyproject.toml 与 uv.lock 的项目版本及依赖列表可能不一致。先核对锁文件，再判断是否需要重新生成，避免直接修改造成无关变更。&lt;/div&gt;
+            &lt;/article&gt;
+            &lt;div class=&quot;qrwf-event-stack&quot;&gt;
+              &lt;article class=&quot;qrwf-event-row&quot; data-tone=&quot;done&quot;&gt;&lt;div class=&quot;qrwf-event-title&quot;&gt;读取项目依赖声明 &lt;span&gt;14:32:01&lt;/span&gt;&lt;/div&gt;&lt;div class=&quot;qrwf-tool-line&quot;&gt;&lt;span&gt;工具&lt;/span&gt;&lt;span class=&quot;qrwf-tool-name&quot;&gt;read_file&lt;/span&gt;&lt;span&gt;pyproject.toml&lt;/span&gt;&lt;/div&gt;&lt;/article&gt;
+              &lt;article class=&quot;qrwf-event-row&quot; data-tone=&quot;done&quot;&gt;&lt;div class=&quot;qrwf-event-title&quot;&gt;读取锁文件 &lt;span&gt;14:32:03&lt;/span&gt;&lt;/div&gt;&lt;div class=&quot;qrwf-tool-line&quot;&gt;&lt;span&gt;工具&lt;/span&gt;&lt;span class=&quot;qrwf-tool-name&quot;&gt;read_file&lt;/span&gt;&lt;span&gt;uv.lock&lt;/span&gt;&lt;/div&gt;&lt;/article&gt;
+              &lt;article class=&quot;qrwf-event-row&quot; data-tone=&quot;done&quot;&gt;&lt;div class=&quot;qrwf-event-title&quot;&gt;搜索新增依赖 &lt;span&gt;14:32:05&lt;/span&gt;&lt;/div&gt;&lt;div class=&quot;qrwf-code-block&quot;&gt;rg -n &#x27;litellm|instructor&#x27; uv.lock&lt;/div&gt;&lt;/article&gt;
+              &lt;article class=&quot;qrwf-event-row&quot; data-tone=&quot;warn&quot;&gt;&lt;div class=&quot;qrwf-event-title&quot;&gt;锁文件检查失败 &lt;span&gt;14:32:16&lt;/span&gt;&lt;/div&gt;&lt;div class=&quot;qrwf-code-block&quot;&gt;uv lock --check → lockfile needs to be updated&lt;/div&gt;&lt;div class=&quot;qrwf-event-description&quot;&gt;没有修改文件。正在整理差异并回传主 Agent。&lt;/div&gt;&lt;/article&gt;
+            &lt;/div&gt;
+          &lt;/div&gt;
+          &lt;div class=&quot;qrwf-composer&quot;&gt;&lt;div class=&quot;qrwf-input-shell&quot;&gt;&lt;span class=&quot;qrwf-input-placeholder&quot;&gt;向主 Agent 补充要求……&lt;/span&gt;&lt;button class=&quot;qrwf-send&quot; type=&quot;button&quot;&gt;发送&lt;/button&gt;&lt;/div&gt;&lt;/div&gt;
+        &lt;/main&gt;
+        &lt;aside class=&quot;qrwf-inspector&quot;&gt;
+          &lt;div class=&quot;qrwf-inspector-head&quot;&gt;&lt;span&gt;子 Agent 详情&lt;/span&gt;&lt;span&gt;×&lt;/span&gt;&lt;/div&gt;
+          &lt;div class=&quot;qrwf-inspector-tabs&quot;&gt;&lt;div class=&quot;qrwf-inspector-tab&quot; data-selected=&quot;true&quot;&gt;概览&lt;/div&gt;&lt;div class=&quot;qrwf-inspector-tab&quot;&gt;工具&lt;/div&gt;&lt;div class=&quot;qrwf-inspector-tab&quot;&gt;变更&lt;/div&gt;&lt;div class=&quot;qrwf-inspector-tab&quot;&gt;结果&lt;/div&gt;&lt;/div&gt;
+          &lt;div class=&quot;qrwf-inspector-body&quot;&gt;
+            &lt;section class=&quot;qrwf-inspector-section&quot;&gt;&lt;div class=&quot;qrwf-inspector-label&quot;&gt;Agent&lt;/div&gt;&lt;div class=&quot;qrwf-inspector-value&quot;&gt;&lt;span class=&quot;qrwf-status-running&quot;&gt;● 依赖分析&lt;/span&gt;&lt;br&gt;父级：主 Agent / 步骤 1&lt;/div&gt;&lt;/section&gt;
+            &lt;section class=&quot;qrwf-inspector-section&quot;&gt;&lt;div class=&quot;qrwf-inspector-label&quot;&gt;任务&lt;/div&gt;&lt;div class=&quot;qrwf-inspector-value&quot;&gt;检查项目依赖与锁文件一致性，不修改任何文件。&lt;/div&gt;&lt;/section&gt;
+            &lt;section class=&quot;qrwf-inspector-section&quot;&gt;&lt;div class=&quot;qrwf-inspector-label&quot;&gt;当前判断&lt;/div&gt;&lt;div class=&quot;qrwf-agent-summary&quot;&gt;锁文件落后于 pyproject.toml。准备回传缺失依赖和版本差异，由主 Agent 决定是否修复。&lt;/div&gt;&lt;/section&gt;
+            &lt;section class=&quot;qrwf-inspector-section&quot;&gt;&lt;div class=&quot;qrwf-inspector-label&quot;&gt;执行统计&lt;/div&gt;&lt;div class=&quot;qrwf-inspector-value&quot;&gt;4 次工具调用&lt;br&gt;0 个文件变更&lt;br&gt;3.2k Token · 00:46&lt;/div&gt;&lt;/section&gt;
+            &lt;section class=&quot;qrwf-inspector-section&quot;&gt;&lt;div class=&quot;qrwf-inspector-label&quot;&gt;最近动作&lt;/div&gt;
+              &lt;div class=&quot;qrwf-agent-event&quot;&gt;&lt;time&gt;14:32:16&lt;/time&gt;&lt;span&gt;&lt;strong&gt;run_shell&lt;/strong&gt;锁文件检查失败&lt;/span&gt;&lt;/div&gt;
+              &lt;div class=&quot;qrwf-agent-event&quot;&gt;&lt;time&gt;14:32:05&lt;/time&gt;&lt;span&gt;&lt;strong&gt;grep_code&lt;/strong&gt;搜索新增依赖&lt;/span&gt;&lt;/div&gt;
+              &lt;div class=&quot;qrwf-agent-event&quot;&gt;&lt;time&gt;14:32:03&lt;/time&gt;&lt;span&gt;&lt;strong&gt;read_file&lt;/strong&gt;读取 uv.lock&lt;/span&gt;&lt;/div&gt;
+            &lt;/section&gt;
+          &lt;/div&gt;
+        &lt;/aside&gt;
+      &lt;/div&gt;
+    &lt;/div&gt;
+  &lt;/section&gt;
+
+  &lt;section class=&quot;qrwf-screen&quot; data-mock-state=&quot;approval&quot; data-active=&quot;false&quot; aria-label=&quot;工具授权状态&quot;&gt;
+    &lt;div class=&quot;qrwf-window&quot;&gt;
+      &lt;header class=&quot;qrwf-titlebar qrwf-dimmed&quot;&gt;
+        &lt;div class=&quot;qrwf-brand&quot;&gt;&lt;span class=&quot;qrwf-brand-mark&quot;&gt;QR&lt;/span&gt;QRClaw&lt;/div&gt;
+        &lt;div class=&quot;qrwf-project-title&quot;&gt;qrclaw · develop&lt;/div&gt;
+        &lt;div class=&quot;qrwf-title-actions&quot;&gt;&lt;span class=&quot;qrwf-connection&quot;&gt;● 本地服务已连接&lt;/span&gt;&lt;span&gt;设置&lt;/span&gt;&lt;/div&gt;
+      &lt;/header&gt;
+      &lt;div class=&quot;qrwf-layout qrwf-dimmed&quot;&gt;
+        &lt;aside class=&quot;qrwf-sidebar&quot;&gt;&lt;button class=&quot;qrwf-new-task&quot; type=&quot;button&quot;&gt;＋ 新建任务&lt;/button&gt;&lt;div class=&quot;qrwf-side-label&quot;&gt;今天&lt;/div&gt;&lt;button class=&quot;qrwf-conversation&quot; type=&quot;button&quot; data-selected=&quot;true&quot;&gt;可视化客户端方案&lt;span&gt;等待授权 · 14:33&lt;/span&gt;&lt;/button&gt;&lt;/aside&gt;
+        &lt;main class=&quot;qrwf-main&quot;&gt;&lt;div class=&quot;qrwf-timeline&quot;&gt;&lt;div class=&quot;qrwf-thread-heading&quot;&gt;&lt;strong&gt;可视化客户端方案&lt;/strong&gt;&lt;span class=&quot;qrwf-run-state&quot;&gt;等待用户授权&lt;/span&gt;&lt;/div&gt;&lt;div class=&quot;qrwf-user-message&quot;&gt;分析当前项目，为可视化客户端制定第一阶段实施方案。&lt;/div&gt;&lt;div class=&quot;qrwf-event-stack&quot;&gt;&lt;article class=&quot;qrwf-event-row&quot; data-tone=&quot;warn&quot;&gt;&lt;div class=&quot;qrwf-event-title&quot;&gt;工具调用等待授权 &lt;span&gt;依赖分析 Agent&lt;/span&gt;&lt;/div&gt;&lt;div class=&quot;qrwf-event-description&quot;&gt;准备运行锁文件一致性检查。&lt;/div&gt;&lt;/article&gt;&lt;/div&gt;&lt;/div&gt;&lt;div class=&quot;qrwf-composer&quot;&gt;&lt;div class=&quot;qrwf-input-shell&quot;&gt;&lt;span class=&quot;qrwf-input-placeholder&quot;&gt;任务等待授权……&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;/main&gt;
+        &lt;aside class=&quot;qrwf-inspector&quot;&gt;&lt;div class=&quot;qrwf-inspector-head&quot;&gt;&lt;span&gt;任务检查器&lt;/span&gt;&lt;/div&gt;&lt;/aside&gt;
+      &lt;/div&gt;
+      &lt;div class=&quot;qrwf-approval-overlay&quot;&gt;
+        &lt;div class=&quot;qrwf-approval-dialog&quot; role=&quot;dialog&quot; aria-modal=&quot;true&quot; aria-labelledby=&quot;qrwf-approval-title&quot;&gt;
+          &lt;div class=&quot;qrwf-approval-head&quot;&gt;&lt;span class=&quot;qrwf-warning-mark&quot;&gt;!&lt;/span&gt;&lt;div&gt;&lt;div class=&quot;qrwf-approval-title&quot; id=&quot;qrwf-approval-title&quot;&gt;依赖分析 Agent 请求执行命令&lt;/div&gt;&lt;div class=&quot;qrwf-approval-subtitle&quot;&gt;任务已暂停，等待你的决定&lt;/div&gt;&lt;/div&gt;&lt;/div&gt;
+          &lt;div class=&quot;qrwf-approval-body&quot;&gt;
+            &lt;div class=&quot;qrwf-approval-meta&quot;&gt;&lt;span&gt;工具&lt;/span&gt;&lt;span&gt;run_shell&lt;/span&gt;&lt;/div&gt;
+            &lt;div class=&quot;qrwf-approval-meta&quot;&gt;&lt;span&gt;执行目的&lt;/span&gt;&lt;span&gt;检查 pyproject.toml 与 uv.lock 是否一致&lt;/span&gt;&lt;/div&gt;
+            &lt;div class=&quot;qrwf-approval-meta&quot;&gt;&lt;span&gt;工作目录&lt;/span&gt;&lt;span&gt;/Users/admin/Documents/agent/qrclaw&lt;/span&gt;&lt;/div&gt;
+            &lt;div class=&quot;qrwf-approval-meta&quot;&gt;&lt;span&gt;执行环境&lt;/span&gt;&lt;span&gt;Docker 沙箱 · 网络关闭 · 工作区只读&lt;/span&gt;&lt;/div&gt;
+            &lt;div class=&quot;qrwf-command-preview&quot;&gt;uv lock --check&lt;/div&gt;
+            &lt;div class=&quot;qrwf-risk-note&quot;&gt;风险：该命令按预期只检查锁文件，但仍会启动本地进程。沙箱失败时任务会直接失败，不会降级到主机执行。&lt;/div&gt;
+          &lt;/div&gt;
+          &lt;div class=&quot;qrwf-approval-actions&quot;&gt;&lt;button class=&quot;qrwf-reject&quot; type=&quot;button&quot;&gt;拒绝&lt;/button&gt;&lt;button class=&quot;qrwf-allow&quot; type=&quot;button&quot;&gt;允许一次&lt;/button&gt;&lt;/div&gt;
+        &lt;/div&gt;
+      &lt;/div&gt;
+    &lt;/div&gt;
+  &lt;/section&gt;
+&lt;/div&gt;
+
+&lt;script&gt;
+  (() =&gt; {
+    const root = document.getElementById(&#x27;qrclaw-wireframes&#x27;);
+    const buttons = Array.from(root.querySelectorAll(&#x27;[data-show-state]&#x27;));
+    const screens = Array.from(root.querySelectorAll(&#x27;[data-mock-state]&#x27;));
+
+    const activateState = (target) =&gt; {
+      buttons.forEach((item) =&gt; item.setAttribute(&#x27;aria-pressed&#x27;, String(item.getAttribute(&#x27;data-show-state&#x27;) === target)));
+      screens.forEach((screen) =&gt; screen.setAttribute(&#x27;data-active&#x27;, String(screen.getAttribute(&#x27;data-mock-state&#x27;) === target)));
+    };
+
+    buttons.forEach((button) =&gt; {
+      button.addEventListener(&#x27;click&#x27;, () =&gt; {
+        const target = button.getAttribute(&#x27;data-show-state&#x27;);
+        activateState(target);
+      });
+    });
+
+    let requestedState = window.location.hash.slice(1);
+    try {
+      // 交互预览运行在包装页的内嵌文档中，优先读取外层页面状态。
+      requestedState = window.parent.location.hash.slice(1) || requestedState;
+    } catch (_error) {
+      // 跨域包装页无法读取时，继续使用内嵌文档自身的状态。
+    }
+    if (buttons.some((button) =&gt; button.getAttribute(&#x27;data-show-state&#x27;) === requestedState)) {
+      activateState(requestedState);
+    }
+  })();
+&lt;/script&gt;
+
+&lt;script src=&quot;https://unpkg.com/@floating-ui/core@1.7.3/dist/floating-ui.core.umd.min.js&quot;&gt;&lt;/script&gt;
+&lt;script src=&quot;https://unpkg.com/@floating-ui/dom@1.7.4/dist/floating-ui.dom.umd.min.js&quot;&gt;&lt;/script&gt;
+&lt;script&gt;
+(() =&gt; {
+  if (window.FloatingUIDOM == null) {
+    return;
+  }
+  const { autoUpdate, computePosition, flip, offset, shift, size } =
+    window.FloatingUIDOM;
+  const tooltipPlacements = new Set([&quot;top&quot;, &quot;right&quot;, &quot;bottom&quot;, &quot;left&quot;]);
+  const tooltipId = `codex-visualization-tooltip-${
+    window.crypto?.randomUUID?.() ?? Date.now().toString(36)
+  }`;
+  const tooltipGap = 5;
+  const hoverDelay = 700;
+  const skipDelay = 300;
+  let activeTrigger = null;
+  let pendingTrigger = null;
+  let tooltip = null;
+  let openTimeout = null;
+  let autoUpdateCleanup = null;
+  let positionRequest = 0;
+  let skipDelayUntil = 0;
+
+  const getTrigger = (target) =&gt;
+    target?.nodeType === Node.ELEMENT_NODE
+      ? target.closest(&quot;[data-tooltip]&quot;)
+      : null;
+  const containsTarget = (trigger, target) =&gt;
+    target?.nodeType != null &amp;&amp; trigger.contains(target);
+  const getContent = (trigger) =&gt;
+    trigger.getAttribute(&quot;data-tooltip&quot;)?.trim() ?? &quot;&quot;;
+  const getPlacement = (trigger) =&gt; {
+    const placement = trigger.getAttribute(&quot;data-tooltip-placement&quot;);
+    return tooltipPlacements.has(placement) ? placement : &quot;top&quot;;
+  };
+  const getTooltip = () =&gt; {
+    if (tooltip == null) {
+      tooltip = document.createElement(&quot;div&quot;);
+      tooltip.id = tooltipId;
+      tooltip.className = &quot;tooltip&quot;;
+      tooltip.setAttribute(&quot;role&quot;, &quot;tooltip&quot;);
+    }
+    return tooltip;
+  };
+  const setDescribedBy = (trigger, described) =&gt; {
+    const ids = new Set(
+      (trigger.getAttribute(&quot;aria-describedby&quot;) ?? &quot;&quot;)
+        .split(/\s+/)
+        .filter(Boolean),
+    );
+    if (described) {
+      ids.add(tooltipId);
+    } else {
+      ids.delete(tooltipId);
+    }
+    if (ids.size === 0) {
+      trigger.removeAttribute(&quot;aria-describedby&quot;);
+    } else {
+      trigger.setAttribute(&quot;aria-describedby&quot;, [...ids].join(&quot; &quot;));
+    }
+  };
+  const clearOpenTimeout = () =&gt; {
+    if (openTimeout != null) {
+      window.clearTimeout(openTimeout);
+      openTimeout = null;
+    }
+    pendingTrigger = null;
+  };
+  const closeTooltip = (activateSkipDelay = true) =&gt; {
+    clearOpenTimeout();
+    positionRequest += 1;
+    autoUpdateCleanup?.();
+    autoUpdateCleanup = null;
+    if (activeTrigger == null) {
+      return;
+    }
+    setDescribedBy(activeTrigger, false);
+    activeTrigger = null;
+    tooltip?.remove();
+    if (activateSkipDelay) {
+      skipDelayUntil = Date.now() + skipDelay;
+    }
+  };
+  const updatePosition = (trigger, floating) =&gt; {
+    const request = ++positionRequest;
+    void computePosition(trigger, floating, {
+      middleware: [
+        offset(tooltipGap),
+        flip({ padding: tooltipGap }),
+        shift({ padding: tooltipGap }),
+        size({
+          padding: tooltipGap,
+          apply({ availableHeight, availableWidth, elements }) {
+            elements.floating.style.setProperty(
+              &quot;--tooltip-available-width&quot;,
+              `${Math.max(0, availableWidth)}px`,
+            );
+            elements.floating.style.setProperty(
+              &quot;--tooltip-available-height&quot;,
+              `${Math.max(0, availableHeight)}px`,
+            );
+          },
+        }),
+      ],
+      placement: getPlacement(trigger),
+      strategy: &quot;fixed&quot;,
+    })
+      .then(({ x, y }) =&gt; {
+        if (activeTrigger !== trigger || request !== positionRequest) {
+          return;
+        }
+        const scale = window.devicePixelRatio || 1;
+        floating.style.transform = `translate(${Math.round(x * scale) / scale}px, ${Math.round(y * scale) / scale}px)`;
+        floating.style.visibility = &quot;visible&quot;;
+      })
+      .catch(() =&gt; {
+        if (activeTrigger === trigger &amp;&amp; request === positionRequest) {
+          closeTooltip(false);
+        }
+      });
+  };
+  const openTooltip = (trigger) =&gt; {
+    const content = getContent(trigger);
+    if (!trigger.isConnected || content.length === 0) {
+      return;
+    }
+    clearOpenTimeout();
+    if (activeTrigger === trigger) {
+      return;
+    }
+    closeTooltip();
+    const floating = getTooltip();
+    floating.textContent = content;
+    floating.style.visibility = &quot;hidden&quot;;
+    floating.style.transform = &quot;translate(0, 0)&quot;;
+    document.body.appendChild(floating);
+    activeTrigger = trigger;
+    setDescribedBy(trigger, true);
+    autoUpdateCleanup = autoUpdate(trigger, floating, () =&gt; {
+      updatePosition(trigger, floating);
+    });
+  };
+  const requestOpen = (trigger, immediate = false) =&gt; {
+    if (
+      getContent(trigger).length === 0 ||
+      activeTrigger === trigger ||
+      pendingTrigger === trigger
+    ) {
+      return;
+    }
+    clearOpenTimeout();
+    pendingTrigger = trigger;
+    const delay =
+      immediate || activeTrigger != null || Date.now() &lt; skipDelayUntil
+        ? 0
+        : hoverDelay;
+    if (delay === 0) {
+      openTooltip(trigger);
+      return;
+    }
+    openTimeout = window.setTimeout(() =&gt; {
+      openTimeout = null;
+      pendingTrigger = null;
+      openTooltip(trigger);
+    }, delay);
+  };
+  const handlePointerOpen = (event) =&gt; {
+    if (event.pointerType === &quot;touch&quot;) {
+      return;
+    }
+    const trigger = getTrigger(event.target);
+    if (trigger == null || containsTarget(trigger, event.relatedTarget)) {
+      return;
+    }
+    requestOpen(trigger);
+  };
+  const handleLeave = (event) =&gt; {
+    const trigger = getTrigger(event.target);
+    if (trigger == null || containsTarget(trigger, event.relatedTarget)) {
+      return;
+    }
+    if (activeTrigger === trigger || pendingTrigger === trigger) {
+      closeTooltip();
+    }
+  };
+  const handleFocusIn = (event) =&gt; {
+    const trigger = getTrigger(event.target);
+    if (trigger?.matches(&quot;:focus-visible&quot;)) {
+      requestOpen(trigger, true);
+    }
+  };
+  const handleKeyDown = (event) =&gt; {
+    if (event.key === &quot;Escape&quot;) {
+      closeTooltip();
+    }
+  };
+  const handleContextMenu = (event) =&gt; {
+    const trigger = getTrigger(event.target);
+    if (activeTrigger === trigger || pendingTrigger === trigger) {
+      closeTooltip();
+    }
+  };
+  const destroy = () =&gt; {
+    closeTooltip(false);
+    document.removeEventListener(&quot;pointerover&quot;, handlePointerOpen);
+    document.removeEventListener(&quot;pointerout&quot;, handleLeave);
+    document.removeEventListener(&quot;focusin&quot;, handleFocusIn);
+    document.removeEventListener(&quot;focusout&quot;, handleLeave);
+    document.removeEventListener(&quot;keydown&quot;, handleKeyDown);
+    document.removeEventListener(&quot;contextmenu&quot;, handleContextMenu);
+    tooltip = null;
+  };
+
+  document.addEventListener(&quot;pointerover&quot;, handlePointerOpen);
+  document.addEventListener(&quot;pointerout&quot;, handleLeave);
+  document.addEventListener(&quot;focusin&quot;, handleFocusIn);
+  document.addEventListener(&quot;focusout&quot;, handleLeave);
+  document.addEventListener(&quot;keydown&quot;, handleKeyDown);
+  document.addEventListener(&quot;contextmenu&quot;, handleContextMenu);
+  window.addEventListener(&quot;pagehide&quot;, destroy, { once: true });
+})();
+&lt;/script&gt;
+&lt;script id=&quot;codex-visualization-lucide&quot; async src=&quot;https://unpkg.com/lucide@1.17.0/dist/umd/lucide.js&quot;&gt;&lt;/script&gt;
+&lt;script&gt;
+(() =&gt; {
+  const initialize = () =&gt; {
+    globalThis.lucide?.createIcons({ attrs: { width: 16, height: 16 } });
+  };
+  if (globalThis.lucide != null) {
+    initialize();
+    return;
+  }
+  document
+    .getElementById(&quot;codex-visualization-lucide&quot;)
+    ?.addEventListener(&quot;load&quot;, initialize, { once: true });
+})();
+&lt;/script&gt;
+
+&lt;/body&gt;
+&lt;/html&gt;
+"></iframe>
+</body>
+</html>

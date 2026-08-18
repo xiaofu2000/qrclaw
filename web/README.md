@@ -1,4 +1,54 @@
-# React + TypeScript + Vite
+# QRClaw 可视化客户端
+
+React + TypeScript 客户端，按 MVVM 分层接入本地 FastAPI 运行服务。
+
+## 启动
+
+先启动后端：
+
+```bash
+QRCLAW_ACCESS_TOKEN=dev-token python -m qrclaw.server.cli
+```
+
+再启动前端：
+
+```bash
+npm install
+npm run dev
+```
+
+首次打开页面时，在“工作台设置”中输入同一个本地访问令牌。开发服务器会把 `/api` 和 WebSocket 代理到 `127.0.0.1:8765`。
+
+也可以在 `web/.env.local` 中配置：
+
+```text
+VITE_QRCLAW_ACCESS_TOKEN=dev-token
+VITE_QRCLAW_API_BASE_URL=/api/v1
+```
+
+生产部署默认使用同源 `/api/v1` 和 `/api/v1/events`；如需分离部署，可额外配置 `VITE_QRCLAW_EVENTS_URL`。
+
+## 分层
+
+```text
+views / components → viewmodels → repositories → services
+                              ↘ models
+```
+
+- View 只渲染状态和转发操作；
+- ViewModel 管理页面状态和用户命令；
+- Repository 负责快照、事件去重和断线恢复；
+- Service 封装 HTTP 与 WebSocket；
+- 网络 DTO 和页面领域 Model 分离。
+
+## 验证
+
+```bash
+npm run build
+npm run lint
+```
+
+---
 
 This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
 

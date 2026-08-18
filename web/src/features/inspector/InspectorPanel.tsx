@@ -1,19 +1,34 @@
-export function InspectorPanel() {
+import type { Agent, RunSnapshot } from '../../models/workbench'
+
+type InspectorPanelProps = { snapshot: RunSnapshot | null; selectedAgent: Agent | null; onCloseAgent: () => void }
+const statusLabels: Record<string, string> = { queued: '排队中', routing: '路由中', running: '运行中', waiting_approval: '等待授权', cancelling: '正在取消', completed: '已完成', failed: '失败', cancelled: '已取消', pending: '等待' }
+
+/** 右侧任务或 Agent 结构化检查器。 */
+export function InspectorPanel({ snapshot, selectedAgent, onCloseAgent }: InspectorPanelProps) {
+  if (!snapshot) return <aside className="inspector-panel"><div className="inspector-header"><strong>任务检查器</strong></div><div className="inspector-empty">发起任务后，这里会显示计划、Agent、工具和变更统计。</div></aside>
+
+  if (selectedAgent) {
+    const tools = snapshot.toolCalls.filter((item) => item.agentId === selectedAgent.id)
+    const parent = snapshot.agents.find((item) => item.id === selectedAgent.parentAgentId)
+    return <aside className="inspector-panel">
+      <div className="inspector-header"><strong>Agent 详情</strong><button type="button" onClick={onCloseAgent}>×</button></div>
+      <section><div className="panel-title">Agent</div><div className={`status-line status-${selectedAgent.status}`}>● {selectedAgent.name} · {statusLabels[selectedAgent.status]}</div><div className="panel-value muted">父级：{parent?.name ?? '主 Agent'}</div></section>
+      <section><div className="panel-title">任务</div><div className="panel-value">{selectedAgent.task || '未提供任务描述'}</div></section>
+      <section><div className="panel-title">当前判断</div><div className="decision-box">{selectedAgent.decisionSummary || '等待结构化思考摘要'}</div></section>
+      <section><div className="panel-title">最近动作</div><div className="panel-value">{selectedAgent.currentAction || '暂无'}</div></section>
+      <section><div className="panel-title">执行统计</div><div className="panel-value">{tools.length} 次工具调用<br />{tools.filter((item) => item.status === 'completed').length} 次完成</div></section>
+    </aside>
+  }
+
+  const completedSteps = snapshot.plan?.steps.filter((step) => step.status === 'completed').length ?? 0
   return (
     <aside className="inspector-panel">
-      <section>
-        <div className="panel-title">运行状态</div>
-        <div className="panel-value">本地服务已连接</div>
-      </section>
-      <section>
-        <div className="panel-title">工具调用</div>
-        <div className="panel-value muted">等待任务执行</div>
-      </section>
-      <section>
-        <div className="panel-title">文件变更</div>
-        <div className="panel-value muted">暂无</div>
-      </section>
+      <div className="inspector-header"><strong>任务检查器</strong></div>
+      <section><div className="panel-title">运行状态</div><div className={`status-line status-${snapshot.run.status}`}>● {statusLabels[snapshot.run.status]}</div></section>
+      <section><div className="panel-title">目标</div><div className="panel-value">{snapshot.run.goal}</div></section>
+      {snapshot.plan && <section><div className="panel-title">计划步骤</div><div className="progress-summary">{completedSteps} / {snapshot.plan.steps.length} 已完成</div><div className="progress-track"><i style={{ width: `${snapshot.plan.steps.length ? (completedSteps / snapshot.plan.steps.length) * 100 : 0}%` }} /></div>{snapshot.plan.steps.map((step, index) => <div key={step.id} className="inspector-step"><b>{index + 1}</b><span>{step.description}<small>{statusLabels[step.status]}</small></span></div>)}</section>}
+      <section><div className="panel-title">资源</div><div className="panel-value">{snapshot.agents.length} 个 Agent · {snapshot.toolCalls.length} 次工具调用<br />{snapshot.fileChanges.length} 个文件变更</div></section>
+      {Object.keys(snapshot.usage).length > 0 && <section><div className="panel-title">用量</div><pre className="compact-pre">{JSON.stringify(snapshot.usage, null, 2)}</pre></section>}
     </aside>
   )
 }
-
