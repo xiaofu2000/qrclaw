@@ -84,6 +84,12 @@ QRClaw 通过环境变量进行配置。您可以创建一个 `.env` 文件放�
   VERTEX_API_KEY="your-google-cloud-project-id"
   VERTEX_LOCATION="us-central1"
   ```
+- **OrcaRouter**（OpenAI 兼容的路由网关，https://www.orcarouter.ai）:
+  ```
+  LITELLM_MODEL="orcarouter/fusion"  # 或 orcarouter/fusion-mini / orcarouter/auto
+  LITELLM_BASE_URL="https://api.orcarouter.ai/v1"
+  LITELLM_API_KEY="sk-orca-..."
+  ```
 - **联网搜索**:
   ```
   # Tavily 搜索 API
