@@ -9,6 +9,7 @@ import pytest
 
 from qrclaw.agent import set_execution_context
 from qrclaw.execution.context import CancellationToken, ExecutionContext, RunCancelled
+from qrclaw.tools import shell as shell_module
 from qrclaw.tools.shell import _exec_direct, _get_workspace_root
 
 
@@ -56,3 +57,32 @@ def test_shell_process_is_terminated_after_cancel(tmp_path):
         set_execution_context(None)
 
     assert time.monotonic() - started_at < 3
+
+
+def test_sandbox_failure_never_falls_back_to_host(tmp_path, monkeypatch):
+    """沙箱启动或执行失败时必须直接失败，不能改在主机执行。"""
+
+    host_executions = []
+    context = _context(tmp_path)
+
+    def fail_in_sandbox(*_):
+        """模拟沙箱创建失败。"""
+
+        raise RuntimeError("沙箱创建失败")
+
+    monkeypatch.setattr(shell_module, "_is_sandbox_enabled", lambda: True)
+    monkeypatch.setattr(shell_module, "_exec_in_sandbox", fail_in_sandbox)
+    monkeypatch.setattr(
+        shell_module,
+        "_exec_direct",
+        lambda *_: host_executions.append(True) or "不应执行",
+    )
+
+    set_execution_context(context)
+    try:
+        with pytest.raises(RuntimeError, match="沙箱创建失败"):
+            shell_module.run_shell("touch unsafe.txt")
+    finally:
+        set_execution_context(None)
+
+    assert host_executions == []

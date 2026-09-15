@@ -103,7 +103,6 @@ class LiteLLMProvider(LLMProvider):
         # LiteLLM 配置
         litellm.drop_params = True  # 忽略不支持的参数
         litellm.set_verbose = False
-        litellm.ssl_verify = False  # 关闭 SSL 证书验证
 
         logger.info(f"LiteLLM 渠道已初始化: model={self._model}")
 
@@ -113,7 +112,7 @@ class LiteLLMProvider(LLMProvider):
         drop_if_null = {"refusal", "annotations", "audio", "function_call", "reasoning_content"}
         result = []
         for msg in messages:
-            cleaned = {k: v for k, v in msg.items() if not (k in drop_if_null and v is None)}
+            cleaned = {k: v for k, v in msg.items() if k not in {"uuid", "memory_extracted"} and not (k in drop_if_null and v is None)}
             if cleaned.get("content") is None:
                 cleaned["content"] = ""
             result.append(cleaned)

@@ -1,35 +1,25 @@
-"""
-Token 计算工具模块。
-
-使用 LiteLLM 的 token_counter，针对不同模型自动选择正确的分词器，
-比 tiktoken 对非 OpenAI 模型（如 MiniMax）更准确。
-"""
+"""统一使用当前模型的分词器估算请求大小。"""
 import litellm
-from qrclaw.config import LITELLM_MODEL
-from qrclaw.logger import get_logger
-
-logger = get_logger("qrclaw.memory.token_utils")
+from qrclaw.llm_service import get_llm_service
 
 
 def count_text_tokens(text: str) -> int:
-    """
-    计算文本的 token 数。
-
-    Args:
-        text: 文本内容
-    Returns:
-        int: token 数
-    """
-    return litellm.token_counter(model=LITELLM_MODEL, text=text)
+    """按当前正在使用的模型计算文本 Token 数。"""
+    return litellm.token_counter(model=get_llm_service().model_name, text=text)
 
 
-def count_messages_tokens(messages: list[dict]) -> int:
-    """
-    计算消息列表的 token 数。
+def count_messages_tokens(messages: list[dict], tools: list[dict] | None = None) -> int:
+    """估算实际请求，包含系统提示、消息和工具定义。"""
+    if not messages and not tools:
+        return 0
+    kwargs = {"model": get_llm_service().model_name, "messages": messages}
+    if tools:
+        kwargs["tools"] = tools
+    return litellm.token_counter(**kwargs)
 
-    Args:
-        messages: OpenAI 格式的消息列表
-    Returns:
-        int: token 总数
-    """
-    return litellm.token_counter(model=LITELLM_MODEL, messages=messages)
+
+def check_input_budget(messages: list[dict], tools: list[dict] | None = None) -> None:
+    """发送前检查输入上限，为输出预留窗口，超限时保留数据并明确报错。"""
+    from qrclaw.config import _MODEL_MAX_TOKENS
+    if count_messages_tokens(messages, tools) > int(_MODEL_MAX_TOKENS * 0.9):
+        raise ValueError("模型输入超过上下文窗口的 90%，请缩短输入或先压缩历史")

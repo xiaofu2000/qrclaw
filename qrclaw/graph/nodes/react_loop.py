@@ -5,6 +5,7 @@ ReactLoop 节点
 适用于：简单任务直接执行、并行计划完成后的最终整合。
 """
 import json
+from contextlib import nullcontext
 from typing import Callable, Optional
 from rich.console import Console
 from rich.panel import Panel
@@ -29,16 +30,15 @@ def run_react_loop(
     tools: list[dict],
     max_iterations: int = MAX_ITERATIONS,
     on_tool_call: Optional[Callable[[str, str], str]] = None,
-    on_finish: Optional[Callable[[str], None]] = None,
-    on_assistant_message: Optional[Callable[[dict], None]] = None,
     console: Optional[Console] = None,
     silent: bool = False,
     session: Optional[Session] = None,
     llm_service: Optional[LLMService] = None,
     execution_context=None,
+    context_manager=None,
 ) -> str:
     """
-    通用 ReAct 循环核心，供 ReactLoopNode 和 MemoryExtractionNode 等复用。
+    ReAct 循环核心，每次模型请求前重新组装上下文，每条消息立即持久化。
 
     Args:
         messages: 初始消息列表（system + 任务描述）
@@ -46,17 +46,22 @@ def run_react_loop(
         max_iterations: 最大迭代次数
         on_tool_call: 工具执行回调，签名 (name, arguments) -> result
                       为 None 时使用默认 execute()
-        on_finish: 完成回调，签名 (content) -> None
-        on_assistant_message: 完整 assistant 消息回调，包含 reasoning_content/tool_calls
         console: Rich Console，silent=True 时不输出
         silent: 静默模式，不打印任何内容
-        session: Session 对象，用于更新 token 使用量
+        session: 会话消息与 Token 使用量的持久化入口
+        context_manager: 每轮重新构建并检查实际输入预算
 
     Returns:
         最终 LLM 输出内容
     """
     _console = console or Console()
     llm = llm_service or get_llm_service()
+
+    def record(message: dict) -> None:
+        """统一记录模型回复和工具结果，避免推理历史与磁盘会话分叉。"""
+        if session is not None:
+            session.add(message)
+        messages.append(message)
 
     for iteration in range(max_iterations):
         logger.debug(f"run_react_loop 第 {iteration + 1} 轮")
@@ -67,6 +72,9 @@ def run_react_loop(
                 "agent.progress",
                 {"current_action": f"正在进行第 {iteration + 1} 轮模型调用"},
             )
+
+        if context_manager is not None:
+            messages = context_manager.build_messages("react", tools=tools)
 
         streamed_parts: list[str] = []
         message_id = None
@@ -85,7 +93,7 @@ def run_react_loop(
                 {"message_id": message_id, "delta": delta},
             )
 
-        with _console.status("[bold yellow]思考中...[/bold yellow]", spinner="dots") if not silent else _noop_ctx():
+        with _console.status("[bold yellow]思考中...[/bold yellow]", spinner="dots") if not silent else nullcontext():
             try:
                 chat_kwargs = {"messages": messages, "tools": tools}
                 if execution_context is not None:
@@ -139,107 +147,83 @@ def run_react_loop(
                 ))
                 _console.print()
             assistant_msg = assistant_response_to_message(response)
-            messages.append(assistant_msg)
-            if on_assistant_message:
-                on_assistant_message(assistant_msg)
-            if on_finish:
-                on_finish(response.content or "")
+            record(assistant_msg)
             return response.content or ""
 
         if response.finish_reason == "length":
             return "错误：回复被截断"
 
-        assistant_msg_saved = False
+        if not response.tool_calls:
+            raise ValueError(f"模型未返回最终回复或工具调用：{response.finish_reason}")
+        record(assistant_response_to_message(response))
+        completed = set()
 
-        for tc in response.tool_calls:
-            if execution_context is not None:
-                execution_context.check_cancelled()
-            name = tc.name
-            arguments = tc.arguments
-            logger.info(f"工具调用: {name}")
-            if execution_context is not None:
-                execution_context.publish(
-                    "agent.progress",
-                    {
-                        "current_action": f"准备调用工具 {name}",
-                        "decision_summary": f"模型选择调用 {name} 继续完成当前任务",
-                    },
-                )
+        try:
+            for tc in response.tool_calls:
+                if execution_context is not None:
+                    execution_context.check_cancelled()
+                name = tc.name
+                arguments = tc.arguments
+                logger.info(f"工具调用: {name}")
+                if execution_context is not None:
+                    execution_context.publish(
+                        "agent.progress",
+                        {
+                            "current_action": f"准备调用工具 {name}",
+                            "decision_summary": f"模型选择调用 {name} 继续完成当前任务",
+                        },
+                    )
 
-            if not silent:
+                if not silent:
+                    try:
+                        args_formatted = json.dumps(json.loads(arguments), ensure_ascii=False, indent=2)
+                    except Exception:
+                        args_formatted = arguments
+                    _console.print()
+                    _console.print(Panel(
+                        Text.assemble(("[bold cyan]" + name + "[/bold cyan]\n", ""), (args_formatted, "")),
+                        title="[bold yellow]▶ 调用工具[/bold yellow]",
+                        border_style="yellow",
+                        expand=False,
+                    ))
+                    _console.print()
+
                 try:
-                    args_formatted = json.dumps(json.loads(arguments), ensure_ascii=False, indent=2)
-                except Exception:
-                    args_formatted = arguments
-                _console.print()
-                _console.print(Panel(
-                    Text.assemble(("[bold cyan]" + name + "[/bold cyan]\n", ""), (args_formatted, "")),
-                    title="[bold yellow]▶ 调用工具[/bold yellow]",
-                    border_style="yellow",
-                    expand=False,
-                ))
-                _console.print()
+                    if on_tool_call:
+                        result = on_tool_call(name, arguments)
+                    else:
+                        result = ToolRunner().run(name, arguments)
+                except RunCancelled:
+                    raise
+                except Exception as e:
+                    result = f"工具执行失败: {str(e)}"
+                    logger.error(f"工具执行失败: {name}, 错误: {e}", exc_info=True)
 
-            if not assistant_msg_saved:
-                messages.append(assistant_response_to_message(response))
-                assistant_msg_saved = True
+                if not silent:
+                    preview = result[:200] + "..." if len(result) > 200 else result
+                    _console.print(Panel(
+                        Text(preview),
+                        title="[bold blue]◀ 工具结果[/bold blue]",
+                        border_style="blue",
+                        expand=False,
+                    ))
+                    _console.print()
 
-            try:
-                if on_tool_call:
-                    result = on_tool_call(name, arguments)
-                else:
-                    result = ToolRunner().run(name, arguments)
-            except RunCancelled:
-                raise
-            except Exception as e:
-                result = f"工具执行失败: {str(e)}"
-                logger.error(f"工具执行失败: {name}, 错误: {e}", exc_info=True)
-
-            if not silent:
-                preview = result[:200] + "..." if len(result) > 200 else result
-                _console.print(Panel(
-                    Text(preview),
-                    title="[bold blue]◀ 工具结果[/bold blue]",
-                    border_style="blue",
-                    expand=False,
-                ))
-                _console.print()
-
-            messages.append(tool_result_to_message(tc.id, result))
+                record(tool_result_to_message(tc.id, result))
+                completed.add(tc.id)
+        finally:
+            # 取消或异常也补齐未执行的结果，恢复会话时不会出现悬空工具调用。
+            for tc in response.tool_calls:
+                if tc.id not in completed:
+                    record(tool_result_to_message(tc.id, "工具执行中断，未获得可确认的结果，请检查实际状态后继续。"))
 
     logger.warning("run_react_loop 达到最大迭代次数")
     return "错误：达到最大迭代次数"
 
 
-class _noop_ctx:
-    """静默模式占位 context manager"""
-    def __enter__(self): return self
-    def __exit__(self, *_): pass
-
-
 class ReactLoopNode:
 
-    def __init__(self):
-        # 延迟导入，避免循环依赖
-        self._memory_integration = None
-
-    def _get_memory_integration(self, workspace: Workspace):
-        """懒加载 MemoryExtractionIntegration（仅主 agent）"""
-        if self._memory_integration is None:
-            from qrclaw.graph.nodes.memory_extraction import (
-                MemoryExtractionNode,
-                MemoryExtractionIntegration,
-            )
-            from qrclaw.agent import register_extractor
-            from qrclaw.memory.wiki import WikiMemory
-
-            if workspace:
-                memory = WikiMemory.for_workspace(workspace.memory_dir)
-                extractor = MemoryExtractionNode(memory)
-                register_extractor(extractor)
-                self._memory_integration = MemoryExtractionIntegration(extractor)
-                logger.debug("MemoryExtractionIntegration 已初始化")
-        return self._memory_integration
+    """执行当前任务，结束后同步完成达到阈值的记忆提取。"""
 
     def run(
         self,
@@ -252,9 +236,6 @@ class ReactLoopNode:
     ) -> str:
         ctx = get_context_manager()
 
-        # 仅主 agent 启用记忆提取
-        memory_integration = self._get_memory_integration(workspace) if not is_sub_agent else None
-
         tools = get_schemas_for_sub_agent() if is_sub_agent else get_schemas()
         tool_runner = ToolRunner(
             console=console,
@@ -262,26 +243,17 @@ class ReactLoopNode:
             execution_context=execution_context,
         )
 
-        def _on_assistant_message(message: dict) -> None:
-            session.add(dict(message))
-            if memory_integration:
-                memory_integration.on_react_loop_end(session, 0)
-
-        # 调用前检查压缩
-        ctx.compress_if_needed()
-        messages = ctx.build_messages("react")
-
         try:
             result = run_react_loop(
-                messages=messages,
+                messages=[],
                 tools=tools,
                 max_iterations=MAX_ITERATIONS,
                 on_tool_call=tool_runner.run,
-                on_assistant_message=_on_assistant_message,
                 console=console,
                 silent=False,
                 session=session,
                 llm_service=get_llm_service(),
+                context_manager=ctx,
                 execution_context=execution_context,
             )
         except RunCancelled:
@@ -295,4 +267,11 @@ class ReactLoopNode:
             ))
             return f"错误：{e}"
 
+        if not is_sub_agent:
+            try:
+                ctx.extractor.check_and_extract(session)
+            except Exception as exc:
+                logger.warning(f"记忆提取未完成，保留会话供下次重试：{exc}", exc_info=True)
+            finally:
+                ctx.invalidate_cache()
         return result

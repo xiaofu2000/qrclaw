@@ -3,9 +3,7 @@
 
 负责参数解析、初始化和主循环。
 
-Import 顺序说明：
-  触发大量子模块 import 的代码（tools、agent 等）必须在 setup_logger 之后延迟导入，
-  否则各模块顶层的 get_logger() 会在日志系统初始化前执行，导致日志写入错误的文件。
+日志 handler 在创建会话后统一配置，模块中的 get_logger() 不触发初始化。
 """
 import argparse
 from rich.console import Console
@@ -46,9 +44,9 @@ def main() -> None:
     # 1. 初始化工作空间（确定所有路径）
     workspace = Workspace(agent_id=args.agent)
 
-    # 2. 延迟导入各子模块（在 setup_logger 之前不能触发 get_logger）
+    # 2. 加载工具和运行模块
     import qrclaw.tools               # noqa: E402  触发所有工具注册
-    import qrclaw.sandbox.config      # noqa: E402  触发配置文件创建
+    import qrclaw.sandbox.config      # noqa: F401  触发配置文件创建
     from qrclaw.tools.spawn_agent import set_console as set_spawn_console
     set_spawn_console(console)  # 注入 console，子 agent 完成时直接打印
     from qrclaw.agent import run

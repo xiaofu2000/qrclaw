@@ -56,6 +56,7 @@ export type MessageDto = {
   message_id: string
   role: string
   content: unknown
+  tool_calls?: unknown[] | null
 }
 
 export type RunDto = {

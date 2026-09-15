@@ -1,4 +1,6 @@
 import json
+import os
+import tempfile
 import uuid
 from datetime import datetime
 from pathlib import Path
@@ -8,12 +10,22 @@ from qrclaw.memory.token_utils import count_messages_tokens
 logger = get_logger("qrclaw.memory.session")
 
 
-def count_tokens(messages: list[dict]) -> int:
-    """计算会话消息的 Token 数，保留为会话模块的公开能力。"""
+def _session_path(sessions_dir: Path, session_id: str) -> Path:
+    """校验会话标识，禁止越过会话目录读写。"""
+    if not session_id.strip() or any(c in session_id for c in "/\\\x00\n\r") or session_id in {".", ".."}:
+        raise ValueError("会话 ID 不能为空或包含路径分隔符、换行")
+    path = sessions_dir / f"{session_id}.json"
+    if path.resolve().parent != sessions_dir.resolve():
+        raise ValueError("会话文件不能指向会话目录之外")
+    return path
 
-    if not messages:
-        return 2
-    return count_messages_tokens(messages)
+
+def _session_files(sessions_dir: Path) -> list[Path]:
+    """按修改时间倒序列出主会话，排除子任务。"""
+    return sorted(
+        (p for p in sessions_dir.glob("*.json") if not p.stem.startswith("sub-")),
+        key=lambda p: p.stat().st_mtime, reverse=True,
+    )
 
 
 def list_sessions(sessions_dir: Path) -> list[dict]:
@@ -27,11 +39,7 @@ def list_sessions(sessions_dir: Path) -> list[dict]:
     """
     sessions_dir.mkdir(parents=True, exist_ok=True)
     sessions = []
-    for path in sorted(
-        [p for p in sessions_dir.glob("*.json") if not p.stem.startswith("sub-")],
-        key=lambda p: p.stat().st_mtime,
-        reverse=True,
-    ):
+    for path in _session_files(sessions_dir):
         try:
             data = json.loads(path.read_text(encoding="utf-8"))
             msg_count = len([m for m in data if m.get("role") != "system"])
@@ -56,20 +64,13 @@ def get_last_session_id(sessions_dir: Path) -> str | None:
     Returns:
         str | None: 会话 ID，如果没有会话则返回 None
     """
-    sessions_dir.mkdir(parents=True, exist_ok=True)
-    sessions = sorted(
-        [p for p in sessions_dir.glob("*.json") if not p.stem.startswith("sub-")],
-        key=lambda p: p.stat().st_mtime,
-        reverse=True,
-    )
-    if sessions:
-        return sessions[0].stem
-    return None
+    sessions = _session_files(sessions_dir)
+    return sessions[0].stem if sessions else None
 
 
 def delete_session(session_id: str, sessions_dir: Path) -> bool:
     """删除指定会话文件，返回是否成功。"""
-    path = sessions_dir / f"{session_id}.json"
+    path = _session_path(sessions_dir, session_id)
     if path.exists():
         path.unlink()
         logger.info(f"删除会话: {session_id}")
@@ -77,8 +78,31 @@ def delete_session(session_id: str, sessions_dir: Path) -> bool:
     return False
 
 
+def _recover_interrupted_tools(messages: list[dict]) -> list[dict]:
+    """恢复进程中断留下的未配对调用；已有工具结果原样保留。"""
+    repaired, pending = [], {}
+    for message in [*messages, None]:
+        if message is None or message["role"] != "tool":
+            for call_id in pending:
+                repaired.append({
+                    "role": "tool", "tool_call_id": call_id,
+                    "content": "上次运行中断，未保存工具结果，请检查实际状态后继续。",
+                    "uuid": uuid.uuid4().hex[:12],
+                })
+            pending = {}
+        if message is None:
+            break
+        if message["role"] == "assistant":
+            pending = {call["id"]: call for call in message.get("tool_calls") or []}
+        elif message["role"] == "tool":
+            pending.pop(message.get("tool_call_id"), None)
+        repaired.append(message)
+    return repaired
+
 
 class Session:
+    """维护可恢复的会话消息，所有持久化更新均采用原子替换。"""
+
     def __init__(self, sessions_dir: Path, session_id: str = None, resume: bool = True):
         """
         初始化会话。
@@ -88,26 +112,9 @@ class Session:
             session_id: 指定会话 ID，为 None 时自动选择
             resume: 是否恢复最近的会话（仅在 session_id 为 None 时生效）
         """
-        # 如果指定了 session_id，直接使用
-        if session_id is not None:
-            self.session_id = session_id
-        # 否则根据 resume 决定是恢复最近会话还是创建新会话
-        elif resume:
-            # 尝试恢复最近的会话
-            last_id = get_last_session_id(sessions_dir)
-            if last_id:
-                self.session_id = last_id
-                logger.info(f"恢复最近的会话: {last_id}")
-            else:
-                # 没有历史会话，创建新的
-                short = uuid.uuid4().hex[:8]
-                self.session_id = f"{datetime.now().strftime('%Y%m%d')}-{short}"
-                logger.info(f"创建新会话: {self.session_id}")
-        else:
-            # 不恢复，创建新会话
-            short = uuid.uuid4().hex[:8]
-            self.session_id = f"{datetime.now().strftime('%Y%m%d')}-{short}"
-            logger.info(f"创建新会话: {self.session_id}")
+        self.session_id = session_id if session_id is not None else (get_last_session_id(sessions_dir) if resume else None)
+        if self.session_id is None:
+            self.session_id = f"{datetime.now():%Y%m%d}-{uuid.uuid4().hex[:8]}"
 
         self.messages: list[dict] = []
 
@@ -118,7 +125,7 @@ class Session:
 
         # 会话文件路径（由 Workspace 提供的目录决定）
         sessions_dir.mkdir(parents=True, exist_ok=True)
-        self._path = sessions_dir / f"{self.session_id}.json"
+        self._path = _session_path(sessions_dir, self.session_id)
 
         logger.debug(f"初始化会话: {self.session_id}, 路径: {self._path}")
 
@@ -126,13 +133,17 @@ class Session:
         self._load()
 
     def add(self, message: dict):
-        """追加一条消息，并立即存盘。自动注入 uuid 用于记忆提取截断。"""
-        if 'uuid' not in message:
-            message['uuid'] = uuid.uuid4().hex[:12]
-        self.messages.append(message)
-        self.prompt_tokens = count_messages_tokens(self.messages)
-        self._save()
-        logger.debug(f"添加消息: {message.get('role', 'unknown')}, 当前会话消息数: {len(self.messages)}")
+        """追加消息并原子存盘；失败时保留内存和磁盘中的原会话。"""
+        messages = _recover_interrupted_tools(self.messages) if message.get("role") == "user" else self.messages
+        self.replace_messages([*messages, message])
+
+    def replace_messages(self, messages: list[dict]) -> None:
+        """统一提交追加或压缩后的消息，保留已有 UUID。"""
+        prepared = [dict(message, uuid=message.get("uuid") or uuid.uuid4().hex[:12]) for message in messages]
+        tokens = count_messages_tokens(prepared)
+        self._save(prepared)
+        self.messages = prepared
+        self.prompt_tokens = tokens
 
     def update_tokens(self, prompt_tokens: int, completion_tokens: int, total_tokens: int):
         """更新 token 使用情况"""
@@ -144,36 +155,40 @@ class Session:
     def clear(self):
         """清空当前会话"""
         logger.info(f"清除会话: {self.session_id}")
+        self._path.unlink(missing_ok=True)
         self.messages = []
         self.prompt_tokens = 0
         self.completion_tokens = 0
         self.total_tokens = 0
-        if self._path.exists():
-            self._path.unlink()
-            logger.debug(f"删除会话文件: {self._path}")
 
-    def _save(self):
+    def _save(self, messages: list[dict]) -> None:
+        """写入同目录临时文件后原子替换，写入中断不会截断原文件。"""
+        temporary = None
         try:
-            self._path.write_text(
-                json.dumps(self.messages, ensure_ascii=False, indent=2),
-                encoding="utf-8"
-            )
-            logger.debug(f"会话保存成功: {self._path}")
-        except Exception as e:
-            logger.error(f"会话保存失败: {e}", exc_info=True)
-            raise
+            with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=self._path.parent, suffix=".tmp", delete=False) as stream:
+                temporary = Path(stream.name)
+                json.dump(messages, stream, ensure_ascii=False, indent=2)
+                stream.flush()
+                os.fsync(stream.fileno())
+            os.replace(temporary, self._path)
+        finally:
+            if temporary is not None:
+                temporary.unlink(missing_ok=True)
 
-    def _load(self):
-        if self._path.exists():
-            try:
-                data = json.loads(self._path.read_text(encoding="utf-8"))
-                # 过滤掉旧历史里的 system 消息，system prompt 由 agent 实时生成
-                self.messages = [m for m in data if m.get("role") != "system"]
-                # 精确计算已加载消息的 token 数
-                self.prompt_tokens = count_messages_tokens(self.messages)
-                logger.info(f"加载历史会话: {len(self.messages)} 条消息, {self.prompt_tokens} tokens")
-            except Exception as e:
-                logger.error(f"加载会话失败: {e}", exc_info=True)
-                self.messages = []
-        else:
-            logger.debug("未找到历史会话，创建新会话")
+    def _load(self) -> None:
+        """加载历史；损坏时明确报错，禁止当作空会话覆盖。"""
+        if not self._path.exists():
+            return
+        try:
+            data = json.loads(self._path.read_text(encoding="utf-8"))
+            if not isinstance(data, list) or any(
+                not isinstance(m, dict) or m.get("role") not in {"system", "user", "assistant", "tool"}
+                or not isinstance(m.get("content", ""), (str, list, type(None)))
+                for m in data
+            ):
+                raise ValueError("消息格式无效")
+            self.messages = [dict(m, uuid=m.get("uuid") or uuid.uuid4().hex[:12]) for m in data if m["role"] != "system"]
+        except (ValueError, TypeError, KeyError) as exc:
+            raise ValueError(f"会话文件损坏，已保留原文件：{self._path}") from exc
+        self.prompt_tokens = count_messages_tokens(self.messages)
+        logger.info(f"加载历史会话：{len(self.messages)} 条消息")

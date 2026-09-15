@@ -266,7 +266,7 @@ export function applyRunEvent(current: RunSnapshot, event: EventEnvelopeDto): Ru
         snapshot.messages.push(message)
       } else {
         message.completed = true
-        if (!message.content) message.content = text(data, 'content')
+        if (typeof data.content === 'string') message.content = data.content
       }
       break
     }

@@ -69,7 +69,6 @@ def get_container_path(host_path: str, mounts: list) -> Optional[str]:
     Returns:
         容器内路径，如果不在挂载范围内则返回 None
     """
-    from .config import MountConfig
     
     host_resolved = Path(host_path).expanduser().resolve()
     

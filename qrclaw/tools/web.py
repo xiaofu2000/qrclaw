@@ -9,19 +9,17 @@ Web Tools Module - 改进版
 - 超时控制：防止大页面长时间阻塞
 
 依赖项：
-- LLM 压缩需要 litellm（通过 qrclaw.llm.chat）
+- LLM 压缩需要 litellm（通过 qrclaw.llm_service）
 - 多后端需要对应 API Key：FIRECRAWL_API_KEY / TAVILY_API_KEY / EXA_API_KEY
 """
 
 import os
 import re
-import asyncio
 import socket
 import ipaddress
 from typing import Optional, Tuple
 from urllib.parse import urlparse
 import requests
-import httpx
 from pydantic import BaseModel, Field
 
 from qrclaw.tools.registry import register
@@ -189,7 +187,7 @@ def _clean_base64_images(text: str) -> str:
 
 # ─── LLM 内容压缩 ────────────────────────────────────────────────────────────
 
-def _call_llm_sync(system_prompt: str, user_prompt: str, max_tokens: int = 20000) -> Optional[str]:
+def _call_llm_sync(system_prompt: str, user_prompt: str) -> Optional[str]:
     """
     同步调用 LLM 进行内容处理。
     使用 qrclaw.providers 中的 litellm provider。
@@ -374,7 +372,7 @@ def _summarize_chunk(chunk: str, context_str: str, chunk_info: str) -> Optional[
 
 提取所有重要信息，使用结构化格式。"""
 
-    result = _call_llm_sync(system_prompt, user_prompt, max_tokens=10000)
+    result = _call_llm_sync(system_prompt, user_prompt)
 
     if result:
         logger.debug(f"块摘要完成: {len(chunk)} -> {len(result)} 字符")
@@ -427,206 +425,9 @@ def _has_api_key(name: str) -> bool:
     return bool(val)
 
 
-def _get_fetch_backend() -> str:
-    """
-    确定使用哪个 fetch 后端。
-
-    优先级：Firecrawl > Tavily > Exa > Jina
-    """
-    if _has_api_key("FIRECRAWL_API_KEY"):
-        return "firecrawl"
-    if _has_api_key("TAVILY_API_KEY"):
-        return "tavily"
-    if _has_api_key("EXA_API_KEY"):
-        return "exa"
-    return "jina"  # 默认降级到 Jina
-
-
-async def _fetch_with_firecrawl(url: str) -> Tuple[str, str]:
-    """使用 Firecrawl 获取内容"""
-    try:
-        from firecrawl import Firecrawl
-        api_key = os.getenv("FIRECRAWL_API_KEY")
-        api_url = os.getenv("FIRECRAWL_API_URL", "").strip()
-
-        kwargs = {"api_key": api_key}
-        if api_url:
-            kwargs["api_url"] = api_url
-
-        client = Firecrawl(**kwargs)
-
-        # 使用线程池避免阻塞
-        loop = asyncio.get_event_loop()
-        result = await loop.run_in_executor(
-            None,
-            lambda: client.scrape(url=url, formats=["markdown"])
-        )
-
-        if result and hasattr(result, "markdown"):
-            title = getattr(result, "title", "") or ""
-            content = result.markdown or ""
-        elif isinstance(result, dict):
-            title = result.get("title", "") or ""
-            content = result.get("markdown", "") or ""
-        else:
-            title = ""
-            content = str(result) if result else ""
-
-        return title, content
-    except Exception as e:
-        logger.debug(f"Firecrawl 获取失败: {e}")
-        raise
-
-
-async def _fetch_with_tavily(url: str) -> Tuple[str, str]:
-    """使用 Tavily 获取内容"""
-    try:
-        api_key = os.getenv("TAVILY_API_KEY")
-        if not api_key:
-            raise ValueError("TAVILY_API_KEY not set")
-
-        async with httpx.AsyncClient(timeout=60) as client:
-            response = await client.post(
-                "https://api.tavily.com/extract",
-                json={"urls": [url], "api_key": api_key},
-            )
-            response.raise_for_status()
-            data = response.json()
-
-            results = data.get("results", [{}])
-            if results:
-                result = results[0]
-                title = result.get("title", "") or ""
-                content = result.get("raw_content", "") or result.get("content", "") or ""
-            else:
-                title = ""
-                content = ""
-
-            return title, content
-    except Exception as e:
-        logger.debug(f"Tavily 获取失败: {e}")
-        raise
-
-
-async def _fetch_with_exa(url: str) -> Tuple[str, str]:
-    """使用 Exa 获取内容"""
-    try:
-        from exa_py import Exa
-        api_key = os.getenv("EXA_API_KEY")
-        if not api_key:
-            raise ValueError("EXA_API_KEY not set")
-
-        client = Exa(api_key=api_key)
-
-        loop = asyncio.get_event_loop()
-        result = await loop.run_in_executor(
-            None,
-            lambda: client.get_contents([url], text=True)
-        )
-
-        if result and hasattr(result, "results") and result.results:
-            item = result.results[0]
-            title = getattr(item, "title", "") or ""
-            content = getattr(item, "text", "") or ""
-        elif isinstance(result, dict):
-            results = result.get("results", [{}])
-            if results:
-                title = results[0].get("title", "") or ""
-                content = results[0].get("text", "") or ""
-            else:
-                title = ""
-                content = ""
-        else:
-            title = ""
-            content = ""
-
-        return title, content
-    except Exception as e:
-        logger.debug(f"Exa 获取失败: {e}")
-        raise
-
-
-async def _fetch_with_jina(url: str) -> Tuple[str, str]:
-    """使用 Jina AI Reader 获取内容（最后降级方案）"""
-    try:
-        jina_url = f"https://r.jina.ai/{url}"
-        headers = {
-            "Accept": "application/json",
-            "X-Return-Format": "markdown"
-        }
-
-        async with httpx.AsyncClient(timeout=30) as client:
-            response = await client.get(jina_url, headers=headers)
-
-            if response.status_code == 200:
-                try:
-                    data = response.json()
-                    title = data.get("data", {}).get("title", "") or ""
-                    content = data.get("data", {}).get("content", "") or ""
-                except Exception:
-                    # JSON 解析失败，使用纯文本
-                    text = response.text
-                    title = ""
-                    content = text
-            else:
-                # HTTP 错误，使用纯文本
-                content = response.text
-                title = ""
-
-            return title, content
-    except Exception as e:
-        logger.debug(f"Jina 获取失败: {e}")
-        raise
-
-
-async def _multi_backend_fetch(url: str) -> Tuple[str, str, str]:
-    """
-    多后端获取网页内容，自动 fallback。
-
-    优先级：Firecrawl > Tavily > Exa > Jina
-
-    Returns:
-        Tuple[str, str, str]: (title, content, backend_used)
-    """
-    # SSRF 防护检查
-    if not _is_safe_url_simple(url):
-        return "", "", "blocked"
-
-    backends = [
-        ("firecrawl", _fetch_with_firecrawl),
-        ("tavily", _fetch_with_tavily),
-        ("exa", _fetch_with_exa),
-        ("jina", _fetch_with_jina),
-    ]
-
-    last_error = None
-    for backend_name, fetch_func in backends:
-        try:
-            logger.debug(f"尝试 {backend_name} 获取: {url}")
-            title, content = await asyncio.wait_for(fetch_func(url), timeout=60)
-
-            if content:
-                logger.info(f"{backend_name} 获取成功: {url} ({len(content)} 字符)")
-                return title, content, backend_name
-        except asyncio.TimeoutError:
-            logger.warning(f"{backend_name} 获取超时: {url}")
-            last_error = "Timeout"
-        except Exception as e:
-            logger.debug(f"{backend_name} 获取失败: {e}")
-            last_error = str(e)
-
-    # 所有后端都失败
-    error_msg = last_error or "Unknown error"
-    logger.error(f"所有后端获取失败: {url}, 最后错误: {error_msg}")
-    return "", "", f"failed:{error_msg}"
-
-
-# ─── 同步封装 ────────────────────────────────────────────────────────────────
-
 def _multi_backend_fetch_sync(url: str) -> str:
     """
     同步多后端获取，优先级：Firecrawl > Tavily > Exa > Jina。
-    与异步版本 _multi_backend_fetch 保持相同的优先级顺序。
     """
     if not _is_safe_url_simple(url):
         return "[SSRF 防护：URL 指向私有/内网地址，已被阻止]"

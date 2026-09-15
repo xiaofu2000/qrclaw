@@ -15,8 +15,6 @@ Usage::
 from __future__ import annotations
 
 import asyncio
-import json
-import sys
 from typing import Any, Optional, Type
 
 from pydantic import BaseModel, Field, create_model

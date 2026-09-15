@@ -15,7 +15,6 @@ from .config import (
     MountConfig,
     get_sandbox_config,
     get_sandbox_mounts,
-    is_sandbox_enabled,
     validate_mount_path,
 )
 from .container import ContainerManager, ContainerError, ExecResult

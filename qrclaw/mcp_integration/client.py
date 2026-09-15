@@ -21,7 +21,7 @@ import logging
 import shutil
 from contextlib import AsyncExitStack
 from dataclasses import dataclass, field
-from typing import Any, Callable, Coroutine
+from typing import Any
 
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client

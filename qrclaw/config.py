@@ -27,13 +27,9 @@ _MODEL_MAX_TOKENS = int(os.getenv("MODEL_MAX_TOKENS", "128000"))
 # 超过 60% 触发压缩
 COMPRESS_THRESHOLD = int(_MODEL_MAX_TOKENS * 0.6)
 
-# 压缩后目标范围：摘要 + 短期记忆 = 20%~25% 上下文窗口
-COMPRESS_TARGET_MIN_RATIO = 0.20  # 最小 20%，避免压缩太短
-COMPRESS_TARGET_MAX_RATIO = 0.25  # 最大 25%，避免压缩效果差
-
 # 摘要目标占 10% 上下文窗口
 COMPRESS_SUMMARY_TARGET_TOKENS = int(_MODEL_MAX_TOKENS * 0.10)
-# 摘要最大输出 token 数（LLM 的 max_tokens 参数上限）
+# 摘要提示的目标上限（实际长度由模型决定）
 COMPRESS_SUMMARY_MAX_TOKENS = int(os.getenv("COMPRESS_SUMMARY_MAX_TOKENS", str(COMPRESS_SUMMARY_TARGET_TOKENS * 2)))
 
 # 短期记忆占 12% 上下文窗口

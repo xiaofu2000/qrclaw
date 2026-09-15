@@ -14,7 +14,11 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
+
+if TYPE_CHECKING:
+    from qrclaw.memory.wiki.page import WikiPage
+    from qrclaw.memory.wiki.wiki_memory import WikiMemory
 
 from qrclaw.logger import get_logger
 
@@ -275,7 +279,7 @@ class WikiLint:
         has_negative_b = any(p in mention_b for p in negative_patterns)
 
         if (has_positive_a and has_negative_b) or (has_negative_a and has_positive_b):
-            return f"一方描述为依赖关系，另一方描述为独立关系"
+            return "一方描述为依赖关系，另一方描述为独立关系"
         if (has_positive_a and has_positive_b) and (page_a.name in mention_b and page_b.name in mention_a):
             # 两者都说依赖对方，可能存在循环依赖警告
             return "可能存在循环依赖"
@@ -344,7 +348,7 @@ class WikiLint:
                 issues.append(LintIssue(
                     issue_type="orphan",
                     page_name=page.name,
-                    detail=f"无任何 inbound/outbound 链接，也无 related 关联",
+                    detail="无任何 inbound/outbound 链接，也无 related 关联",
                     severity="warning",
                 ))
             # 半孤立：只有单向链接（可作为 info 级别）

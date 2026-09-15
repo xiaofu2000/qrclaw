@@ -21,13 +21,14 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from qrclaw.memory.wiki.wiki_memory import WikiMemory
+    from qrclaw.memory.wiki.page import WikiPage
 
 from qrclaw.memory.wiki.selection.prompts import SELECTION_PROMPT_TEMPLATE
+from qrclaw.memory.wiki.extraction.strategies import conversation_messages, format_messages_for_llm
 from qrclaw.memory.wiki.selection.schemas import (
-    SelectedPage,
     SelectionResult,
 )
-from qrclaw.llm import chat
+from qrclaw.llm_service import get_llm_service
 from qrclaw.logger import get_logger
 
 logger = get_logger("qrclaw.memory.wiki.selector")
@@ -35,75 +36,14 @@ logger = get_logger("qrclaw.memory.wiki.selector")
 # 默认保留的对话轮数
 DEFAULT_CONVERSATION_ROUNDS = 3
 
-# 过滤工具调用的角色
-TOOL_ROLES = {"tool", "assistant"}  # assistant 可能包含 tool_calls
-
-
-def _format_conversation_history(
-    messages: list[dict],
-    keep_rounds: int = DEFAULT_CONVERSATION_ROUNDS,
-) -> str:
-    """
-    格式化对话历史，过滤工具调用信息。
-
-    规则：
-    1. 保留最近 N 轮对话（默认 3 轮）
-    2. 过滤掉包含 tool_calls 或 tool_role 的消息
-    3. 过滤掉系统消息（避免 prompt 过长）
-    4. 只保留 role=user 和 role=assistant 的纯对话
-
-    Args:
-        messages: 原始消息列表
-        keep_rounds: 保留的对话轮数
-
-    Returns:
-        格式化后的对话文本
-    """
-    if not messages:
+def _format_conversation_history(messages: list[dict], keep_rounds: int = DEFAULT_CONVERSATION_ROUNDS) -> str:
+    """按用户消息划分最近 N 轮，共用纯对话过滤规则。"""
+    if keep_rounds <= 0:
         return "（无对话历史）"
-
-    # 过滤并收集有效对话
-    filtered_messages = []
-
-    for msg in messages:
-        role = msg.get("role", "")
-        content = msg.get("content", "")
-
-        # 跳过系统消息
-        if role == "system":
-            continue
-
-        # 跳过工具调用消息
-        if role == "tool":
-            continue
-
-        # 跳过纯工具调用消息（tool_calls 存在但 content 为空）
-        if role == "assistant" and msg.get("tool_calls") and not content:
-            continue
-
-        # 保留有 content 的消息（包括 tool_calls 和 content 共存的 assistant 消息）
-        if content and content.strip():
-            filtered_messages.append(msg)
-
-    # 只保留最近 N 轮
-    recent = filtered_messages[-keep_rounds:] if len(filtered_messages) > keep_rounds else filtered_messages
-
-    # 格式化
-    lines = []
-    for msg in recent:
-        role = msg.get("role", "unknown")
-        content = msg.get("content", "").strip()
-
-        if role == "user":
-            lines.append(f"**用户**: {content}")
-        elif role == "assistant":
-            lines.append(f"**助手**: {content}")
-        else:
-            lines.append(f"**{role}**: {content}")
-
-        lines.append("")  # 空行分隔
-
-    return "\n".join(lines) if lines else "（无有效对话历史）"
+    filtered = conversation_messages(messages)
+    starts = [i for i, message in enumerate(filtered) if message["role"] == "user"]
+    start = starts[-keep_rounds] if len(starts) >= keep_rounds else 0
+    return format_messages_for_llm(filtered[start:]) or "（无对话历史）"
 
 
 class WikiPageSelector:
@@ -159,11 +99,10 @@ class WikiPageSelector:
         logger.debug(f"WikiPageSelector 调用 LLM，conversation_history 长度: {len(conversation_history)}")
 
         try:
-            response = chat([
+            response = get_llm_service().chat([
                 {"role": "user", "content": prompt},
             ])
-            # llm.chat 可能返回 LLMResponse 或 str，统一处理
-            response_text = response.content if hasattr(response, 'content') else str(response)
+            response_text = response.content or ""
         except Exception as e:
             logger.error(f"WikiPageSelector LLM 调用失败: {e}", exc_info=True)
             return SelectionResult(selected=[], reasoning=f"LLM 调用失败: {e}")
@@ -177,7 +116,6 @@ class WikiPageSelector:
 
         尝试 JSON 解析，失败时返回空结果。
         """
-        import json
         import re
 
         # 清理响应文本，提取 JSON
@@ -193,24 +131,14 @@ class WikiPageSelector:
         json_str = json_str.strip().strip("```").strip()
 
         try:
-            data = json.loads(json_str)
-            selected_pages = [
-                SelectedPage(
-                    name=p.get("name", ""),
-                    reason=p.get("reason", ""),
-                    relevance=p.get("relevance", 0.0),
-                )
-                for p in data.get("selected", [])
-                if p.get("name")  # 跳过无名字段
-            ]
-            reasoning = data.get("reasoning", "")
-            result = SelectionResult(selected=selected_pages, reasoning=reasoning)
-            logger.debug(f"WikiPageSelector 解析成功，选择 {len(selected_pages)} 个页面")
+            result = SelectionResult.model_validate_json(json_str)
+            result.selected = [page for page in result.selected if page.name]
+            logger.debug(f"Wiki 页面选择解析成功，选择 {len(result.selected)} 个页面")
             return result
 
-        except json.JSONDecodeError as e:
+        except ValueError as e:
             logger.warning(f"WikiPageSelector JSON 解析失败: {e}, 响应: {response[:200]}...")
-            return SelectionResult(selected=[], reasoning=f"JSON 解析失败")
+            return SelectionResult(selected=[], reasoning="JSON 解析失败")
 
     def select_with_pages(
         self,
@@ -223,8 +151,6 @@ class WikiPageSelector:
 
         与 select() 相同，但返回完整 WikiPage 对象而非 name。
         """
-        from qrclaw.memory.wiki.page import WikiPage
-
         result = self.select(current_message, messages, keep_rounds)
 
         pages = []

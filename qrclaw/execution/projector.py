@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from datetime import datetime
-
 from qrclaw.execution.models import (
     AgentModel,
     AgentStatus,
@@ -229,6 +227,7 @@ class RunProjector:
         message.content += event.data.get("delta", "")
 
     def _on_assistant_completed(self, event: EventEnvelope) -> None:
+        """完成事件携带完整正文时，以它修正流式消息。"""
         message_id = event.data["message_id"]
         message = next(
             (item for item in self.snapshot.messages if item.message_id == message_id),
@@ -240,6 +239,8 @@ class RunProjector:
                 content=event.data.get("content", ""),
             )
             self.snapshot.messages.append(message)
+        if "content" in event.data:
+            message.content = event.data["content"]
         message.completed = True
 
     def _on_usage_updated(self, event: EventEnvelope) -> None:

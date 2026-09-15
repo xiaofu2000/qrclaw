@@ -11,8 +11,7 @@ PlanExecutor 节点
     4. Replanner 评估：目标已达成 → DONE，否则更新剩余步骤（可能调整方向）
   结束后交主 agent 整合
 
-串行步骤：子 session 继承主 session 全部消息，执行完增量追加回主 session
-并行步骤：子 session 独立，注入前置步骤结果摘要，执行完只追加最终结果到主 session
+串行和并行步骤均使用独立会话，共用目标、Wiki 正文和前置步骤结果。
 """
 import threading
 import queue
@@ -70,10 +69,9 @@ class PlanExecutorNode:
                         {"step_id": str(step.id), "description": step.description},
                     )
                 try:
-                    result = self._run_serial(
+                    result = self._run_step(
                         step,
-                        ps.goal,
-                        ps.past_steps,
+                        self._build_task(step, ps.goal, ps.past_steps, ps),
                         workspace,
                         run_sub_agent_fn,
                         console,
@@ -136,7 +134,7 @@ class PlanExecutorNode:
                 break
 
             if new_remaining != ps.remaining:
-                console.print(f"[cyan]📝 Replanner 调整了计划")
+                console.print("[cyan]📝 Replanner 调整了计划")
                 for step in new_remaining:
                     known_steps[str(step.id)] = step
                 revision += 1
@@ -173,35 +171,38 @@ class PlanExecutorNode:
             "role": "user",
             "content": f"以上是任务「{ps.goal}」的执行结果，请根据这些结果给出最终的整合回复。\n\n{summary}",
         })
-        ctx.clear_plan()
-        return react_loop_fn()
+        try:
+            return react_loop_fn()
+        finally:
+            ctx.clear_plan()
 
-    def _run_serial(
+    @staticmethod
+    def _build_task(step, goal: str, past_steps: list[StepResult], plan_state) -> str:
+        """串行、并行共用任务上下文，完整传递 Wiki 和已完成步骤结果。"""
+        sections = [f"【计划目标】{goal}"]
+        if plan_state:
+            if plan_state.project_path:
+                sections.append(f"【项目根目录】{plan_state.project_path}")
+            if plan_state.wiki_context:
+                sections.append(plan_state.wiki_context)
+        if past_steps:
+            sections.append("【前置步骤结果】\n" + "\n---\n".join(step.to_context_prompt() for step in past_steps))
+        sections.extend([
+            f"【当前任务】{step.description}",
+            "【要求】只完成当前任务。完成后汇报结果摘要，不准写 MD 文档；路径必须使用绝对路径。包括做了什么、发现了什么、产出了哪些文件。",
+        ])
+        return "\n\n".join(sections)
+
+    def _run_step(
         self,
         step,
-        goal: str,
-        past_steps: list[StepResult],
+        task: str,
         workspace,
         run_sub_agent_fn,
         console,
         execution_context=None,
     ) -> str:
-        prior_context = ""
-        if past_steps:
-            prior_context = "\n\n【前置步骤结果】\n" + "\n---\n".join(
-                sr.to_context_prompt() for sr in past_steps
-            )
-
-        ps = get_context_manager().plan_state
-        project_path_hint = f"\n\n【项目根目录】{ps.project_path}" if ps and ps.project_path else ""
-
-        task = (
-            f"【计划目标】{goal}"
-            f"{project_path_hint}"
-            f"{prior_context}\n\n"
-            f"【当前任务】{step.description}\n\n"
-            f"【要求】只完成当前任务。完成后返回详细的结果摘要，不准写MD文档，如果有路径请使用绝对路径，禁止使用相对路径，包括：做了什么、发现了什么、产出了哪些文件。"
-        )
+        """执行一个已组装上下文的子任务，供串行与并行调度复用。"""
         child_context = None
         if execution_context is not None:
             child_context = execution_context.child_agent(
@@ -214,7 +215,7 @@ class PlanExecutorNode:
             console=console,
             execution_context=child_context,
         )
-        logger.info(f"Step {step.id} 串行完成")
+        logger.info(f"步骤 {step.id} 执行完成")
         return result
 
     def _run_parallel(
@@ -231,37 +232,14 @@ class PlanExecutorNode:
         lock = threading.Lock()
         notify_queue: queue.Queue = queue.Queue()
 
-        # 构建前置步骤上下文（用 past_steps 里的真实结果）
-        prior_context = ""
-        if past_steps:
-            prior_context = "\n\n【前置步骤结果】\n" + "\n---\n".join(
-                sr.to_context_prompt() for sr in past_steps
-            )
-
         ps = get_context_manager().plan_state
-        project_path_hint = f"\n【项目根目录】{ps.project_path}" if ps and ps.project_path else ""
+        tasks = {step.id: self._build_task(step, goal, past_steps, ps) for step in layer}
 
         def _run(step):
-            task = (
-                f"【计划目标】{goal}\n"
-                f"{project_path_hint}\n\n"
-                f"【步骤】{step.description}"
-                f"{prior_context}\n\n"
-                f"【要求】完成上述步骤。完成后返回详细的结果摘要，不准写MD文档，包括：做了什么、发现了什么、产出了哪些文件。"
-            )
+            """在独立线程执行已组装好的步骤，不读取父线程局部上下文。"""
+            task = tasks[step.id]
             try:
-                child_context = None
-                if execution_context is not None:
-                    child_context = execution_context.child_agent(
-                        name=f"步骤 {step.id}",
-                        task=task,
-                        step_id=str(step.id),
-                    )
-                result, _ = run_sub_agent_fn(
-                    task, workspace, f"step-{step.id}",
-                    console=None,
-                    execution_context=child_context,
-                )
+                result = self._run_step(step, task, workspace, run_sub_agent_fn, None, execution_context)
                 with lock:
                     results[step.id] = result
                 notify_queue.put(("ok", step.id, step.description, result))
@@ -300,7 +278,7 @@ class PlanExecutorNode:
                 _, sid, desc, result = item
                 short_desc = desc[:40] + ("..." if len(desc) > 40 else "")
                 console.print(f"[bold green]✅ 完成[/bold green] {short_desc}")
-                console.print(Panel(Text(result), title=f"[bold green]汇报[/bold green]", border_style="green", expand=False))
+                console.print(Panel(Text(result), title="[bold green]汇报[/bold green]", border_style="green", expand=False))
             else:
                 _, sid, desc, err = item
                 console.print(f"[bold red]❌ 失败[/bold red]: {err} ({desc})")

@@ -1,138 +1,32 @@
-"""
-Wiki LLM Analyzer - LLM 调用封装
-
-从 memory_extraction.py 迁移：
-- WikiLLMAnalyzer.analyze (行 312-332)
-- WikiLLMAnalyzer.consolidate (行 336-376)
-"""
-
-try:
-    import instructor
-    _HAS_INSTRUCTOR = True
-except ImportError:
-    _HAS_INSTRUCTOR = False
-
-from pydantic import ValidationError
-
+"""复用 LLMService 的结构化调用和重试，分析或整理 Wiki 页面。"""
 from qrclaw.memory.wiki.extraction.config import ExtractionConfig
-from qrclaw.memory.wiki.extraction.schemas import (
-    ExtractionSchema,
-    ConsolidatePageSchema,
-)
-from qrclaw.memory.wiki.extraction.prompts import (
-    EXTRACTION_PROMPT_TEMPLATE,
-    CONSOLIDATION_PROMPT_TEMPLATE,
-)
+from qrclaw.memory.wiki.extraction.schemas import ExtractionSchema, ConsolidatePageSchema
+from qrclaw.memory.wiki.extraction.prompts import EXTRACTION_PROMPT_TEMPLATE, CONSOLIDATION_PROMPT_TEMPLATE
 
 
 class WikiLLMAnalyzer:
-    """Wiki LLM 分析器封装"""
+    """将记忆分析任务转换为经过 Schema 验证的结构化结果。"""
 
     def __init__(self, llm_service, config: ExtractionConfig):
-        """
-        Args:
-            llm_service: LLMService 实例
-            config: ExtractionConfig 配置
-        """
+        """使用现有模型服务和重试配置。"""
         self.llm = llm_service
         self.config = config
-        self._client = None
 
-    def _get_client(self):
-        """获取 instructor 封装的 client"""
-        if not _HAS_INSTRUCTOR:
-            raise ImportError(
-                "The 'instructor' package is required for WikiLLMAnalyzer. "
-                "Install it with: pip install instructor"
-            )
-        if self._client is None:
-            # 适配 LiteLLMProvider，它使用 chat 方法而不是 create
-            # 使用 MD_JSON 模式，避免依赖 response_format=json_object（部分模型不支持）
-            self._client = instructor.patch(
-                create=self.llm.create_openai_like,
-                mode=instructor.Mode.MD_JSON,
-            )
-        return self._client
-
-    def analyze(
-        self,
-        index_md: str,
-        messages_text: str,
-    ) -> ExtractionSchema:
-        """
-        分析对话历史，提取 Wiki 页面
-
-        Args:
-            index_md: Wiki 索引内容
-            messages_text: 格式化后的对话历史
-
-        Returns:
-            ExtractionSchema: 包含 needs_update 和 pages 列表
-        """
-        prompt = EXTRACTION_PROMPT_TEMPLATE.format(
-            index_md=index_md,
-            messages_text=messages_text,
+    def analyze(self, index_md: str, messages_text: str) -> ExtractionSchema:
+        """结合已有索引提取需要保存的长期知识。"""
+        prompt = EXTRACTION_PROMPT_TEMPLATE.format(index_md=index_md, messages_text=messages_text)
+        return self.llm.structured(
+            [{"role": "user", "content": prompt}], ExtractionSchema, max_retries=self.config.max_retries,
         )
 
-        client = self._get_client()
-
-        for attempt in range(self.config.max_retries):
-            try:
-                response = client(
-                    messages=[
-                        {"role": "user", "content": prompt},
-                    ],
-                    response_model=ExtractionSchema,
-                )
-                return response
-            except ValidationError as e:
-                if attempt == self.config.max_retries - 1:
-                    raise
-                continue
-
-        return ExtractionSchema(needs_update=False, pages=[])
-
-    def consolidate(
-        self,
-        existing_content: str,
-        new_content: str,
-        page_name: str,
-    ) -> ConsolidatePageSchema:
-        """
-        合并整理页面内容
-
-        Args:
-            existing_content: 现有页面内容
-            new_content: 新内容片段
-            page_name: 页面名称
-
-        Returns:
-            ConsolidatePageSchema: 整理后的内容
-        """
+    def consolidate(self, existing_content: str, new_content: str, page_name: str) -> ConsolidatePageSchema:
+        """合并页面内容并生成精炼的摘要和标签。"""
         prompt = CONSOLIDATION_PROMPT_TEMPLATE.format(
-            existing_content=existing_content,
-            new_content=new_content,
-            page_name=page_name,
+            existing_content=existing_content, new_content=new_content, page_name=page_name,
         )
-
-        client = self._get_client()
-
-        for attempt in range(self.config.max_retries):
-            try:
-                response = client(
-                    messages=[
-                        {"role": "user", "content": prompt},
-                    ],
-                    response_model=ConsolidatePageSchema,
-                )
-                return response
-            except ValidationError as e:
-                if attempt == self.config.max_retries - 1:
-                    raise
-                continue
-
-        return ConsolidatePageSchema(
-            content=new_content,
-            description="",
-            tags=[],
+        result = self.llm.structured(
+            [{"role": "user", "content": prompt}], ConsolidatePageSchema, max_retries=self.config.max_retries,
         )
+        if not result.content.strip():
+            raise ValueError("Wiki 整理返回空正文，保留原页面")
+        return result

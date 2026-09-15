@@ -68,6 +68,15 @@ class WikiMemory:
 
     # ── 核心 CRUD ─────────────────────────────────────────────────────────────
 
+    def _page_path(self, name: str) -> Path:
+        """校验页面名和符号链接，确保读写都限定在当前 Wiki 目录内。"""
+        if not name.strip() or name in {".", ".."} or any(char in name for char in "/\\\x00\n\r"):
+            raise ValueError("Wiki 页面名不能为空或包含路径分隔符、换行")
+        path = self.pages_dir / f"{name}.md"
+        if path.resolve().parent != self.pages_dir.resolve():
+            raise ValueError("Wiki 页面不能指向当前知识库目录之外")
+        return path
+
     def save_page(
         self,
         name: str,
@@ -114,7 +123,7 @@ class WikiMemory:
             action = "write"
 
         # 写入文件
-        filepath = self.pages_dir / page.filename
+        filepath = self._page_path(name)
         filepath.write_text(page.to_markdown(), encoding="utf-8")
 
         # 更新索引
@@ -165,7 +174,7 @@ class WikiMemory:
 
     def get_page(self, name: str) -> Optional[WikiPage]:
         """读取指定页面，不存在返回 None"""
-        filepath = self.pages_dir / f"{name}.md"
+        filepath = self._page_path(name)
         if not filepath.exists():
             return None
         try:
@@ -177,7 +186,7 @@ class WikiMemory:
 
     def delete_page(self, name: str) -> bool:
         """删除页面及其索引条目"""
-        filepath = self.pages_dir / f"{name}.md"
+        filepath = self._page_path(name)
         if not filepath.exists():
             logger.warning(f"页面不存在: {name}")
             return False
@@ -254,11 +263,10 @@ class WikiMemory:
 
         # 第一阶段：关键词初筛，获取候选页面
         candidates = self.search_pages(query)
-        if not candidates:
-            logger.debug(f"select_relevant_pages: 关键词初筛无候选页面 (query={query})")
+        if top_k <= 0 or not query.strip() or not self.index.all_entries():
             return []
 
-        # 第二阶段：LLM 精选
+        # 自然语言问题不必完整匹配页面子串，仍然允许模型根据索引进行语义选择。
         selector = WikiPageSelector(self)
         selection_result = selector.select(query, messages)
 
@@ -280,7 +288,7 @@ class WikiMemory:
 
     def page_exists(self, name: str) -> bool:
         """检查页面是否存在"""
-        return (self.pages_dir / f"{name}.md").exists()
+        return self._page_path(name).exists()
 
     # ── system prompt 注入 ────────────────────────────────────────────────────
 

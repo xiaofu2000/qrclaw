@@ -1,6 +1,7 @@
 from .registry import get_schemas, execute, register
 
 # 导入所有工具模块以触发 @register 注册机制
+# ruff: noqa: F401
 from . import filesystem
 from . import shell
 from . import web

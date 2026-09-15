@@ -23,9 +23,7 @@ Heartbeat.md 格式示例：
 - 总结常见的错误和解决方案
 """
 import threading
-import time
 from datetime import datetime
-from pathlib import Path
 from typing import Callable, Optional
 from qrclaw.logger import get_logger
 
@@ -154,7 +152,6 @@ def execute_heartbeat_tasks(workspace) -> str:
         str: 执行结果摘要
     """
     from qrclaw.agent import run_sub_agent
-    from qrclaw.workspace import Workspace
     
     heartbeat_file = workspace.heartbeat_file
     if not heartbeat_file.exists():

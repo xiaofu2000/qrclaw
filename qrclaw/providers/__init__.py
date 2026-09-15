@@ -5,22 +5,13 @@ from qrclaw.logger import get_logger
 
 logger = get_logger("qrclaw.providers")
 
-_REGISTRY = {
-    "litellm": "qrclaw.providers.litellm_provider.LiteLLMProvider",
-}
-
 
 def _load_provider() -> LLMProvider:
-    path = _REGISTRY.get(LLM_PROVIDER)
-    if not path:
-        raise ValueError(f"未知的 LLM 渠道: {LLM_PROVIDER}，可选: {list(_REGISTRY.keys())}")
-
-    module_path, class_name = path.rsplit(".", 1)
-    import importlib
-    module = importlib.import_module(module_path)
-    cls = getattr(module, class_name)
+    """创建当前支持的 LiteLLM 渠道，拒绝未知配置。"""
+    if LLM_PROVIDER != "litellm":
+        raise ValueError(f"未知的 LLM 渠道: {LLM_PROVIDER}，可选: litellm")
     logger.info(f"加载 LLM 渠道: {LLM_PROVIDER}")
-    return cls()
+    return LiteLLMProvider()
 
 
 def reload_provider() -> LLMProvider:
@@ -46,3 +37,5 @@ def reload_provider() -> LLMProvider:
 
 
 provider: LLMProvider = _load_provider()
+
+__all__ = ["LLMProvider", "LLMResponse", "ToolCall", "provider", "reload_provider"]

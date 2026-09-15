@@ -46,8 +46,12 @@ export class WorkbenchRepository {
     localStorage.removeItem(this.runKey(id))
   }
 
+  /** 聊天历史只展示用户输入和最终回复，工具交互由执行时间线展示。 */
   async getMessages(id: string): Promise<Message[]> {
-    return (await this.api.getMessages(id)).map(mapMessage)
+    return (await this.api.getMessages(id))
+      .filter((message) => message.role === 'user'
+        || (message.role === 'assistant' && !message.tool_calls?.length))
+      .map(mapMessage)
   }
 
   async getSettings(): Promise<Settings> {

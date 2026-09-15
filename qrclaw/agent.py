@@ -7,9 +7,7 @@ agent.py —— agent 入口 + 工具函数
 - run_sub_agent()：启动子 agent
 """
 import asyncio
-import json
 from rich.console import Console
-from qrclaw.providers.base import LLMResponse
 from qrclaw.memory.context.session import Session
 from qrclaw.workspace import Workspace
 from qrclaw.logger import get_logger
@@ -42,10 +40,6 @@ def get_agent_depth() -> int:
 def is_sub_agent() -> bool:
     return get_agent_depth() > 0
 
-def get_agent_id() -> str | None:
-    ws = get_workspace()
-    return ws.agent_id if ws else None
-
 
 def set_execution_context(context) -> None:
     """设置当前线程的结构化运行上下文。"""
@@ -57,45 +51,6 @@ def get_execution_context():
     """获取当前线程的结构化运行上下文。"""
 
     return getattr(_thread_local, "execution_context", None)
-
-
-# ── 全局 Extractor 注册表 ──────────────────────────────────────────────
-from typing import TYPE_CHECKING
-if TYPE_CHECKING:
-    from qrclaw.graph.nodes.memory_extraction import MemoryExtractionNode
-
-_global_extractor = None
-
-def register_extractor(extractor: "MemoryExtractionNode") -> None:
-    """ReactLoopNode 初始化时注册，供工具层调用"""
-    global _global_extractor
-    _global_extractor = extractor
-
-def get_extractor() -> "MemoryExtractionNode | None":
-    """工具层获取当前 extractor"""
-    return _global_extractor
-
-
-# ── 工具函数 ─────────────────────────────────────────────────────────
-
-def _dump_assistant_msg(response: LLMResponse) -> dict:
-    """把 LLMResponse 转成可存入 session 的 assistant 消息 dict"""
-    msg: dict = {"role": "assistant", "content": response.content or ""}
-    if response.reasoning_content:
-        msg["reasoning_content"] = response.reasoning_content
-    if response.tool_calls:
-        tc_list = []
-        for tc in response.tool_calls:
-            entry = {
-                "id": tc.id,
-                "type": "function",
-                "function": {"name": tc.name, "arguments": tc.arguments},
-            }
-            if tc.thought_signature:
-                entry["__thought_signature__"] = tc.thought_signature
-            tc_list.append(entry)
-        msg["tool_calls"] = tc_list
-    return msg
 
 
 from qrclaw.graph.runner import GraphRunner
@@ -185,7 +140,6 @@ def _cleanup_mcp():
         _mcp_manager = None
 
 
-
 def run(
     user_input: str,
     session: Session,
@@ -250,11 +204,13 @@ def run_sub_agent(
     logger.info(f"启动子 agent: {agent_id}, 任务: {task[:100]}...")
 
     current_depth = get_agent_depth()
+    saved_session, saved_workspace = get_session(), get_workspace()
+    saved_execution_context = get_execution_context()
     set_agent_depth(current_depth + 1)
     logger.info(f"子 agent 深度: {current_depth + 1}")
 
     # 保存当前线程的 ContextManager，子 agent 执行完后恢复
-    from qrclaw.memory.context.context_manager import get_context_manager, init_context_manager
+    from qrclaw.memory.context.context_manager import get_context_manager
     try:
         saved_ctx = get_context_manager()
     except RuntimeError:
@@ -266,13 +222,12 @@ def run_sub_agent(
         sub_console = RichConsole(file=StringIO(), highlight=False)
 
     session_id = f"sub-{agent_id}-{uuid.uuid4().hex[:8]}"
-    sub_session = Session(
-        sessions_dir=workspace.sessions_dir,
-        session_id=session_id,
-        resume=False,
-    )
-
     try:
+        sub_session = Session(
+            sessions_dir=workspace.sessions_dir,
+            session_id=session_id,
+            resume=False,
+        )
         if execution_context is not None:
             execution_context.publish(
                 "agent.started",
@@ -300,10 +255,10 @@ def run_sub_agent(
         raise
     finally:
         set_agent_depth(current_depth)
-        # 恢复主线程的 ContextManager
-        if saved_ctx is not None:
-            from qrclaw.memory.context.context_manager import _thread_local as _ctx_thread_local
-            _ctx_thread_local.ctx = saved_ctx
-            logger.debug(f"子 agent {agent_id} 执行完毕，已恢复主线程 ContextManager")
+        set_session(saved_session)
+        set_workspace(saved_workspace)
+        set_execution_context(saved_execution_context)
+        from qrclaw.memory.context.context_manager import _thread_local as _ctx_thread_local
+        _ctx_thread_local.ctx = saved_ctx
 
     return result, sub_session

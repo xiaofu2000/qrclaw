@@ -58,43 +58,15 @@ class DeleteWikiPageArgs(BaseModel):
     agents=[AgentType.MAIN],
 )
 def write_wiki_page(content: str) -> str:
+    """同步写入长期记忆，完成后返回实际结果。"""
     try:
-        from qrclaw.agent import get_extractor
-        import threading
-
-        extractor = get_extractor()
-        if extractor is None:
-            return "错误：记忆节点未初始化，无法写入记忆。"
-
-        index_entries = extractor.memory.index.all_entries()
-        index_summary = "\n".join(
-            f"- {e['name']}：{e.get('description', '')}" for e in index_entries
-        ) if index_entries else "（暂无页面）"
-
-        from qrclaw.memory.wiki.extraction.prompts import EXTRACTION_PROMPT_TEMPLATE
-
-        prompt = EXTRACTION_PROMPT_TEMPLATE.format(
-            index_md=index_summary,
-            messages_text=content,
-        )
-
-        # 构造提取数据结构（与 runner.trigger_extraction 返回格式一致）
-        extraction_data = {
-            "index_summary": index_summary,
-            "messages_text": content,
-        }
-
-        with extractor._pending_lock:
-            extractor._pending_extractions.append(extraction_data)
-
-        t = threading.Thread(
-            target=extractor.flush_pending,
-            daemon=True,
-            name="memory-extraction-manual",
-        )
-        t.start()
-
-        return "✅ 已交给记忆节点处理，将在后台写入 Wiki。"
+        from qrclaw.memory.context.context_manager import get_context_manager
+        ctx = get_context_manager()
+        try:
+            written = ctx.extractor.write(content)
+        finally:
+            ctx.invalidate_cache()
+        return f"已写入 {written} 个 Wiki 页面。" if written else "记忆节点判断无需更新 Wiki。"
 
     except Exception as e:
         logger.error(f"write_wiki_page 失败: {e}", exc_info=True)

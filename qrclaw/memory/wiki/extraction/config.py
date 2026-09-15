@@ -1,16 +1,11 @@
-"""
-Extraction Configuration - 提取配置常量
-
-与 memory_extraction.py 行 24-45 保持字段名兼容
-"""
-
+"""记忆提取阈值与模型调用配置。"""
 from dataclasses import dataclass
 import os
 
 
 @dataclass
 class ExtractionConfig:
-    """Memory extraction configuration with environment variable overrides"""
+    """轮末提取阈值与模型重试配置，支持环境变量覆盖。"""
 
     # 初始化阈值：Token 数量达到多少时开始提取
     # 支持环境变量覆盖：MEMORY_INIT_THRESHOLD
@@ -19,13 +14,6 @@ class ExtractionConfig:
     # 更新间隔：Token 增长多少时触发下一次提取
     # 支持环境变量覆盖：MEMORY_UPDATE_INTERVAL
     minimum_tokens_between_update: int = 4000
-
-    # 工具调用次数间隔
-    # 支持环境变量覆盖：MEMORY_TOOL_CALL_INTERVAL
-    tool_calls_between_updates: int = 3
-
-    # 最大待处理数量
-    max_pending: int = 3
 
     # LLM 调用最大重试次数
     max_retries: int = 3
@@ -36,8 +24,3 @@ class ExtractionConfig:
             self.minimum_message_tokens_to_init = int(os.environ["MEMORY_INIT_THRESHOLD"])
         if "MEMORY_UPDATE_INTERVAL" in os.environ:
             self.minimum_tokens_between_update = int(os.environ["MEMORY_UPDATE_INTERVAL"])
-        if "MEMORY_TOOL_CALL_INTERVAL" in os.environ:
-            self.tool_calls_between_updates = int(os.environ["MEMORY_TOOL_CALL_INTERVAL"])
-
-
-DEFAULT_CONFIG = ExtractionConfig()

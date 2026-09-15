@@ -14,8 +14,6 @@ import pytest
 import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock, patch
-from io import StringIO
-from rich.console import Console
 
 from qrclaw.memory.wiki.wiki_memory import WikiMemory
 from qrclaw.memory.context.session import Session
@@ -24,9 +22,18 @@ from qrclaw.memory.context.context_manager import (
     init_context_manager,
     get_context_manager,
 )
-from qrclaw.graph.nodes.router import RouteResult, Plan, PlanStep
+from qrclaw.graph.nodes.router import Plan, PlanStep
 from qrclaw.graph.nodes.wiki_query import WikiQueryNode, WikiQueryResult
 from qrclaw.workspace import Workspace
+
+
+@pytest.fixture(autouse=True)
+def offline_wiki_selection(monkeypatch):
+    """用空选择结果验证关键词回退，测试不依赖真实模型服务。"""
+    from qrclaw.providers.base import LLMResponse
+    service = MagicMock()
+    service.chat.return_value = LLMResponse(content='{"selected": []}')
+    monkeypatch.setattr('qrclaw.memory.wiki.selection.wiki_selector.get_llm_service', lambda: service)
 
 
 class TestWikiQueryIntegration:
@@ -194,7 +201,6 @@ class TestWikiQueryIntegration:
         ctx = get_context_manager()
 
         # 4. 模拟 plan 设置（模拟 Router 设置 plan 后调用 Wiki 查询）
-        from qrclaw.graph.nodes.router import PlanStep, Plan
         steps = [PlanStep(id="1", description="步骤1", depends_on=[])]
         plan = Plan(goal="测试 Wiki 集成", steps=steps, project_path="/test/project")
         ctx.set_plan(plan.goal, plan.steps, plan.project_path)
