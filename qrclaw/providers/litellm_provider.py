@@ -39,7 +39,21 @@ PROVIDER_PREFIX_MAP = {
     "api.mistral.ai": "mistral",
     "api.huggingface.co": "huggingface",
     "openrouter.ai": "openrouter",
+    "api.orcarouter.ai": "orcarouter",
 }
+
+
+def _normalize_orcarouter_model(model: str) -> str:
+    """
+    LiteLLM 没有内建的 orcarouter provider；OrcaRouter 是 OpenAI 兼容的路由网关，
+    通过 LiteLLM 的 openai/ 前缀 + api_base 即可路由。OrcaRouter 的模型 ID 形如
+    `orcarouter/fusion`，所以传给 LiteLLM 的完整模型名是 `openai/orcarouter/fusion`。
+    """
+    if model.startswith("orcarouter/"):
+        return f"openai/{model}"
+    return model
+
+
 def _infer_provider(model: str, base_url: str | None) -> str:
     """
     推断模型对应的 provider 前缀。
@@ -61,6 +75,8 @@ def _infer_provider(model: str, base_url: str | None) -> str:
     for pattern, provider in PROVIDER_PREFIX_MAP.items():
         if pattern in host:
             logger.debug(f"从 base_url 推断 provider: {base_url} -> {provider}")
+            if provider == "orcarouter":
+                return _normalize_orcarouter_model(f"{provider}/{model}")
             return f"{provider}/{model}"
 
     return model  # 无法推断，返回原值
@@ -99,6 +115,8 @@ class LiteLLMProvider(LLMProvider):
 
         # 自动推断 provider 前缀
         self._model = _infer_provider(configured_model, self._base_url)
+        # 兼容直接填写 orcarouter/<model> 的情况
+        self._model = _normalize_orcarouter_model(self._model)
 
         # LiteLLM 配置
         litellm.drop_params = True  # 忽略不支持的参数
