@@ -68,10 +68,8 @@ class QRClawLogger:
     """QRClaw 日志管理器"""
 
     def __init__(self):
-        self._initialized = False
         self._logger: Optional[logging.Logger] = None
         self._console: Optional[Console] = None
-        self._current_session_id: Optional[str] = None
 
     def setup(
         self,
@@ -95,16 +93,6 @@ class QRClawLogger:
             console_level: 控制台日志级别
             log_dir: 日志目录（由 Workspace 提供，不传则用默认路径）
         """
-        # session_id 未变则跳过，但必须确认 logger 已挂载 handlers
-        # （防止 switch A→B→A 时 handler 实际指向 B 的文件）
-        if (
-            self._initialized
-            and self._current_session_id == session_id
-            and self._logger is not None
-            and self._logger.handlers
-        ):
-            return
-
         # 日志目录：优先用传入的，否则用默认
         if log_dir is None:
             log_dir = Path.home() / ".qrclaw" / "logs"
@@ -160,8 +148,6 @@ class QRClawLogger:
             console_handler.addFilter(SensitiveInfoFilter())
             self._logger.addHandler(console_handler)
 
-        self._initialized = True
-        self._current_session_id = session_id
 
         # 静默 root logger，防止第三方库日志通过 root handler 泄漏到终端
         root_logger = logging.getLogger()

@@ -174,8 +174,10 @@ class IndexManager:
         for md_file in sorted(pages_dir.glob("*.md")):
             text = md_file.read_text(encoding="utf-8")
             page = WikiPage.from_markdown(text, fallback_name=md_file.stem)
-            if page:
-                pages.append(page.to_index_entry())
+            if page is None:
+                logger.warning(f"解析页面失败，跳过: {md_file.name}")
+                continue
+            pages.append(page.to_index_entry())
 
         data = {"version": "2.0", "updated_at": _now(), "pages": pages}
         self._write_json(data)

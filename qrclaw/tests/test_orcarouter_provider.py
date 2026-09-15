@@ -39,3 +39,17 @@ def test_provider_model_and_key_routing(monkeypatch, configured_model, base_url,
     assert (structured["model"], structured["api_base"], structured["api_key"]) == (expected_model, base_url, "test-orca-key")
     actual_model, actual_provider, _, _ = litellm.get_llm_provider(model=expected_model, api_base=base_url, api_key="test-orca-key")
     assert (actual_model, actual_provider) == (wire_model, "openai")
+
+
+def test_explicit_settings_override_startup_config(monkeypatch):
+    """运行时切换到 OrcaRouter 必须使用新设置，不受启动时的模型和密钥影响。"""
+    monkeypatch.setattr(provider_module, "LITELLM_MODEL", "gpt-4o")
+    monkeypatch.setattr(provider_module, "LITELLM_BASE_URL", "https://api.openai.com/v1")
+    monkeypatch.setattr(provider_module, "LITELLM_API_KEY", "old-key")
+    provider = provider_module.LiteLLMProvider(
+        model="orcarouter/fusion", base_url="https://api.orcarouter.ai/v1", api_key="new-test-key",
+    )
+    kwargs = provider.make_instructor_kwargs([{"role": "user", "content": "检查即时配置"}])
+    assert kwargs["model"] == "openai/orcarouter/fusion"
+    assert kwargs["api_base"] == "https://api.orcarouter.ai/v1"
+    assert kwargs["api_key"] == "new-test-key"

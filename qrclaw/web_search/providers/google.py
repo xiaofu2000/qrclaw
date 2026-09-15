@@ -28,7 +28,7 @@ class GoogleSearchProvider(WebSearchProvider):
             raise RuntimeError("GOOGLE_API_KEY or GOOGLE_CSE_ID not configured")
 
         start_time = time.time()
-        logger.debug(f"Google searching: {query}")
+        logger.debug(f"Google 搜索： {query}")
         
         try:
             service = build("customsearch", "v1", developerKey=GOOGLE_API_KEY)
@@ -52,7 +52,7 @@ class GoogleSearchProvider(WebSearchProvider):
                 ))
 
         except Exception as e:
-            logger.error(f"Google search failed: {e}")
+            logger.error(f"Google 搜索失败： {e}")
             raise RuntimeError(f"Google API error: {e}")
 
         took_ms = (time.time() - start_time) * 1000

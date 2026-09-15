@@ -3,9 +3,7 @@
 
 负责参数解析、初始化和主循环。
 
-Import 顺序说明：
-  触发大量子模块 import 的代码（tools、agent 等）必须在 setup_logger 之后延迟导入，
-  否则各模块顶层的 get_logger() 会在日志系统初始化前执行，导致日志写入错误的文件。
+日志 handler 在创建会话后统一配置，模块中的 get_logger() 不触发初始化。
 """
 import argparse
 from rich.console import Console
@@ -23,6 +21,12 @@ console = Console()
 
 
 def main() -> None:
+    import sys
+    if len(sys.argv) > 1 and sys.argv[1] == "serve":
+        from qrclaw.server.cli import serve
+        serve(sys.argv[2:])
+        return
+
     parser = argparse.ArgumentParser(prog="qrclaw", add_help=False)
     parser.add_argument("-a", "--agent", default="default", metavar="ID",
                         help="指定 agent ID（默认: default）")
@@ -40,9 +44,9 @@ def main() -> None:
     # 1. 初始化工作空间（确定所有路径）
     workspace = Workspace(agent_id=args.agent)
 
-    # 2. 延迟导入各子模块（在 setup_logger 之前不能触发 get_logger）
+    # 2. 加载工具和运行模块
     import qrclaw.tools               # noqa: E402  触发所有工具注册
-    import qrclaw.sandbox.config      # noqa: E402  触发配置文件创建
+    import qrclaw.sandbox.config      # noqa: F401  触发配置文件创建
     from qrclaw.tools.spawn_agent import set_console as set_spawn_console
     set_spawn_console(console)  # 注入 console，子 agent 完成时直接打印
     from qrclaw.agent import run
@@ -165,11 +169,13 @@ def _print_help() -> None:
     console.print("[bold cyan]QRClaw Agent[/bold cyan]")
     console.print()
     console.print("用法: qrclaw [-a <agentID>] [--no-heartbeat] [-n]")
+    console.print("      qrclaw serve [--host 127.0.0.1] [--port 8765]")
     console.print()
     console.print("选项:")
     console.print("  -a, --agent <ID>     指定 agent ID（默认: default）")
     console.print("  --no-heartbeat       禁用心跳机制")
     console.print("  -n, --new-session    创建新会话，不恢复历史")
+    console.print("  serve                启动本地工作台 API 服务")
     console.print()
     console.print("运行时命令:")
     console.print("  /agent list                列出所有 agent")

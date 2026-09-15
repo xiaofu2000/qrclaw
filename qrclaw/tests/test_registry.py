@@ -7,7 +7,6 @@
 - 参数校验
 - 工具执行
 """
-import pytest
 import json
 from pydantic import BaseModel, Field
 from qrclaw.tools.registry import (
@@ -20,7 +19,7 @@ from qrclaw.tools.registry import (
 
 
 # 测试用的参数模型
-class TestArgs(BaseModel):
+class ToolArgs(BaseModel):
     text: str = Field(description="测试文本")
     count: int = Field(default=1, description="重复次数")
 
@@ -34,7 +33,7 @@ class TestTool:
 
     def test_register_tool(self):
         """测试注册工具"""
-        @register(description="测试工具", args_model=TestArgs)
+        @register(description="测试工具", args_model=ToolArgs)
         def test_tool(text: str, count: int = 1) -> str:
             return text * count
         
@@ -45,7 +44,7 @@ class TestTool:
 
     def test_register_tool_with_confirm(self):
         """测试注册需要确认的工具"""
-        @register(description="高风险工具", args_model=TestArgs, confirm=True)
+        @register(description="高风险工具", args_model=ToolArgs, confirm=True)
         def dangerous_tool(text: str, count: int = 1) -> str:
             return text * count
         
@@ -53,7 +52,7 @@ class TestTool:
 
     def test_need_confirm_default(self):
         """测试默认不需要确认"""
-        @register(description="测试工具", args_model=TestArgs)
+        @register(description="测试工具", args_model=ToolArgs)
         def normal_tool(text: str, count: int = 1) -> str:
             return text * count
         
@@ -73,11 +72,11 @@ class TestSchema:
 
     def test_get_schemas(self):
         """测试获取所有工具 schema"""
-        @register(description="工具1", args_model=TestArgs)
+        @register(description="工具1", args_model=ToolArgs)
         def tool1(text: str, count: int = 1) -> str:
             return text
         
-        @register(description="工具2", args_model=TestArgs)
+        @register(description="工具2", args_model=ToolArgs)
         def tool2(text: str, count: int = 1) -> str:
             return text
         
@@ -89,7 +88,7 @@ class TestSchema:
 
     def test_schema_structure(self):
         """测试 schema 结构"""
-        @register(description="测试工具", args_model=TestArgs)
+        @register(description="测试工具", args_model=ToolArgs)
         def test_tool(text: str, count: int = 1) -> str:
             return text
         
@@ -105,7 +104,7 @@ class TestSchema:
 
     def test_schema_required_fields(self):
         """测试 required 字段"""
-        @register(description="测试工具", args_model=TestArgs)
+        @register(description="测试工具", args_model=ToolArgs)
         def test_tool(text: str, count: int = 1) -> str:
             return text
         
@@ -131,7 +130,7 @@ class TestExecution:
 
     def test_execute_tool_success(self):
         """测试成功执行工具"""
-        @register(description="测试工具", args_model=TestArgs)
+        @register(description="测试工具", args_model=ToolArgs)
         def test_tool(text: str, count: int = 1) -> str:
             return text * count
         
@@ -141,7 +140,7 @@ class TestExecution:
 
     def test_execute_tool_default_args(self):
         """测试使用默认参数执行"""
-        @register(description="测试工具", args_model=TestArgs)
+        @register(description="测试工具", args_model=ToolArgs)
         def test_tool(text: str, count: int = 1) -> str:
             return text * count
         
@@ -151,7 +150,7 @@ class TestExecution:
 
     def test_execute_tool_invalid_json(self):
         """测试无效 JSON 参数"""
-        @register(description="测试工具", args_model=TestArgs)
+        @register(description="测试工具", args_model=ToolArgs)
         def test_tool(text: str, count: int = 1) -> str:
             return text
         
@@ -162,7 +161,7 @@ class TestExecution:
 
     def test_execute_tool_missing_required(self):
         """测试缺少必填参数"""
-        @register(description="测试工具", args_model=TestArgs)
+        @register(description="测试工具", args_model=ToolArgs)
         def test_tool(text: str, count: int = 1) -> str:
             return text
         
@@ -172,7 +171,7 @@ class TestExecution:
 
     def test_execute_tool_wrong_type(self):
         """测试参数类型错误"""
-        @register(description="测试工具", args_model=TestArgs)
+        @register(description="测试工具", args_model=ToolArgs)
         def test_tool(text: str, count: int = 1) -> str:
             return text * count
         
@@ -199,7 +198,7 @@ class TestExecution:
 
     def test_execute_tool_exception(self):
         """测试工具执行异常"""
-        @register(description="会报错的工具", args_model=TestArgs)
+        @register(description="会报错的工具", args_model=ToolArgs)
         def error_tool(text: str, count: int = 1) -> str:
             raise ValueError("故意报错")
         

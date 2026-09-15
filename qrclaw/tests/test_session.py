@@ -7,16 +7,15 @@ Session 会话管理模块测试
 - Token 计算
 - 计划管理
 """
-import pytest
 import json
-from pathlib import Path
 from qrclaw.memory.context.session import (
     Session,
     list_sessions,
     get_last_session_id,
     delete_session,
-    count_tokens,
 )
+
+from qrclaw.memory.token_utils import count_messages_tokens as count_tokens
 
 
 class TestSessionCreation:
@@ -140,7 +139,7 @@ class TestTokenCounting:
         """测试空消息列表"""
         tokens = count_tokens([])
         # 空消息应该只有基础开销
-        assert tokens == 2  # 对话开销
+        assert tokens == 0
 
 
 class TestSessionList:

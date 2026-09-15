@@ -1,7 +1,6 @@
 """
 /agent 命令处理模块
 """
-import shutil
 from rich.console import Console
 from rich.table import Table
 from qrclaw.workspace import Workspace, list_agents, AGENTS_ROOT

@@ -121,21 +121,47 @@ class WikiPage:
 
     @staticmethod
     def _parse_frontmatter(text: str) -> dict:
-        """解析 frontmatter 文本为字典"""
+        """解析 frontmatter 文本为字典，支持内联和 YAML 列表格式"""
         result = {}
-        for line in text.splitlines():
+        lines = text.splitlines()
+        i = 0
+        while i < len(lines):
+            line = lines[i]
             if ":" not in line:
+                i += 1
                 continue
+
             key, _, raw = line.partition(":")
             key = key.strip()
             raw = raw.strip()
 
             if key in ("tags", "related"):
-                # 解析 [a, b, c] 格式
-                inner = raw.strip("[]")
-                result[key] = [v.strip() for v in inner.split(",") if v.strip()] if inner else []
+                # 情况1: 内联格式 [a, b, c]
+                if raw.startswith("["):
+                    inner = raw.strip("[]")
+                    result[key] = [v.strip() for v in inner.split(",") if v.strip()] if inner else []
+                # 情况2: YAML 列表格式（多行）
+                elif raw == "":
+                    items = []
+                    i += 1
+                    while i < len(lines):
+                        next_line = lines[i]
+                        if next_line.strip().startswith("- "):
+                            items.append(next_line.strip()[2:].strip())
+                            i += 1
+                        elif next_line.strip() == "":
+                            i += 1
+                            continue
+                        else:
+                            break
+                    result[key] = items
+                    continue  # 已经递增了 i
+                else:
+                    result[key] = [raw]
             else:
                 result[key] = raw
+
+            i += 1
 
         return result
 

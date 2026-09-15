@@ -15,7 +15,7 @@ from unittest.mock import patch, MagicMock
 # 设置环境变量以避免 provider 加载错误
 os.environ.setdefault("LLM_PROVIDER", "litellm")
 
-from qrclaw.providers.base import LLMProvider, LLMResponse, ToolCall
+from qrclaw.providers.base import LLMProvider
 from qrclaw.providers.litellm_provider import LiteLLMProvider
 
 
@@ -109,6 +109,20 @@ class TestChatReturnsLLMResponse:
             assert result.prompt_tokens == 10
             assert result.completion_tokens == 20
             assert result.total_tokens == 30
+
+    def test_response_has_reasoning_content(self, mock_provider):
+        """验证 reasoning_content 会被保留"""
+        mock_response = MagicMock()
+        mock_response.choices = [MagicMock()]
+        mock_response.choices[0].message.content = "Final answer"
+        mock_response.choices[0].message.reasoning_content = "Hidden reasoning"
+        mock_response.choices[0].message.tool_calls = None
+        mock_response.choices[0].finish_reason = "stop"
+        mock_response.usage = MagicMock(prompt_tokens=3, completion_tokens=4, total_tokens=7)
+
+        with patch("qrclaw.providers.litellm_provider.completion", return_value=mock_response):
+            result = mock_provider.chat([{"role": "user", "content": "Hi"}])
+            assert result.reasoning_content == "Hidden reasoning"
 
 
 class TestToolCallConversion:
@@ -224,6 +238,7 @@ class TestJsonMode:
                 json_mode=True
             )
 
+            assert result.content == '{"result": "ok"}'
             # 验证调用参数包含 response_format
             call_kwargs = mock_completion.call_args[1]
             assert "response_format" in call_kwargs
@@ -308,6 +323,7 @@ class TestExceptionHandling:
             with patch("time.sleep"):
                 result = mock_provider.chat([{"role": "user", "content": "Hi"}])
 
+            assert result.content == mock_response.choices[0].message.content
             assert mock_completion.call_count == 2
             assert result.content == "Success"
 
@@ -334,6 +350,7 @@ class TestExceptionHandling:
             with patch("time.sleep"):
                 result = mock_provider.chat([{"role": "user", "content": "Hi"}])
 
+            assert result.content == mock_response.choices[0].message.content
             assert mock_completion.call_count == 2
 
     def test_max_retries_exceeded_raises_runtime_error(self, mock_provider):
@@ -355,19 +372,11 @@ class TestExceptionHandling:
             assert mock_completion.call_count == 3
 
     def test_unexpected_error_raises_without_retry(self, mock_provider):
-        """
-        验证未知异常立即抛出，不重试。
-
-        注意：当前 litellm_provider.py 代码有一个 bug：
-        未知异常被捕获后 break，但 response 未定义，
-        导致后续代码抛出 UnboundLocalError 而非 RuntimeError。
-        这是一个需要修复的代码问题。
-        """
+        """验证未知异常以 RuntimeError 抛出，保留原因且不重试。"""
         with patch("qrclaw.providers.litellm_provider.completion") as mock_completion:
             mock_completion.side_effect = ValueError("Unexpected error")
 
-            # 由于代码 bug，会抛出 UnboundLocalError 而非 RuntimeError
-            with pytest.raises((RuntimeError, UnboundLocalError)) as exc_info:
+            with pytest.raises(RuntimeError, match="Unexpected error"):
                 mock_provider.chat([{"role": "user", "content": "Hi"}])
 
             # 只尝试一次，不重试
@@ -408,6 +417,20 @@ class TestSanitize:
         cleaned = provider._sanitize(messages)
 
         assert cleaned[0]["content"] == ""
+
+    def test_sanitize_keeps_reasoning_content_when_present(self):
+        """验证 reasoning_content 不会被清洗掉"""
+        with patch("qrclaw.providers.litellm_provider.LITELLM_API_KEY", None), \
+             patch("qrclaw.providers.litellm_provider.LITELLM_MODEL", "gpt-4o"), \
+             patch("qrclaw.providers.litellm_provider.LITELLM_BASE_URL", None), \
+             patch("qrclaw.providers.litellm_provider.LITELLM_API_BASE", None), \
+             patch("qrclaw.providers.litellm_provider.LITELLM_PROXY_URL", None):
+            provider = LiteLLMProvider()
+
+        messages = [{"role": "assistant", "content": "Final", "reasoning_content": "Think"}]
+        cleaned = provider._sanitize(messages)
+
+        assert cleaned[0]["reasoning_content"] == "Think"
 
 
 class TestTemperatureParameter:

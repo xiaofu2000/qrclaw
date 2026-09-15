@@ -1,3 +1,4 @@
+import json
 import os
 from qrclaw.config_manager import init_config, load_config
 
@@ -26,13 +27,9 @@ _MODEL_MAX_TOKENS = int(os.getenv("MODEL_MAX_TOKENS", "128000"))
 # 超过 60% 触发压缩
 COMPRESS_THRESHOLD = int(_MODEL_MAX_TOKENS * 0.6)
 
-# 压缩后目标范围：摘要 + 短期记忆 = 20%~25% 上下文窗口
-COMPRESS_TARGET_MIN_RATIO = 0.20  # 最小 20%，避免压缩太短
-COMPRESS_TARGET_MAX_RATIO = 0.25  # 最大 25%，避免压缩效果差
-
 # 摘要目标占 10% 上下文窗口
 COMPRESS_SUMMARY_TARGET_TOKENS = int(_MODEL_MAX_TOKENS * 0.10)
-# 摘要最大输出 token 数（LLM 的 max_tokens 参数上限）
+# 摘要提示的目标上限（实际长度由模型决定）
 COMPRESS_SUMMARY_MAX_TOKENS = int(os.getenv("COMPRESS_SUMMARY_MAX_TOKENS", str(COMPRESS_SUMMARY_TARGET_TOKENS * 2)))
 
 # 短期记忆占 12% 上下文窗口
@@ -53,3 +50,7 @@ LOG_TO_FILE = os.getenv("LOG_TO_FILE", "true").lower() == "true"
 LOG_TO_CONSOLE = os.getenv("LOG_TO_CONSOLE", "true").lower() == "true"
 # 控制台默认只显示 WARNING 及以上级别的日志，避免输出太多
 LOG_CONSOLE_LEVEL = os.getenv("LOG_CONSOLE_LEVEL", "WARNING")
+
+# MCP 配置
+MCP_ENABLED = os.getenv("MCP_ENABLED", "false").lower() == "true"
+MCP_SERVERS = json.loads(os.getenv("MCP_SERVERS", "[]"))

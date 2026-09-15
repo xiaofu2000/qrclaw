@@ -11,8 +11,8 @@ from __future__ import annotations
 from typing import Literal
 from pydantic import BaseModel, Field
 
-from qrclaw.providers import provider
 from qrclaw.providers.litellm_provider import LiteLLMProvider
+from qrclaw.llm_service import get_llm_service
 from qrclaw.graph.nodes.router import PlanStep
 from qrclaw.memory.context.context_manager import get_context_manager
 from qrclaw.logger import get_logger
@@ -36,8 +36,9 @@ _REPLANNER_PROMPT = """你是一个高级智能体任务重规划器 (Replanner)
 
 【你的核心任务】
 1. 分析战报：已完成的步骤拿到了哪些真实情报？是否遇到了致命阻塞、报错或死胡同？
-2. 评估进度：终极目标是否已经彻底达成？（必须是拿到了可以直接回答用户的最终数据，才算达成）。
-   ⚠️ 极其重要：如果用户的最终目标是编写代码、生成报告或修改文件，仅仅搜集完情报绝对不算达成！
+2. 评估进度：终极目标是否已经彻底达成？
+   - 如果目标是"分析/调研/审查/查看"等纯信息收集：战报已覆盖所有关键信息 → 立即判 done，口头汇报即可。
+   - 如果目标是"编写代码/生成文件/修改文件"等实体交付：仅仅搜集完情报不算达成，必须继续执行到文件写入。
 3. 重构图纸：如果没达成，根据最新情报重新规划后续步骤。
 
 【重规划铁律（极重要！）】
@@ -62,8 +63,8 @@ _REPLANNER_PROMPT = """你是一个高级智能体任务重规划器 (Replanner)
   "status": "continue",
   "project_path": "从战报或对话上下文中确认的项目根目录绝对路径，如 /Users/xxx/myproject",
   "steps": [
-    {"id": 1, "description": "动作描述，如果有文件引用，必须包含具体的真实绝对路径参数和明确的处理要求", "depends_on": []},
-    {"id": 2, "description": "动作描述，如果有文件引用，必须包含具体的真实绝对路径参数和明确的处理要求", "depends_on": [1]}
+    {"id": 1, "description": "动作描述，必须包含具体的真实绝对路径参数和明确的处理要求", "depends_on": []},
+    {"id": 2, "description": "动作描述，必须包含具体的真实绝对路径参数和明确的处理要求", "depends_on": [1]}
   ]
 }
 
@@ -110,14 +111,16 @@ class ReplannerNode:
         messages = ctx.build_messages("replanner", replanner_instruction=_REPLANNER_INSTRUCTION)
 
         try:
-            if not isinstance(provider, LiteLLMProvider):
+            llm = get_llm_service()
+            if not llm.is_provider_type(LiteLLMProvider):
                 raise RuntimeError("Replanner 目前仅支持 LiteLLMProvider")
 
             import instructor
             from litellm import completion
-            client = instructor.from_litellm(completion, mode=instructor.Mode.JSON)
+            # 使用 MD_JSON 模式，避免依赖 response_format=json_object（部分模型不支持）
+            client = instructor.from_litellm(completion, mode=instructor.Mode.MD_JSON)
 
-            kwargs = provider.make_instructor_kwargs(messages, temperature=0.1)
+            kwargs = llm.make_instructor_kwargs(messages, temperature=0.1)
             kwargs["response_model"] = ReplanSchema
             kwargs["max_retries"] = 3
 

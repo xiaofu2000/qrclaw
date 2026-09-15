@@ -7,7 +7,7 @@ ContextManager —— 统一上下文管理中心
 - 为不同角色（react / router / replanner） 组装 messages
 - 线程安全地管理 plan 执行状态（加锁保护并发写入）
 - 压缩判断集中在此，不散落在各节点
-- System Prompt 缓存：使用 Dirty Flag 模式，延迟更新
+- System Prompt 缓存：失效后延迟重建
 
 用法：
     # 主 agent 初始化时
@@ -20,8 +20,10 @@ ContextManager —— 统一上下文管理中心
 import threading
 from dataclasses import dataclass, field
 from qrclaw.memory.context.session import Session
-from qrclaw.memory.compression.compressor import summarize
-from qrclaw.config import COMPRESS_THRESHOLD
+from qrclaw.memory.compression.compressor import summarize, summarize_messages
+from qrclaw.memory.token_utils import count_messages_tokens
+from qrclaw.memory.wiki.extraction.strategies import conversation_messages
+from qrclaw.config import COMPRESS_THRESHOLD, _MODEL_MAX_TOKENS
 from qrclaw.workspace import Workspace
 from qrclaw.prompt import build_system_prompt
 from qrclaw.logger import get_logger
@@ -51,8 +53,10 @@ _ROUTER_SYSTEM_PROMPT = """【系统指令】根据以上对话，判断最新�
 
 【目标设定法则 (Definition of Done)】
 当你提取用户的请求并生成 `goal`（终极目标）时，必须严格遵守以下验收标准：
-1. 【实体交付优先】：如果用户的意图是生成代码、重构文件、撰写报告等【长文本产出】，你的 `goal` 必须明确要求"将最终结果写入磁盘"。
-2. 【禁止口头完结】：绝不允许将"搜集完情报"或"得出结论"作为最终目标！必须落实到物理文件的修改或创建。
+1. 【用户意图为准】：只有用户明确说了"写入文件""保存""导出""生成文件""产出文档"时，goal 才可以包含"写入磁盘"。
+   用户说"看看""分析""帮我查""汇报""讲一下"时，goal 只需要描述分析目标，绝对不画蛇添足加"写入磁盘"。
+2. 【口头汇报也是交付】：分析、调研、代码审查类任务，最终用对话直接汇报结果就是完成。
+   不要强制创建文件来存放本可以用几段话讲清楚的内容。
 
 简单任务只返回：
 {
@@ -92,6 +96,7 @@ class PlanState:
     past_steps: list = field(default_factory=list)  # list[StepResult]
     remaining: list = field(default_factory=list)   # list[PlanStep]
     project_path: str = ""  # 项目根目录绝对路径，由 LLM 从对话中推断
+    wiki_context: str = ""   # Wiki 记忆上下文（通过 Router 触发 LLM 精排注入）
 
 
 # 线程级单例：每个线程（主 agent / 子 agent）持有自己的 ContextManager
@@ -119,6 +124,7 @@ def get_context_manager() -> "ContextManager":
 
 
 class ContextManager:
+    """管理当前线程的会话、计划状态和系统提示缓存。"""
 
     def __init__(self, session: Session, workspace: Workspace, is_sub_agent: bool = False):
         self.session = session
@@ -127,14 +133,18 @@ class ContextManager:
         self._plan_state: PlanState | None = None
         self._lock = threading.Lock()  # 保护 plan_state 的并发写入
 
-        # System Prompt 缓存（Dirty Flag 模式）
+        # 系统提示缓存，以 None 表示需要重建
         self._cached_system_prompt: str | None = None
-        self._dirty: bool = True  # 默认脏，首次使用时构建
+        self._extractor = None
 
-    # ── 消息管理 ──────────────────────────────────────────────────────
-
-    def add(self, message: dict):
-        self.session.add(message)
+    @property
+    def extractor(self):
+        """当前工作区的记忆提取器；检查点保存在会话中，可跨运行恢复。"""
+        if self._extractor is None:
+            from qrclaw.graph.nodes.memory_extraction import MemoryExtractionNode
+            from qrclaw.memory.wiki import WikiMemory
+            self._extractor = MemoryExtractionNode(WikiMemory.for_workspace(self.workspace.memory_dir))
+        return self._extractor
 
     # ── Plan 状态管理（线程安全） ──────────────────────────────────────
 
@@ -142,7 +152,23 @@ class ContextManager:
         """初始化 plan。"""
         with self._lock:
             self._plan_state = PlanState(goal=goal, remaining=list(steps), project_path=project_path)
+        self.invalidate_cache()
         logger.info(f"plan 初始化：{goal}，项目路径：{project_path}，共 {len(steps)} 步")
+
+    def set_wiki_context(self, wiki_context: str) -> None:
+        """设置 Wiki 查询上下文（仅 plan 模式由 Router 触发，用于重建 System Prompt）。"""
+        with self._lock:
+            if self._plan_state is None:
+                logger.debug("set_wiki_context: 非 plan 模式，跳过 Wiki 注入")
+                return
+            self._plan_state.wiki_context = wiki_context
+
+        self.invalidate_cache()
+
+        if wiki_context:
+            logger.info(f"Wiki 上下文已缓存（{len(wiki_context)} 字符），将在下次构建 System Prompt 时注入")
+        else:
+            logger.debug("Wiki 上下文已清空，下次重建系统提示")
 
     def add_step_result(self, result) -> None:
         """线程安全地追加一个步骤结果。"""
@@ -159,82 +185,74 @@ class ContextManager:
         """计划执行完毕，清理 plan_state。"""
         with self._lock:
             self._plan_state = None
+        self.invalidate_cache()
 
     @property
     def plan_state(self) -> PlanState | None:
         return self._plan_state
 
-    # ── System Prompt 缓存管理（Dirty Flag 模式） ─────────────────────
+    # ── System Prompt 缓存管理 ─────────────────────
 
     def invalidate_cache(self) -> None:
         """
         标记 System Prompt 缓存为脏，需要重建。
 
         在以下情况调用：
-        - 记忆被修改时（通过 _invalidate_context_manager_cache）
-        - 压缩后
+        - 记忆被修改时
         - 用户主动要求
         """
-        self._dirty = True
         self._cached_system_prompt = None
         logger.debug("System Prompt 缓存已失效")
 
     def _get_system_prompt(self) -> str:
         """
         获取 System Prompt 内容。
-        使用 Dirty Flag 模式：脏时重建，否则返回缓存。
+        缓存为空时重建，否则返回缓存。
         """
-        if self._dirty or self._cached_system_prompt is None:
+        if self._cached_system_prompt is None:
             logger.debug("重建 System Prompt（缓存失效）")
+            # 从 plan_state 获取 wiki_context
+            wiki_context = ""
+            with self._lock:
+                if self._plan_state is not None:
+                    wiki_context = self._plan_state.wiki_context
             self._cached_system_prompt = build_system_prompt(
                 heartbeat_file=self.workspace.heartbeat_file,
                 is_sub_agent=self.is_sub_agent,
                 agent_file=self.workspace.agent_file,
                 skills_dir=self.workspace.skills_dir,
                 memory_dir=self.workspace.memory_dir,
+                wiki_context=wiki_context,
             )
-            self._dirty = False
             logger.info("System Prompt 构建完成")
 
         return self._cached_system_prompt
 
     # ── 消息组装 ──────────────────────────────────────────────────────
 
-    def build_messages(self, role: str, **kwargs) -> list[dict]:
-        """
-        为不同角色组装 messages。
-
-        role:
-          "react"      → [system] + session.messages（完整）
-          "router"     → [system] + 用户对话（过滤掉工具调用）
-          "replanner"  → [user: replanner_prompt]（从 plan_state 自动构建）
-
-        kwargs:
-          route_instruction (str): role=router 时必传
-        """
-        if role == "react":
-            return self._build_react_messages()
-        elif role == "router":
-            return self._build_router_messages(kwargs["route_instruction"])
-        elif role == "replanner":
-            return self._build_replanner_messages(**kwargs)
-        else:
+    def build_messages(self, role: str, tools: list[dict] | None = None, **kwargs) -> list[dict]:
+        """每次请求前组装实际消息，按消息及工具定义检查预算。"""
+        builders = {
+            "react": self._build_react_messages,
+            "router": self._build_router_messages,
+            "replanner": self._build_replanner_messages,
+        }
+        if role not in builders:
             raise ValueError(f"未知 role: {role}")
-
-    def compress_if_needed(self):
-        """检查 token 数，超限则压缩。"""
-        # 使用 session.prompt_tokens 进行估算
-        from qrclaw.memory.token_utils import count_text_tokens
-
-        # 估算总 token 数：session 消息 + system prompt
-        system_prompt_tokens = count_text_tokens(self._get_system_prompt())
-        total_tokens = self.session.prompt_tokens + system_prompt_tokens
-
-        if total_tokens > COMPRESS_THRESHOLD:
-            logger.info(f"token 超限（估算 {total_tokens}），触发压缩")
-            summarize(self.session)
-            # 压缩后刷新缓存
-            self.invalidate_cache()
+        build = builders[role]
+        messages = build(**kwargs)
+        if count_messages_tokens(messages, tools) > COMPRESS_THRESHOLD:
+            if role == "replanner":
+                # 步骤战报独立压缩，保留目标、路径和重规划指令原文。
+                history = [{"role": "assistant", "content": step.to_context_prompt()} for step in self._plan_state.past_steps]
+                compacted = summarize_messages(history)
+                messages = build(past_text="\n".join(m["content"] for m in compacted), **kwargs)
+            else:
+                summarize(self.session)
+                messages = build(**kwargs)
+        if count_messages_tokens(messages, tools) > int(_MODEL_MAX_TOKENS * 0.9):
+            raise ValueError("上下文仍超出模型输入预算；原始近期消息已保留，请缩短输入或工具定义")
+        return messages
 
     # ── 私有组装方法 ──────────────────────────────────────────────────
 
@@ -246,53 +264,19 @@ class ContextManager:
         为 Router 构建消息。
         过滤掉工具调用和工具返回，只保留用户对话和系统提示。
         """
-        filtered = self._filter_for_router(self.session.messages)
+        filtered = conversation_messages(self.session.messages)
         messages = [{"role": "system", "content": _ROUTER_SYSTEM_PROMPT}, *filtered]
         messages.append({"role": "user", "content": route_instruction})
         return messages
 
-    def _filter_for_router(self, messages: list[dict]) -> list[dict]:
-        """
-        过滤消息，只保留用户输入和 assistant 最终纯文字回复。
-
-        过滤掉的内容：
-        - role=tool 的消息（工具返回）
-        - assistant 消息中带有 tool_calls 的消息（含中间推理 content 一并丢弃）
-
-        保留的内容：
-        - role=user 的消息（用户输入）
-        - assistant 消息中没有 tool_calls 的消息（最终纯文字回复）
-        """
-        filtered = []
-        i = 0
-        while i < len(messages):
-            msg = messages[i]
-            role = msg.get("role")
-
-            if role == "user":
-                # 用户消息直接保留
-                filtered.append(msg)
-
-            elif role == "assistant":
-                # 有 tool_calls 的消息（包含中间推理）直接丢弃
-                if not msg.get("tool_calls"):
-                    filtered.append(msg)
-
-            # role=tool 的消息直接跳过
-
-            i += 1
-
-        return filtered
-
-    def _build_replanner_messages(self, replanner_instruction: str = "", **kwargs) -> list[dict]:
+    def _build_replanner_messages(self, replanner_instruction: str = "", past_text: str | None = None) -> list[dict]:
         from qrclaw.graph.nodes.replanner import _REPLANNER_PROMPT
         ps = self._plan_state
         if ps is None:
             raise ValueError("plan_state 为空，无法构建 replanner prompt")
 
-        past_text = "\n".join(
-            step.to_context_prompt() for step in ps.past_steps
-        ) or "（无）"
+        if past_text is None:
+            past_text = "\n".join(step.to_context_prompt() for step in ps.past_steps) or "（无）"
 
         remaining_text = "\n".join(
             f"- Step {s.id}: {s.description}" for s in ps.remaining

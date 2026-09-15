@@ -1,9 +1,6 @@
-import os
-import time
-from typing import Optional, Dict, Any, List
-from qrclaw.web_search.types import WebSearchResponse, SearchResult, WebSearchProvider
+from typing import Optional
+from qrclaw.web_search.types import WebSearchResponse
 from qrclaw.web_search.provider_registry import list_providers, get_provider
-from qrclaw.config import TAVILY_API_KEY
 from qrclaw.logger import get_logger
 
 logger = get_logger("qrclaw.web_search.runtime")
@@ -35,7 +32,7 @@ def resolve_web_search_provider_id(prefer_provider: Optional[str] = None) -> Opt
         if p_cls:
             provider = p_cls()
             if provider.is_available():
-                logger.info(f"Auto-detected web search provider: {provider.name}")
+                logger.info(f"自动选择网页搜索渠道： {provider.name}")
                 return provider.id
             
     # 如果上面的都没选中（理论上 DuckDuckGo 总是可用），再尝试剩下的
@@ -44,7 +41,7 @@ def resolve_web_search_provider_id(prefer_provider: Optional[str] = None) -> Opt
         if provider.is_available():
              # 避免重复选
             if provider.id not in priority_order:
-                logger.info(f"Auto-detected fallback provider: {provider.name}")
+                logger.info(f"自动选择备用搜索渠道： {provider.name}")
                 return provider.id
 
     return None
@@ -65,16 +62,16 @@ def run_web_search(query: str, max_results: int = 5, provider_id: Optional[str] 
         raise WebSearchError(f"Provider '{selected_id}' not found.")
         
     provider = provider_cls()
-    logger.info(f"Executing web search with provider: {provider.name}")
+    logger.info(f"使用搜索渠道： {provider.name}")
     
     try:
         return provider.search(query=query, max_results=max_results, **kwargs)
     except Exception as e:
-        logger.error(f"Web search failed with {provider.name}: {e}")
+        logger.error(f"网页搜索失败，渠道： {provider.name}: {e}")
         
         # 简单的故障转移逻辑：如果首选失败，尝试降级到 DuckDuckGo
         if provider.id != "duckduckgo":
-            logger.warning("Attempting fallback to DuckDuckGo...")
+            logger.warning("尝试降级到 DuckDuckGo…")
             fallback_cls = get_provider("duckduckgo")
             if fallback_cls:
                 fallback = fallback_cls()

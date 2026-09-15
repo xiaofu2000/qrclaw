@@ -16,9 +16,10 @@ from __future__ import annotations
 from typing import Literal
 from pydantic import BaseModel, Field
 
-from qrclaw.providers import provider
 from qrclaw.providers.litellm_provider import LiteLLMProvider
+from qrclaw.llm_service import get_llm_service
 from qrclaw.memory.context.context_manager import get_context_manager
+from qrclaw.graph.nodes.wiki_query import WikiQueryNode
 from qrclaw.logger import get_logger
 
 logger = get_logger("qrclaw.graph.nodes.router")
@@ -31,9 +32,9 @@ def _get_instructor_client():
     """懒加载 instructor client，避免顶层 import 影响未使用 litellm 的环境。"""
     import instructor
     from litellm import completion
-    # 使用 JSON_MODE 而非默认的 TOOLS 模式
-    # MiniMax 等模型对 tool_calls 模式支持有问题，JSON_MODE 直接从 content 解析更稳定
-    return instructor.from_litellm(completion, mode=instructor.Mode.JSON)
+    # 使用 MD_JSON 模式：让模型在 markdown 代码块中返回 JSON
+    # 避免使用 JSON_MODE（需要 response_format=json_object），部分模型不支持该参数
+    return instructor.from_litellm(completion, mode=instructor.Mode.MD_JSON)
 
 
 # ── Pydantic Schema ────────────────────────────────────────────────────────────
@@ -84,11 +85,12 @@ class RouterNode:
         messages = ctx.build_messages("router", route_instruction=_ROUTE_INSTRUCTION)
 
         try:
-            if not isinstance(provider, LiteLLMProvider):
+            llm = get_llm_service()
+            if not llm.is_provider_type(LiteLLMProvider):
                 raise RuntimeError("Router 目前仅支持 LiteLLMProvider")
 
             client = _get_instructor_client()
-            kwargs = provider.make_instructor_kwargs(messages, temperature=0.1)
+            kwargs = llm.make_instructor_kwargs(messages, temperature=0.1)
             kwargs["response_model"] = RouteSchema
             kwargs["max_retries"] = 3
 
@@ -110,11 +112,37 @@ class RouterNode:
                 for s in steps:
                     dep_str = f"依赖 {s.depends_on}" if s.depends_on else "可并行"
                     logger.debug(f"  Step {s.id}: {s.description} [{dep_str}]")
+
+                # Plan 模式：查询 Wiki 并注入后续 Agent 的 System Prompt
+                wiki_context = _query_wiki_context(result.goal, messages)
+                ctx = get_context_manager()
+                ctx.set_plan(plan.goal, plan.steps, plan.project_path)
+                ctx.set_wiki_context(wiki_context)  # 标记 System Prompt 待重建
+
                 return RouteResult(route="plan", plan=plan)
 
+            # Direct 模式：不查 Wiki，快速执行
             logger.info("路由结果: direct")
             return RouteResult(route="direct")
 
         except Exception as e:
             logger.warning(f"Router 解析失败: {e}，降级为 direct")
             return RouteResult(route="direct")
+
+
+def _query_wiki_context(goal: str, messages: list[dict]) -> str:
+    """
+    查询 Wiki 记忆，通过 LLM 精排获取与当前目标相关的页面正文。
+
+    Args:
+        goal: 任务目标描述（用于 Wiki 查询）
+        messages: 当前 session 的 messages（用于 LLM 上下文理解）
+
+    Returns:
+        格式化后的 Wiki 正文内容，无相关内容时返回空字符串
+    """
+    try:
+        return WikiQueryNode().run(user_input=goal, plan_goal=goal, messages=messages).injected_context
+    except Exception as exc:
+        logger.warning(f"Wiki 查询失败：{exc}")
+        return ""

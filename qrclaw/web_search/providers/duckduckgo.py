@@ -21,7 +21,7 @@ class DuckDuckGoSearchProvider(WebSearchProvider):
 
     def search(self, query: str, max_results: int = 5, **kwargs) -> WebSearchResponse:
         start_time = time.time()
-        logger.debug(f"DuckDuckGo searching: {query}")
+        logger.debug(f"DuckDuckGo 搜索： {query}")
 
         results: List[SearchResult] = []
         try:
@@ -36,7 +36,7 @@ class DuckDuckGoSearchProvider(WebSearchProvider):
                         snippet=r.get("body", "")
                     ))
         except Exception as e:
-            logger.error(f"DuckDuckGo search failed: {e}")
+            logger.error(f"DuckDuckGo 搜索失败： {e}")
             raise RuntimeError(f"DuckDuckGo API error: {e}")
 
         took_ms = (time.time() - start_time) * 1000

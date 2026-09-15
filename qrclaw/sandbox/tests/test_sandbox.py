@@ -4,8 +4,7 @@
 测试沙箱配置、验证器、容器管理等核心功能。
 """
 import pytest
-from pathlib import Path
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import patch, MagicMock
 
 from qrclaw.sandbox.config import (
     MountConfig,
@@ -16,7 +15,6 @@ from qrclaw.sandbox.config import (
 )
 from qrclaw.sandbox.validator import (
     get_container_path,
-    PathValidationError,
 )
 
 
