@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import time
 import uuid
+from threading import Lock
 from io import StringIO
 from typing import Any
 
@@ -21,6 +22,7 @@ from .schemas import (
 from .session_service import SessionService
 
 MODEL_ID = "qrclaw-agent"
+_agent_run_lock = Lock()
 
 
 def build_router(workspace: Workspace) -> APIRouter:
@@ -79,13 +81,15 @@ def build_router(workspace: Workspace) -> APIRouter:
         console = Console(file=StringIO(), highlight=False)
 
         try:
-            content = run_agent(
-                user_input=user_input,
-                session=session,
-                console=console,
-                workspace=workspace,
-                auto_confirm=True,
-            )
+            # MCP 工具注册表和后台 Agent 状态是进程级的。
+            with _agent_run_lock:
+                content = run_agent(
+                    user_input=user_input,
+                    session=session,
+                    console=console,
+                    workspace=workspace,
+                    auto_confirm=True,
+                )
         except Exception as exc:
             raise HTTPException(status_code=500, detail=str(exc)) from exc
 
@@ -105,9 +109,7 @@ def build_router(workspace: Workspace) -> APIRouter:
                 }
             ],
             "usage": {
-                "prompt_tokens": session.prompt_tokens,
-                "completion_tokens": session.completion_tokens,
-                "total_tokens": session.total_tokens,
+                **session.run_usage,
             },
         }
 

@@ -1,10 +1,11 @@
 """文件和沙箱的信任边界。"""
 
 from unittest.mock import patch
+from threading import Thread
 
 import pytest
 
-from qrclaw.agent import get_session, get_workspace, run_sub_agent, set_session, set_workspace
+from qrclaw.agent import get_extractor, get_session, get_workspace, register_extractor, run_sub_agent, set_session, set_workspace
 from qrclaw.memory.context.session import Session
 from qrclaw.sandbox import ContainerError
 from qrclaw.tools import filesystem, shell
@@ -16,6 +17,22 @@ def test_agent_id_cannot_escape_workspace(temp_dir):
     with pytest.raises(ValueError, match="无效的 Agent ID"):
         Workspace("../outside", _root=temp_dir)
     assert delete_agent("../outside").startswith("错误：Agent 名称不合法")
+
+
+def test_wiki_extractor_is_thread_local():
+    first, second = object(), object()
+    register_extractor(first)
+    seen = []
+
+    def worker():
+        register_extractor(second)
+        seen.append(get_extractor())
+
+    thread = Thread(target=worker)
+    thread.start()
+    thread.join()
+    assert seen == [second]
+    assert get_extractor() is first
 
 
 def test_sub_agent_uses_its_own_sandbox_identity(temp_dir):
@@ -72,3 +89,26 @@ def test_sandbox_file_access_stays_inside_workspace(temp_dir):
         for path in ("../outside.txt", "/etc/passwd", "/workspace/link.txt"):
             with pytest.raises(PermissionError):
                 filesystem._resolve_path(path)
+
+
+def test_patch_checks_move_destination_before_other_writes(temp_dir, monkeypatch):
+    safe = temp_dir / "safe"
+    sensitive = temp_dir / "sensitive"
+    safe.mkdir()
+    sensitive.mkdir()
+    source = safe / "source.txt"
+    source.write_text("original", encoding="utf-8")
+    monkeypatch.setattr(filesystem, "_SENSITIVE_PATH_PREFIXES", (f"{sensitive}/",))
+
+    result = filesystem.patch(mode="patch", patch_content=(
+        "*** Begin Patch\n"
+        f"*** Add File: {safe / 'added.txt'}\n+"
+        "+new\n"
+        f"*** Move File: {source} -> {sensitive / 'moved.txt'}\n"
+        "*** End Patch"
+    ))
+
+    assert "拒绝写入敏感系统路径" in result
+    assert source.read_text(encoding="utf-8") == "original"
+    assert not (safe / "added.txt").exists()
+    assert not (sensitive / "moved.txt").exists()

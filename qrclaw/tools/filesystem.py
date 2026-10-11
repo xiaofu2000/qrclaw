@@ -655,19 +655,17 @@ def _patch_v4a(patch_content: str, task_id: str) -> str:
     if not patch_content:
         return "错误：patch mode 需要提供 patch 内容"
 
-    # 敏感路径检查：从 patch 内容中提取所有涉及的文件路径
-    _file_pattern = r'^\*\*\*\s+(?:Update|Add|Delete)\s+File:\s*(.+)$'
-    for m in re.finditer(_file_pattern, patch_content, re.MULTILINE):
-        sensitive_err = _check_sensitive_path(m.group(1).strip())
-        if sensitive_err:
-            return sensitive_err
-
     try:
         from qrclaw.tools.patch_parser import parse_v4a_patch, apply_v4a_operations
 
         operations, parse_error = parse_v4a_patch(patch_content)
         if parse_error:
             return f"错误：解析补丁失败 — {parse_error}"
+
+        for op in operations:
+            for path in (op.file_path, op.new_path):
+                if path and (sensitive_err := _check_sensitive_path(path)):
+                    return sensitive_err
 
         # 陈旧检测
         stale_warnings = []

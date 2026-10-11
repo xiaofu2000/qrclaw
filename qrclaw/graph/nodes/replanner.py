@@ -85,8 +85,7 @@ class ReplannerNode:
             ps.project_path = result.project_path
 
         if not result.steps:
-            logger.info("Replanner 返回空步骤，视为 DONE")
-            return None
+            raise ValueError("Replanner 返回 continue 但没有后续步骤")
 
         new_steps = [
             PlanStep(

@@ -72,6 +72,7 @@ class ContextManager:
     def clear_plan(self):
         with self._lock:
             self._plan.clear()
+        self.invalidate_cache()
 
     @property
     def plan_state(self):

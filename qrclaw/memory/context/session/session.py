@@ -9,6 +9,7 @@ from qrclaw.memory.context.session.events import SessionEvent
 from qrclaw.memory.token_utils import count_messages_tokens
 
 logger = get_logger("qrclaw.memory.session")
+USAGE_KEYS = ("prompt_tokens", "completion_tokens", "total_tokens")
 
 
 def _session_path(sessions_dir: Path, session_id: str) -> Path:
@@ -109,6 +110,8 @@ class Session:
         self.prompt_tokens = 0
         self.completion_tokens = 0
         self.total_tokens = 0
+        self.usage = dict.fromkeys(USAGE_KEYS, 0)
+        self.run_usage = dict.fromkeys(USAGE_KEYS, 0)
 
         sessions_dir.mkdir(parents=True, exist_ok=True)
         self._path = _session_path(sessions_dir, self.session_id)
@@ -132,10 +135,24 @@ class Session:
             self.events.append(payload)
             self._save()
 
+    def ensure_saved(self):
+        with FileLock(f"{self._path}.lock"):
+            if not self._path.exists():
+                self._save()
+
+    def start_run_usage(self):
+        self.run_usage = dict.fromkeys(USAGE_KEYS, 0)
+
     def update_tokens(self, prompt_tokens: int, completion_tokens: int, total_tokens: int):
-        self.prompt_tokens = prompt_tokens
-        self.completion_tokens = completion_tokens
-        self.total_tokens = total_tokens
+        values = (prompt_tokens, completion_tokens, total_tokens)
+        with FileLock(f"{self._path}.lock"):
+            self._load(strict=True)
+            for key, value in zip(USAGE_KEYS, values):
+                self.usage[key] += value
+                self.run_usage[key] += value
+            self.completion_tokens = self.usage["completion_tokens"]
+            self.total_tokens = self.usage["total_tokens"]
+            self._save()
 
     def clear(self):
         with FileLock(f"{self._path}.lock"):
@@ -143,6 +160,8 @@ class Session:
             self.prompt_tokens = 0
             self.completion_tokens = 0
             self.total_tokens = 0
+            self.usage = dict.fromkeys(USAGE_KEYS, 0)
+            self.run_usage = dict.fromkeys(USAGE_KEYS, 0)
             self.events = []
             if self._path.exists():
                 self._path.unlink()
@@ -151,7 +170,7 @@ class Session:
         temp_path = self._path.with_name(f".{self._path.name}.{uuid.uuid4().hex}.tmp")
         try:
             temp_path.write_text(
-                json.dumps({"messages": self.messages, "events": self.events}, ensure_ascii=False, indent=2),
+                json.dumps({"messages": self.messages, "events": self.events, "usage": self.usage}, ensure_ascii=False, indent=2),
                 encoding="utf-8"
             )
             temp_path.replace(self._path)
@@ -166,21 +185,31 @@ class Session:
             self.messages = []
             self.events = []
             self.prompt_tokens = 0
+            self.completion_tokens = 0
+            self.total_tokens = 0
+            self.usage = dict.fromkeys(USAGE_KEYS, 0)
             return
         try:
             data = json.loads(self._path.read_text(encoding="utf-8"))
             if isinstance(data, dict):
                 messages = data.get("messages", [])
                 events = data.get("events", [])
+                usage = data.get("usage", {})
             else:
                 messages = data
                 events = []
+                usage = {}
             self.messages = [_normalize_message(m) for m in messages if m.get("role") != "system"]
             self.events = [dict(event) for event in events]
             self.prompt_tokens = count_messages_tokens(self.messages)
+            self.usage = {key: int(usage.get(key, 0)) for key in USAGE_KEYS}
+            self.completion_tokens = self.usage["completion_tokens"]
+            self.total_tokens = self.usage["total_tokens"]
         except Exception as e:
             logger.error(f"加载会话失败: {e}", exc_info=True)
             if strict:
                 raise
             self.messages = []
             self.events = []
+            self.usage = dict.fromkeys(USAGE_KEYS, 0)
+            self.prompt_tokens = self.completion_tokens = self.total_tokens = 0

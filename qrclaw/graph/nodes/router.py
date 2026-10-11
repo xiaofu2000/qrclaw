@@ -20,7 +20,7 @@ from qrclaw.prompts import ROUTE_INSTRUCTION
 from qrclaw.providers.litellm_provider import LiteLLMProvider
 from qrclaw.llm_service import get_llm_service
 from qrclaw.memory.context.context_manager import get_context_manager
-from qrclaw.memory.wiki.wiki_memory import WikiMemory
+from qrclaw.graph.nodes.wiki_query import WikiQueryNode
 from qrclaw.logger import get_logger
 
 logger = get_logger("qrclaw.graph.nodes.router")
@@ -148,21 +148,9 @@ def _query_wiki_context(goal: str, messages: list[dict]) -> str:
             logger.debug("无 workspace 或 memory_dir，跳过 Wiki 查询")
             return ""
 
-        wiki = WikiMemory.for_workspace(workspace.memory_dir)
-        pages = wiki.select_relevant_pages(goal, messages, top_k=3)
-
-        if not pages:
-            logger.debug(f"Wiki 查询无结果: {goal}")
-            return ""
-
-        # 将页面正文拼接为上下文字符串
-        sections = []
-        for page in pages:
-            sections.append(f"### {page.name}\n{page.content}")
-
-        context = "\n\n---\n\n".join(sections)
-        logger.info(f"Wiki 查询命中 {len(pages)} 个页面: {[p.name for p in pages]}")
-        return context
+        return WikiQueryNode(memory_dir=workspace.memory_dir).run(
+            user_input=goal, plan_goal=goal, messages=messages,
+        ).injected_context
 
     except Exception as e:
         logger.warning(f"Wiki 查询失败: {e}")

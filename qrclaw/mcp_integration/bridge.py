@@ -81,30 +81,22 @@ def _build_pydantic_model(
     return create_model(model_name, **field_definitions)
 
 
-def _make_sync_handler(tool_name: str, manager: MCPManager):
+def _make_sync_handler(tool_name: str, manager: MCPManager, loop: asyncio.AbstractEventLoop):
     """Create a **synchronous** wrapper that calls ``manager.call_tool``.
 
-    Since QRClaw's ``execute()`` is synchronous but ``call_tool`` is async,
-    we use ``asyncio.run()`` when no running loop exists, or spawn a thread
-    when inside an already-running loop.
+    The MCP session and its transport stay on the same event loop.
     """
 
     def handler(**kwargs) -> str:
         # Filter out None values (optional fields not supplied)
         filtered = {k: v for k, v in kwargs.items() if v is not None}
         try:
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
-                # We are inside a running loop — create a new loop in a thread
-                import concurrent.futures
-                with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-                    future = pool.submit(asyncio.run, manager.call_tool(tool_name, filtered))
-                    return future.result(timeout=300)
-            else:
-                return loop.run_until_complete(manager.call_tool(tool_name, filtered))
+            running = asyncio.get_running_loop()
         except RuntimeError:
-            # No event loop at all — create one
-            return asyncio.run(manager.call_tool(tool_name, filtered))
+            running = None
+        if running is loop:
+            raise RuntimeError("不能在 MCP 事件循环线程同步调用工具")
+        return asyncio.run_coroutine_threadsafe(manager.call_tool(tool_name, filtered), loop).result(timeout=300)
 
     return handler
 
@@ -122,6 +114,7 @@ async def register_mcp_tools(manager: MCPManager) -> list[str]:
 
     global _active_manager
     _active_manager = manager
+    loop = asyncio.get_running_loop()
 
     schemas = manager.get_tool_schemas()
     registered: list[str] = []
@@ -145,7 +138,7 @@ async def register_mcp_tools(manager: MCPManager) -> list[str]:
         dynamic_model = _build_pydantic_model(original_name, properties, required)
 
         # 2. Create a sync handler that routes to manager.call_tool
-        handler = _make_sync_handler(original_name, manager)
+        handler = _make_sync_handler(original_name, manager, loop)
 
         # 3. Rewrite the schema to use the qualified name
         qualified_schema = {
@@ -180,6 +173,8 @@ async def unregister_mcp_tools() -> None:
     to_remove = [name for name in reg._tools if name.startswith("mcp__")]
     for name in to_remove:
         del reg._tools[name]
+    global _active_manager
+    _active_manager = None
     logger.info("Unregistered %d MCP tools", len(to_remove))
 
 

@@ -19,11 +19,13 @@ class SessionService:
         return Session(sessions_dir=self.workspace.sessions_dir, session_id=session_id)
 
     def create_session(self, session_id: str | None = None) -> Session:
-        return Session(
+        session = Session(
             sessions_dir=self.workspace.sessions_dir,
             session_id=session_id or None,
             resume=False,
         )
+        session.ensure_saved()
+        return session
 
     def delete_session(self, session_id: str) -> bool:
         return delete_session(session_id, self.workspace.sessions_dir)
@@ -36,9 +38,9 @@ class SessionService:
             "id": session.session_id,
             "message_count": len(session.messages),
             "updated_at": updated_at,
-            "prompt_tokens": session.prompt_tokens,
-            "completion_tokens": session.completion_tokens,
-            "total_tokens": session.total_tokens,
+            "prompt_tokens": session.usage["prompt_tokens"],
+            "completion_tokens": session.usage["completion_tokens"],
+            "total_tokens": session.usage["total_tokens"],
             "messages": session.messages,
         }
 

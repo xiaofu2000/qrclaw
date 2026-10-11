@@ -169,6 +169,18 @@ class TestTokenCounting:
         # 空消息的开销由底层 token 计数器决定
         assert tokens >= 0
 
+    def test_llm_usage_survives_message_save_and_reload(self, temp_dir):
+        session = Session(temp_dir, session_id="usage")
+        session.start_run_usage()
+        session.update_tokens(10, 2, 12)
+        session.update_tokens(15, 3, 18)
+        session.add({"role": "assistant", "content": "完成"})
+
+        assert session.run_usage == {"prompt_tokens": 25, "completion_tokens": 5, "total_tokens": 30}
+        restored = Session(temp_dir, session_id="usage")
+        assert restored.usage == session.run_usage
+        assert restored.prompt_tokens == count_tokens(restored.messages)
+
 
 class TestSessionList:
     """测试会话列表管理"""

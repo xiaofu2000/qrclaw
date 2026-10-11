@@ -10,6 +10,7 @@ import pytest
 from qrclaw.graph.nodes.memory_extraction import MemoryExtractionIntegration, MemoryExtractionNode
 from qrclaw.graph.nodes.react_loop import ReactLoopNode
 from qrclaw.llm_service import LLMService
+from qrclaw.memory.context.session import Session
 from qrclaw.memory.wiki.extraction.config import ExtractionConfig
 from qrclaw.memory.wiki.extraction.llm import WikiLLMAnalyzer
 from qrclaw.memory.wiki.extraction.schemas import ExtractionSchema, WikiPageSchema
@@ -258,11 +259,26 @@ def test_semantic_recall_when_keyword_search_misses(temp_dir, monkeypatch):
 
 def test_memory_integration_tracks_workspace(temp_dir):
     react = ReactLoopNode()
-    first = react._get_memory_integration(Workspace("one", _root=temp_dir / "one"))
-    second = react._get_memory_integration(Workspace("two", _root=temp_dir / "two"))
+    first_workspace = Workspace("one", _root=temp_dir / "one")
+    second_workspace = Workspace("two", _root=temp_dir / "two")
+    first = react._get_memory_integration(first_workspace, Session(first_workspace.sessions_dir, resume=False))
+    second = react._get_memory_integration(second_workspace, Session(second_workspace.sessions_dir, resume=False))
 
     assert first is not second
     assert second.extractor.memory.memory_dir == temp_dir / "two" / "memory"
+
+
+def test_memory_integration_is_separate_per_session(temp_dir):
+    react = ReactLoopNode()
+    workspace = Workspace(_root=temp_dir)
+    first_session = Session(workspace.sessions_dir, resume=False)
+    second_session = Session(workspace.sessions_dir, resume=False)
+
+    first = react._get_memory_integration(workspace, first_session)
+    second = react._get_memory_integration(workspace, second_session)
+
+    assert first is not second
+    assert react._get_memory_integration(workspace, first_session) is first
 
 
 def test_default_and_custom_config():

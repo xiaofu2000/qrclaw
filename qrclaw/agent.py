@@ -47,21 +47,18 @@ def get_agent_id() -> str | None:
     return ws.agent_id if ws else None
 
 
-# ── 全局 Extractor 注册表 ──────────────────────────────────────────────
+# ── 当前线程的 Extractor ──────────────────────────────────────────────
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from qrclaw.graph.nodes.memory_extraction import MemoryExtractionNode
 
-_global_extractor = None
-
 def register_extractor(extractor: "MemoryExtractionNode") -> None:
-    """ReactLoopNode 初始化时注册，供工具层调用"""
-    global _global_extractor
-    _global_extractor = extractor
+    """注册当前线程的记忆节点，供工具层调用。"""
+    _thread_local.extractor = extractor
 
 def get_extractor() -> "MemoryExtractionNode | None":
     """工具层获取当前 extractor"""
-    return _global_extractor
+    return getattr(_thread_local, "extractor", None)
 
 
 # ── 工具函数 ─────────────────────────────────────────────────────────
@@ -92,6 +89,9 @@ _runner = GraphRunner()
 
 # ── MCP 全局状态 ──────────────────────────────────────────────────────
 _mcp_manager = None
+_mcp_loop = None
+_mcp_stop = None
+_mcp_thread = None
 
 
 # ── 对外接口 ──────────────────────────────────────────────────────────
@@ -104,74 +104,80 @@ def _init_mcp() -> bool:
     Returns:
         True 表示本次调用初始化了 MCP（调用方应在 finally 中清理）。
     """
-    global _mcp_manager
+    global _mcp_manager, _mcp_loop, _mcp_stop, _mcp_thread
 
     from qrclaw import config
     if not config.MCP_ENABLED or not config.MCP_SERVERS:
         return False
 
     try:
+        from concurrent.futures import Future
         from qrclaw.mcp_integration import MCPManager, register_mcp_tools
+        from qrclaw.mcp_integration.bridge import unregister_mcp_tools
 
-        _mcp_manager = MCPManager()
+        manager = MCPManager()
+        loop = asyncio.new_event_loop()
+        stop = asyncio.Event()
+        ready = Future()
 
-        async def _async_init():
-            await _mcp_manager.connect_all(config.MCP_SERVERS)
-            registered = await register_mcp_tools(_mcp_manager)
-            logger.info("MCP 初始化完成，已注册 %d 个工具: %s", len(registered), registered)
+        async def lifecycle():
+            try:
+                await manager.connect_all(config.MCP_SERVERS)
+                registered = await register_mcp_tools(manager)
+                ready.set_result(registered)
+                await stop.wait()
+            except BaseException as exc:
+                if not ready.done():
+                    ready.set_exception(exc)
+                else:
+                    logger.error("MCP 运行失败: %s", exc, exc_info=True)
+            finally:
+                await unregister_mcp_tools()
+                await manager.disconnect_all()
 
-        # 执行异步初始化
+        def worker():
+            asyncio.set_event_loop(loop)
+            try:
+                loop.run_until_complete(lifecycle())
+            finally:
+                loop.close()
+
+        thread = threading.Thread(target=worker, name="mcp-runtime", daemon=True)
+        thread.start()
         try:
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
-                import concurrent.futures
-                with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-                    pool.submit(asyncio.run, _async_init()).result(timeout=60)
-            else:
-                loop.run_until_complete(_async_init())
-        except RuntimeError:
-            asyncio.run(_async_init())
+            registered = ready.result(timeout=60)
+        except Exception:
+            loop.call_soon_threadsafe(stop.set)
+            thread.join(timeout=30)
+            raise
 
+        _mcp_manager, _mcp_loop, _mcp_stop, _mcp_thread = manager, loop, stop, thread
+        logger.info("MCP 初始化完成，已注册 %d 个工具: %s", len(registered), registered)
         return True
     except Exception as e:
         logger.error("MCP 初始化失败: %s", e, exc_info=True)
-        _mcp_manager = None
         return False
 
 
 def _cleanup_mcp():
     """安全关闭 MCP 连接并注销工具。"""
-    global _mcp_manager
+    global _mcp_manager, _mcp_loop, _mcp_stop, _mcp_thread
 
-    if _mcp_manager is None:
+    if _mcp_thread is None:
         return
 
     try:
-        from qrclaw.mcp_integration.bridge import unregister_mcp_tools
-
-        async def _async_cleanup():
-            try:
-                await _mcp_manager.disconnect_all()
-            except Exception as e:
-                logger.warning("MCP 断开连接时出错: %s", e)
-            await unregister_mcp_tools()
-
-        try:
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
-                import concurrent.futures
-                with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-                    pool.submit(asyncio.run, _async_cleanup()).result(timeout=30)
-            else:
-                loop.run_until_complete(_async_cleanup())
-        except RuntimeError:
-            asyncio.run(_async_cleanup())
-
+        _mcp_loop.call_soon_threadsafe(_mcp_stop.set)
+        _mcp_thread.join(timeout=30)
+        if _mcp_thread.is_alive():
+            logger.warning("MCP 清理超时，后台线程仍在运行")
+            return
         logger.info("MCP 连接已关闭，工具已注销")
     except Exception as e:
         logger.warning("MCP 清理时出错: %s", e)
     finally:
-        _mcp_manager = None
+        if not _mcp_thread.is_alive():
+            _mcp_manager = _mcp_loop = _mcp_stop = _mcp_thread = None
 
 
 
@@ -182,11 +188,11 @@ def run(
     workspace: Workspace,
     auto_confirm: bool = False,
 ):
-    global _mcp_manager
     logger.info(f"收到用户输入: {user_input[:100]}...")
 
     set_session(session)
     set_workspace(workspace)
+    session.start_run_usage()
     session.add({"role": "user", "content": user_input})
 
     # 主 agent 初始化 ContextManager 单例
