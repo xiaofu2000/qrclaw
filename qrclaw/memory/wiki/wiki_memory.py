@@ -21,9 +21,10 @@ from __future__ import annotations
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
+from filelock import FileLock
 
 from qrclaw.logger import get_logger
-from qrclaw.memory.wiki.index import IndexManager
+from qrclaw.memory.wiki.index import IndexManager, atomic_write
 from qrclaw.memory.wiki.page import WikiPage
 
 logger = get_logger("qrclaw.memory.wiki.wiki_memory")
@@ -61,9 +62,11 @@ class WikiMemory:
             self.memory_dir = AGENTS_ROOT / "default" / "memory"
 
         self.pages_dir = self.memory_dir / "pages"
-        self.index = IndexManager(self.memory_dir)
-
-        self.pages_dir.mkdir(parents=True, exist_ok=True)
+        self.memory_dir.mkdir(parents=True, exist_ok=True)
+        self._lock = FileLock(str(self.memory_dir / ".wiki.lock"))
+        with self._lock:
+            self.index = IndexManager(self.memory_dir)
+            self.pages_dir.mkdir(parents=True, exist_ok=True)
         logger.debug(f"WikiMemory 初始化: {self.memory_dir}")
 
     # ── 核心 CRUD ─────────────────────────────────────────────────────────────
@@ -84,6 +87,17 @@ class WikiMemory:
         tags: list[str] = None,
         related: list[str] = None,
     ) -> WikiPage:
+        with self._lock:
+            return self._save_page(name, content, description, tags, related)
+
+    def _save_page(
+        self,
+        name: str,
+        content: str,
+        description: str = "",
+        tags: list[str] = None,
+        related: list[str] = None,
+    ) -> WikiPage:
         """
         新建或更新 Wiki 页面（upsert 语义）
 
@@ -96,6 +110,7 @@ class WikiMemory:
         related = related or []
 
         filepath = self._page_path(name)
+        self.index.all_entries()
         existing = self.get_page(name)
         now = datetime.now()
 
@@ -123,7 +138,7 @@ class WikiMemory:
             action = "write"
 
         # 写入文件
-        filepath.write_text(page.to_markdown(), encoding="utf-8")
+        atomic_write(filepath, page.to_markdown())
 
         # 更新索引
         self.index.upsert(page)
@@ -144,20 +159,21 @@ class WikiMemory:
         页面不存在时自动创建（等同于 save_page）。
         tags/related 为空时保留已有值。
         """
-        existing = self.get_page(name)
-        if not existing:
-            return self.save_page(name=name, content=content, tags=tags or [], related=related or [])
+        with self._lock:
+            existing = self.get_page(name)
+            if not existing:
+                return self._save_page(name=name, content=content, tags=tags or [], related=related or [])
 
-        new_content = existing.content.rstrip() + "\n\n" + content.strip()
-        merged_tags = list(dict.fromkeys(existing.tags + (tags or [])))
-        merged_related = list(dict.fromkeys(existing.related + (related or [])))
-        return self.save_page(
-            name=name,
-            content=new_content,
-            description=existing.description,
-            tags=merged_tags,
-            related=merged_related,
-        )
+            new_content = existing.content.rstrip() + "\n\n" + content.strip()
+            merged_tags = list(dict.fromkeys(existing.tags + (tags or [])))
+            merged_related = list(dict.fromkeys(existing.related + (related or [])))
+            return self._save_page(
+                name=name,
+                content=new_content,
+                description=existing.description,
+                tags=merged_tags,
+                related=merged_related,
+            )
 
     def fuzzy_find_name(self, name: str) -> Optional[str]:
         """
@@ -188,16 +204,18 @@ class WikiMemory:
 
     def delete_page(self, name: str) -> bool:
         """删除页面及其索引条目"""
-        filepath = self._page_path(name)
-        if not filepath.exists():
-            logger.warning(f"页面不存在: {name}")
-            return False
+        with self._lock:
+            filepath = self._page_path(name)
+            if not filepath.exists():
+                logger.warning(f"页面不存在: {name}")
+                return False
 
-        filepath.unlink()
-        self.index.remove(name)
-        self.index.append_log("delete", name)
-        logger.info(f"WikiMemory.delete_page: {name}")
-        return True
+            self.index.all_entries()
+            filepath.unlink()
+            self.index.remove(name)
+            self.index.append_log("delete", name)
+            logger.info(f"WikiMemory.delete_page: {name}")
+            return True
 
     # ── 查询 ──────────────────────────────────────────────────────────────────
 
@@ -309,14 +327,16 @@ class WikiMemory:
 
     def rebuild_index(self) -> None:
         """从 pages/ 目录完整重建 index.json 和 index.md（修复用）"""
-        self.index.rebuild_from_pages_dir()
+        with self._lock:
+            self.index.rebuild_from_pages_dir()
         logger.info("WikiMemory: 重建索引完成")
 
     def clear_all(self) -> None:
         """清空所有页面和索引（开发/测试用）"""
-        for md_file in self.pages_dir.glob("*.md"):
-            md_file.unlink()
-        self.index.rebuild_from_pages_dir()
+        with self._lock:
+            for md_file in self.pages_dir.glob("*.md"):
+                md_file.unlink()
+            self.index.rebuild_from_pages_dir()
         logger.info("WikiMemory: 已清空所有页面")
 
     def stats(self) -> dict:

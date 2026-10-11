@@ -170,8 +170,10 @@ class SandboxManager:
         """在沙箱中执行命令"""
         handle = self._containers.get(agent_id)
         
-        # 如果没有沙箱，直接执行
+        # 已启用沙箱时不能静默转为宿主机执行
         if not handle or not handle.container_id:
+            if is_sandbox_enabled(agent_id):
+                raise ContainerError(f"Agent {agent_id} 的沙箱未创建")
             return self._exec_direct(command, cwd, timeout, env)
         
         # 检查容器是否运行

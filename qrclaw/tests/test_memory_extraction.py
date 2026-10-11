@@ -1,6 +1,7 @@
 """Wiki 记忆提取的触发、结构化分析与落盘测试。"""
 
 import threading
+from concurrent.futures import ThreadPoolExecutor
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
@@ -79,6 +80,34 @@ def test_flush_persists_page_and_index(temp_dir):
     assert reopened.get_page("用户偏好").content == "喜欢简洁回复"
     assert reopened.index.all_entries()[0]["name"] == "用户偏好"
     assert reopened.search_pages("简洁")[0].name == "用户偏好"
+
+
+def test_concurrent_wiki_appends_keep_every_update(temp_dir):
+    WikiMemory(temp_dir).save_page("偏好", "起始")
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        list(pool.map(lambda i: WikiMemory(temp_dir).append_page("偏好", f"更新{i}"), range(16)))
+
+    wiki = WikiMemory(temp_dir)
+    content = wiki.get_page("偏好").content
+    assert set(content.split()) == {"起始", *(f"更新{i}" for i in range(16))}
+    assert [entry["name"] for entry in wiki.index.all_entries()] == ["偏好"]
+
+
+def test_corrupt_wiki_index_does_not_overwrite_page(temp_dir):
+    wiki = WikiMemory(temp_dir)
+    wiki.save_page("偏好", "原有内容")
+    (temp_dir / "index.json").write_text("{invalid", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="索引损坏"):
+        wiki.save_page("偏好", "新内容")
+    with pytest.raises(ValueError, match="索引损坏"):
+        wiki.delete_page("偏好")
+
+    assert wiki.get_page("偏好").content == "原有内容"
+    assert (temp_dir / "index.json").read_text(encoding="utf-8") == "{invalid"
+    wiki.rebuild_index()
+    assert wiki.index.all_entries()[0]["name"] == "偏好"
 
 
 def test_existing_page_is_appended_even_when_llm_says_create(temp_dir):

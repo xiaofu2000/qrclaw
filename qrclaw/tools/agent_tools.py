@@ -6,7 +6,7 @@ import shutil
 import yaml
 from pydantic import BaseModel, Field
 from qrclaw.tools.registry import register
-from qrclaw.workspace import AGENTS_ROOT
+from qrclaw.workspace import AGENTS_ROOT, is_valid_agent_id
 from qrclaw.logger import get_logger
 
 logger = get_logger("qrclaw.tools.agent_tools")
@@ -25,8 +25,7 @@ class DeleteAgentArgs(BaseModel):
 
 def _is_valid_name(name: str) -> bool:
     """检查 agent 名称是否合法"""
-    import re
-    return bool(re.match(r'^[a-zA-Z0-9_-]+$', name))
+    return is_valid_agent_id(name)
 
 
 def _add_agent_permissions(name: str, sandbox_enabled: bool = True):
@@ -161,6 +160,9 @@ def delete_agent(name: str) -> str:
     警告：此操作会删除会话历史、日志、技能、记忆等所有数据，并清理权限配置，不可恢复！
     """
     logger.info(f"删除 Agent: {name}")
+
+    if not _is_valid_name(name):
+        return f"错误：Agent 名称不合法: {name}"
 
     # 不允许删除 default agent
     if name == "default":

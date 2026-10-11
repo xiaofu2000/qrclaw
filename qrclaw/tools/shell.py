@@ -44,12 +44,8 @@ def _get_workspace_root() -> str:
 
 def _is_sandbox_enabled() -> bool:
     """检查是否启用沙箱"""
-    try:
-        from qrclaw.sandbox import is_sandbox_enabled
-        agent_id = _get_current_agent_id()
-        return is_sandbox_enabled(agent_id)
-    except Exception:
-        return False
+    from qrclaw.sandbox import is_sandbox_enabled
+    return is_sandbox_enabled(_get_current_agent_id())
 
 
 def _exec_in_sandbox(command: str, cwd: str, timeout: int = 1800) -> str:
@@ -66,8 +62,8 @@ def _exec_in_sandbox(command: str, cwd: str, timeout: int = 1800) -> str:
             sandbox_manager.create_sandbox(agent_id, workspace=workspace)
             logger.info(f"已为 Agent {agent_id} 创建沙箱")
         except Exception as e:
-            logger.warning(f"创建沙箱失败，降级为直接执行: {e}")
-            return _exec_direct(command, cwd, timeout)
+            logger.error(f"创建沙箱失败: {e}")
+            return f"错误：沙箱创建失败，命令未执行: {e}"
 
     # 在沙箱中执行
     try:
@@ -91,8 +87,7 @@ def _exec_in_sandbox(command: str, cwd: str, timeout: int = 1800) -> str:
 
     except ContainerError as e:
         logger.error(f"沙箱执行失败: {e}")
-        logger.warning("降级为直接执行模式")
-        return _exec_direct(command, cwd, timeout)
+        return f"错误：沙箱执行失败，命令未在宿主机重试: {e}"
 
 
 def _exec_direct(command: str, cwd: str, timeout: int = 1800) -> str:

@@ -5,6 +5,7 @@
 子 agent 共享父 agent 的工作空间（子 agent 是一次性的）。
 """
 from pathlib import Path
+import re
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -14,10 +15,16 @@ if TYPE_CHECKING:
 AGENTS_ROOT = Path.home() / ".qrclaw" / "agents"
 
 
+def is_valid_agent_id(agent_id: str) -> bool:
+    return isinstance(agent_id, str) and re.fullmatch(r"[a-zA-Z0-9_-]+", agent_id) is not None
+
+
 class Workspace:
     """agent 工作空间，持有该 agent 所有资源的路径。"""
 
     def __init__(self, agent_id: str = "default", _root: Path = None):
+        if not is_valid_agent_id(agent_id):
+            raise ValueError(f"无效的 Agent ID: {agent_id!r}")
         self.agent_id = agent_id
         self.root = _root or (AGENTS_ROOT / agent_id)
 

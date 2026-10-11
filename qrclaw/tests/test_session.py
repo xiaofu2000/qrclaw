@@ -9,6 +9,7 @@ Session 会话管理模块测试
 """
 import pytest
 import json
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from qrclaw.memory.context.session import (
     Session,
@@ -37,6 +38,15 @@ class TestSessionCreation:
 
         assert session.session_id == "test-session-123"
         assert session._path.name == "test-session-123.json"
+
+    def test_session_id_cannot_escape_directory(self, temp_dir):
+        sessions_dir = temp_dir / "sessions"
+        outside = temp_dir / "outside.json"
+        with pytest.raises(ValueError, match="无效的会话 ID"):
+            Session(sessions_dir, session_id="../outside")
+        with pytest.raises(ValueError, match="无效的会话 ID"):
+            delete_session("../outside", sessions_dir)
+        assert not outside.exists()
 
     def test_corrupt_session_does_not_block_startup(self, temp_dir):
         path = temp_dir / "broken.json"
@@ -91,7 +101,7 @@ class TestSessionMessages:
 
         # 验证持久化
         saved_data = json.loads(session._path.read_text(encoding="utf-8"))
-        assert len(saved_data) == 2
+        assert len(saved_data["messages"]) == 2
 
     def test_message_persistence(self, temp_dir):
         """测试消息持久化"""
@@ -107,6 +117,14 @@ class TestSessionMessages:
         # 验证消息已加载
         assert len(session2.messages) == 2
         assert session2.messages[0]["content"] == "测试持久化"
+
+    def test_two_writers_keep_both_messages(self, temp_dir):
+        first = Session(temp_dir, session_id="shared")
+        second = Session(temp_dir, session_id="shared")
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            list(pool.map(lambda item: item[0].add({"role": "user", "content": item[1]}), [(first, "one"), (second, "two")]))
+        saved = Session(temp_dir, session_id="shared")
+        assert {message["content"] for message in saved.messages} == {"one", "two"}
 
     def test_clear_session(self, temp_dir):
         """测试清空会话"""

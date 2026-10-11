@@ -11,7 +11,7 @@ import argparse
 from rich.console import Console
 from rich.panel import Panel
 from qrclaw.logger import setup_logger
-from qrclaw.workspace import Workspace
+from qrclaw.workspace import Workspace, is_valid_agent_id
 from qrclaw.config import LOG_LEVEL, LOG_MAX_DAYS, LOG_TO_FILE, LOG_TO_CONSOLE, LOG_CONSOLE_LEVEL
 from qrclaw.cli.input import get_input
 from qrclaw.cli.display import show_context_usage
@@ -42,6 +42,9 @@ def main() -> None:
     if args.help:
         _print_help()
         return
+
+    if not is_valid_agent_id(args.agent):
+        parser.error(f"无效的 Agent ID: {args.agent}")
 
     # 1. 初始化工作空间（确定所有路径）
     workspace = Workspace(agent_id=args.agent)

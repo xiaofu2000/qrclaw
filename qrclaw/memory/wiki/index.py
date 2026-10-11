@@ -15,6 +15,7 @@ import json
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
+from uuid import uuid4
 
 from qrclaw.logger import get_logger
 from qrclaw.memory.wiki.page import WikiPage
@@ -24,6 +25,15 @@ logger = get_logger("qrclaw.memory.wiki.index")
 INDEX_JSON = "index.json"
 INDEX_MD = "index.md"
 LOG_MD = "log.md"
+
+
+def atomic_write(path: Path, content: str) -> None:
+    temp = path.with_name(f".{path.name}.{uuid4().hex}.tmp")
+    try:
+        temp.write_text(content, encoding="utf-8")
+        temp.replace(path)
+    finally:
+        temp.unlink(missing_ok=True)
 
 
 class IndexManager:
@@ -66,14 +76,12 @@ class IndexManager:
             return json.loads(self._index_json_path.read_text(encoding="utf-8"))
         except Exception as e:
             logger.error(f"读取 index.json 失败: {e}")
-            return {"version": "2.0", "updated_at": _now(), "pages": []}
+            raise ValueError("Wiki 索引损坏，请先重建索引") from e
 
     def _write_json(self, data: dict) -> None:
         """写入 index.json"""
         data["updated_at"] = _now()
-        self._index_json_path.write_text(
-            json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8"
-        )
+        atomic_write(self._index_json_path, json.dumps(data, ensure_ascii=False, indent=2))
 
     # ── 页面索引操作 ──────────────────────────────────────────────────────────
 
@@ -123,9 +131,7 @@ class IndexManager:
     def _rebuild_index_md(self, pages: list[dict]) -> None:
         """从 pages 列表重建 index.md"""
         if not pages:
-            self._index_md_path.write_text(
-                "# QRClaw Wiki 索引\n\n> 暂无页面\n", encoding="utf-8"
-            )
+            atomic_write(self._index_md_path, "# QRClaw Wiki 索引\n\n> 暂无页面\n")
             return
 
         now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -164,7 +170,7 @@ class IndexManager:
                 lines.append(f"- [{p['name']}]({p['file']}) — {desc}")
             lines.append("")
 
-        self._index_md_path.write_text("\n".join(lines), encoding="utf-8")
+        atomic_write(self._index_md_path, "\n".join(lines))
 
     def rebuild_from_pages_dir(self) -> None:
         """从 pages/ 目录完整重建 index.json 和 index.md（用于恢复/修复）"""

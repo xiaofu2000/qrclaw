@@ -15,7 +15,6 @@ spawn_agent 工具
 
 重要：子 agent 不允许再派生子 agent，防止无限嵌套。
 """
-import os
 import threading
 from rich.console import Console
 from rich.panel import Panel
@@ -61,12 +60,15 @@ class SpawnAgentArgs(BaseModel):
 def spawn_agent(agent_id: str, task: str) -> str:
     """在后台线程启动子 agent"""
     from qrclaw.agent import get_workspace, run_sub_agent, is_sub_agent
-    from qrclaw.workspace import Workspace
+    from qrclaw.workspace import Workspace, is_valid_agent_id
     from qrclaw.sandbox import is_sandbox_enabled
 
     # 子 agent 不允许再派生子 agent
     if is_sub_agent():
         return "错误：子 agent 不允许再派生子 agent，这会导致无限嵌套。请直接执行任务，不要使用 spawn_agent。"
+
+    if not is_valid_agent_id(agent_id):
+        return f"错误：无效的子 Agent ID: {agent_id}"
 
     # 检查是否已在运行
     with _task_pool_lock:
@@ -82,23 +84,19 @@ def spawn_agent(agent_id: str, task: str) -> str:
     logger.info(f"启动子 agent: {agent_id}, 共享工作空间: {parent_workspace.root}, 沙箱: {sandbox_enabled}")
 
     def _run():
-        original_cwd = os.getcwd()
         sandbox_created = False
         
         try:
             # 创建沙箱（如果启用）
             if sandbox_enabled:
                 from pathlib import Path
-                try:
-                    from qrclaw.sandbox import create_sandbox
-                    create_sandbox(
-                        agent_id=agent_id,
-                        workspace=Path(parent_workspace.root),
-                    )
-                    sandbox_created = True
-                    logger.info(f"已为子 agent {agent_id} 创建沙箱")
-                except Exception as e:
-                    logger.warning(f"为子 agent {agent_id} 创建沙箱失败: {e}")
+                from qrclaw.sandbox import create_sandbox
+                create_sandbox(
+                    agent_id=agent_id,
+                    workspace=Path(parent_workspace.root),
+                )
+                sandbox_created = True
+                logger.info(f"已为子 agent {agent_id} 创建沙箱")
             
             # 执行子 agent（共享父 agent 的工作空间）
             result, _ = run_sub_agent(task, parent_workspace, agent_id)
@@ -137,12 +135,6 @@ def spawn_agent(agent_id: str, task: str) -> str:
                 except Exception as e:
                     logger.warning(f"销毁子 agent {agent_id} 的沙箱失败: {e}")
             
-            # 恢复 cwd
-            try:
-                os.chdir(original_cwd)
-            except Exception:
-                pass
-
     thread = threading.Thread(target=_run, name=f"sub-agent-{agent_id}", daemon=True)
 
     with _task_pool_lock:

@@ -228,6 +228,10 @@ def run_sub_agent(
     from rich.console import Console as RichConsole
     import uuid
 
+    sub_workspace = Workspace(agent_id=agent_id, _root=workspace.root)
+    saved_session = get_session()
+    saved_workspace = get_workspace()
+
     logger.info(f"启动子 agent: {agent_id}, 任务: {task[:100]}...")
 
     current_depth = get_agent_depth()
@@ -235,34 +239,27 @@ def run_sub_agent(
     logger.info(f"子 agent 深度: {current_depth + 1}")
 
     # 保存当前线程的 ContextManager，子 agent 执行完后恢复
-    from qrclaw.memory.context.context_manager import get_context_manager, init_context_manager
+    from qrclaw.memory.context.runtime.manager import get_context_manager, _thread_local as _ctx_thread_local
     try:
         saved_ctx = get_context_manager()
     except RuntimeError:
         saved_ctx = None
 
-    if console is not None:
-        sub_console = console
-    else:
-        sub_console = RichConsole(file=StringIO(), highlight=False)
-
-    session_id = f"sub-{agent_id}-{uuid.uuid4().hex[:8]}"
-    sub_session = Session(
-        sessions_dir=workspace.sessions_dir,
-        session_id=session_id,
-        resume=False,
-    )
-
     try:
-        result = run(task, sub_session, sub_console, workspace, auto_confirm=True)
+        sub_console = console or RichConsole(file=StringIO(), highlight=False)
+        session_id = f"sub-{agent_id}-{uuid.uuid4().hex[:8]}"
+        sub_session = Session(
+            sessions_dir=sub_workspace.sessions_dir,
+            session_id=session_id,
+            resume=False,
+        )
+        result = run(task, sub_session, sub_console, sub_workspace, auto_confirm=True)
         result = result or "子 agent 未返回结果"
         logger.info(f"子 agent {agent_id} 执行完毕，结果长度: {len(result)} 字符")
     finally:
         set_agent_depth(current_depth)
-        # 恢复主线程的 ContextManager
-        if saved_ctx is not None:
-            from qrclaw.memory.context.context_manager import _thread_local as _ctx_thread_local
-            _ctx_thread_local.ctx = saved_ctx
-            logger.debug(f"子 agent {agent_id} 执行完毕，已恢复主线程 ContextManager")
+        set_session(saved_session)
+        set_workspace(saved_workspace)
+        _ctx_thread_local.ctx = saved_ctx
 
     return result, sub_session

@@ -2077,6 +2077,7 @@ source = { editable = "." }
 dependencies = [
     { name = "ddgs" },
     { name = "fastapi" },
+    { name = "filelock" },
     { name = "google-api-python-client" },
     { name = "google-genai" },
     { name = "httpx" },
@@ -2108,6 +2109,7 @@ requires-dist = [
     { name = "ddgs", specifier = ">=7.0.0" },
     { name = "docker", marker = "extra == 'sandbox'", specifier = ">=7.0.0" },
     { name = "fastapi", specifier = ">=0.115.0" },
+    { name = "filelock", specifier = ">=3.13.0" },
     { name = "google-api-python-client", specifier = ">=2.0.0" },
     { name = "google-genai", specifier = ">=1.0.0" },
     { name = "httpx", specifier = ">=0.27.0" },

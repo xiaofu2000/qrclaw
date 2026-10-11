@@ -2,12 +2,22 @@ import json
 import uuid
 from datetime import datetime
 from pathlib import Path
+from filelock import FileLock
 
 from qrclaw.logger import get_logger
 from qrclaw.memory.context.session.events import SessionEvent
 from qrclaw.memory.token_utils import count_messages_tokens
 
 logger = get_logger("qrclaw.memory.session")
+
+
+def _session_path(sessions_dir: Path, session_id: str) -> Path:
+    if not isinstance(session_id, str) or not session_id.strip() or session_id != session_id.strip() or any(c in session_id for c in "/\\:\r\n\0"):
+        raise ValueError(f"无效的会话 ID: {session_id!r}")
+    path = sessions_dir / f"{session_id}.json"
+    if not path.resolve().is_relative_to(sessions_dir.resolve()):
+        raise ValueError(f"无效的会话 ID: {session_id!r}")
+    return path
 
 
 def _normalize_message(message: dict) -> dict:
@@ -63,11 +73,12 @@ def get_last_session_id(sessions_dir: Path) -> str | None:
 
 
 def delete_session(session_id: str, sessions_dir: Path) -> bool:
-    path = sessions_dir / f"{session_id}.json"
-    if path.exists():
-        path.unlink()
-        logger.info(f"删除会话: {session_id}")
-        return True
+    path = _session_path(sessions_dir, session_id)
+    with FileLock(f"{path}.lock"):
+        if path.exists():
+            path.unlink()
+            logger.info(f"删除会话: {session_id}")
+            return True
     return False
 
 
@@ -100,22 +111,26 @@ class Session:
         self.total_tokens = 0
 
         sessions_dir.mkdir(parents=True, exist_ok=True)
-        self._path = sessions_dir / f"{self.session_id}.json"
+        self._path = _session_path(sessions_dir, self.session_id)
         self._load()
 
     def add(self, message: dict):
-        message = _normalize_message(dict(message))
-        if "uuid" not in message:
-            message["uuid"] = uuid.uuid4().hex[:12]
-        self.messages.append(message)
-        self.prompt_tokens = count_messages_tokens(self.messages)
-        self._save()
+        with FileLock(f"{self._path}.lock"):
+            self._load(strict=True)
+            message = _normalize_message(dict(message))
+            if "uuid" not in message:
+                message["uuid"] = uuid.uuid4().hex[:12]
+            self.messages.append(message)
+            self.prompt_tokens = count_messages_tokens(self.messages)
+            self._save()
 
     def add_event(self, event: SessionEvent | dict):
-        payload = event.__dict__ if isinstance(event, SessionEvent) else dict(event)
-        payload.setdefault("created_at", datetime.now().isoformat())
-        self.events.append(payload)
-        self._save()
+        with FileLock(f"{self._path}.lock"):
+            self._load(strict=True)
+            payload = event.__dict__ if isinstance(event, SessionEvent) else dict(event)
+            payload.setdefault("created_at", datetime.now().isoformat())
+            self.events.append(payload)
+            self._save()
 
     def update_tokens(self, prompt_tokens: int, completion_tokens: int, total_tokens: int):
         self.prompt_tokens = prompt_tokens
@@ -123,37 +138,49 @@ class Session:
         self.total_tokens = total_tokens
 
     def clear(self):
-        self.messages = []
-        self.prompt_tokens = 0
-        self.completion_tokens = 0
-        self.total_tokens = 0
-        self.events = []
-        if self._path.exists():
-            self._path.unlink()
+        with FileLock(f"{self._path}.lock"):
+            self.messages = []
+            self.prompt_tokens = 0
+            self.completion_tokens = 0
+            self.total_tokens = 0
+            self.events = []
+            if self._path.exists():
+                self._path.unlink()
 
     def _save(self):
+        temp_path = self._path.with_name(f".{self._path.name}.{uuid.uuid4().hex}.tmp")
         try:
-            self._path.write_text(
+            temp_path.write_text(
                 json.dumps({"messages": self.messages, "events": self.events}, ensure_ascii=False, indent=2),
                 encoding="utf-8"
             )
+            temp_path.replace(self._path)
         except Exception as e:
             logger.error(f"会话保存失败: {e}", exc_info=True)
             raise
+        finally:
+            temp_path.unlink(missing_ok=True)
 
-    def _load(self):
-        if self._path.exists():
-            try:
-                data = json.loads(self._path.read_text(encoding="utf-8"))
-                if isinstance(data, dict):
-                    messages = data.get("messages", [])
-                    events = data.get("events", [])
-                else:
-                    messages = data
-                    events = []
-                self.messages = [_normalize_message(m) for m in messages if m.get("role") != "system"]
-                self.events = [dict(event) for event in events]
-                self.prompt_tokens = count_messages_tokens(self.messages)
-            except Exception as e:
-                logger.error(f"加载会话失败: {e}", exc_info=True)
-                self.messages = []
+    def _load(self, strict: bool = False):
+        if not self._path.exists():
+            self.messages = []
+            self.events = []
+            self.prompt_tokens = 0
+            return
+        try:
+            data = json.loads(self._path.read_text(encoding="utf-8"))
+            if isinstance(data, dict):
+                messages = data.get("messages", [])
+                events = data.get("events", [])
+            else:
+                messages = data
+                events = []
+            self.messages = [_normalize_message(m) for m in messages if m.get("role") != "system"]
+            self.events = [dict(event) for event in events]
+            self.prompt_tokens = count_messages_tokens(self.messages)
+        except Exception as e:
+            logger.error(f"加载会话失败: {e}", exc_info=True)
+            if strict:
+                raise
+            self.messages = []
+            self.events = []
