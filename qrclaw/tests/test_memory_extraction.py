@@ -1,320 +1,246 @@
-"""
-Memory Extraction 节点测试
+"""Wiki 记忆提取的触发、结构化分析与落盘测试。"""
 
-测试阈值触发、LLM 集成、批量写入
-"""
-import pytest
-import os
+import threading
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
-# LongTermMemory 已迁移到 wiki 系统，测试使用 MockMemory
-from qrclaw.graph.nodes.memory_extraction import (
-    MemoryExtractionNode,
-    MemoryExtractionIntegration,
-)
+
+import pytest
+
+from qrclaw.graph.nodes.memory_extraction import MemoryExtractionIntegration, MemoryExtractionNode
+from qrclaw.graph.nodes.react_loop import ReactLoopNode
+from qrclaw.llm_service import LLMService
 from qrclaw.memory.wiki.extraction.config import ExtractionConfig
-
-
-class MockMessage:
-    """模拟消息对象"""
-    def __init__(self, role: str, content: str, uuid: str = None):
-        self.type = role
-        self.role = role
-        self.content = content
-        self.uuid = uuid or f"msg-{hash(content) % 10000}"
-
-
-class MockMemory:
-    """模拟记忆存储"""
-    def __init__(self):
-        self.entries = []
-        self.saved = []
-
-    def save_entry(self, name, description, content, memory_type):
-        self.saved.append({
-            "name": name,
-            "description": description,
-            "content": content,
-            "memory_type": memory_type,
-        })
-        return True
-
-    def list_entries(self, memory_type=None):
-        if memory_type:
-            return [e for e in self.entries if e.get("type") == memory_type]
-        return self.entries
-
-
-class TestShouldExtract:
-    """测试 should_extract 阈值判断"""
-
-    def test_below_init_threshold(self):
-        """测试：未达到初始化阈值，不触发"""
-        config = ExtractionConfig(
-            minimum_message_tokens_to_init=500,
-            minimum_tokens_between_update=200,
-        )
-        mock_memory = MockMemory()
-        extractor = MemoryExtractionNode(mock_memory, config)
-
-        messages = [MockMessage("user", "Hello world")]
-        result = extractor.should_extract(messages, token_count=100)
-
-        assert result is False
-        assert extractor._is_initialized is False
-
-    def test_reaches_init_threshold(self):
-        """测试：达到初始化阈值，触发"""
-        config = ExtractionConfig(
-            minimum_message_tokens_to_init=500,
-            minimum_tokens_between_update=200,
-        )
-        mock_memory = MockMemory()
-        extractor = MemoryExtractionNode(mock_memory, config)
-
-        # 直接传入 token_count=500，与阈值相等，触发
-        messages = [MockMessage("user", "Hello " * 125)]
-        result = extractor.should_extract(messages, token_count=500)
-
-        assert result is True
-        assert extractor._is_initialized is True
-
-    def test_below_update_interval(self):
-        """测试：Token 增长不足，不触发"""
-        config = ExtractionConfig(
-            minimum_message_tokens_to_init=100,
-            minimum_tokens_between_update=200,
-        )
-        mock_memory = MockMemory()
-        extractor = MemoryExtractionNode(mock_memory, config)
-
-        # 先初始化
-        extractor._is_initialized = True
-        extractor._tokens_at_last_extraction = 500
-
-        messages = [MockMessage("user", "Hello")]
-        result = extractor.should_extract(messages, token_count=650)  # 只增长150
-
-        assert result is False
-
-    def test_sufficient_token_growth(self):
-        """测试：Token 增长足够，触发"""
-        config = ExtractionConfig(
-            minimum_message_tokens_to_init=100,
-            minimum_tokens_between_update=200,
-            tool_calls_between_updates=0,  # 跳过工具调用检查
-        )
-        mock_memory = MockMemory()
-        extractor = MemoryExtractionNode(mock_memory, config)
-
-        # 先初始化
-        extractor._is_initialized = True
-        extractor._tokens_at_last_extraction = 500
-
-        # 传入 token_count=800，增长 300，满足阈值
-        messages = [MockMessage("user", "Task " * 100)]
-        result = extractor.should_extract(messages, token_count=800)
-
-        assert result is True
-
-
-class TestCheckAndExtract:
-    """测试 check_and_extract 方法"""
-
-    def test_no_trigger_when_threshold_not_met(self):
-        """测试：阈值不满足时不触发"""
-        mock_memory = MockMemory()
-        extractor = MemoryExtractionNode(mock_memory)
-
-        messages = [MockMessage("user", "Short message")]
-        result = extractor.check_and_extract(messages, token_count=100)
-
-        assert result is False
-        assert extractor.get_pending_count() == 0
-
-    def test_trigger_and_queue_extraction(self):
-        """测试：触发后加入队列"""
-        mock_memory = MockMemory()
-        config = ExtractionConfig(
-            minimum_message_tokens_to_init=100,
-            minimum_tokens_between_update=50,
-            tool_calls_between_updates=0,  # 不检查工具调用
-        )
-        extractor = MemoryExtractionNode(mock_memory, config)
-
-        messages = [
-            MockMessage("user", "Task description " * 50),
-            MockMessage("assistant", "I'll help with that"),
-        ]
-        result = extractor.check_and_extract(messages, token_count=200)
-
-        assert result is True
-        assert extractor.get_pending_count() == 1
-
-    def test_updates_state_on_trigger(self):
-        """测试：触发后更新状态"""
-        mock_memory = MockMemory()
-        config = ExtractionConfig(
-            minimum_message_tokens_to_init=100,
-            minimum_tokens_between_update=50,
-            tool_calls_between_updates=0,
-        )
-        extractor = MemoryExtractionNode(mock_memory, config)
-
-        messages = [MockMessage("user", "Task " * 50)]
-        extractor.check_and_extract(messages, token_count=200)
-
-        assert extractor._tokens_at_last_extraction == 200
-        assert extractor._is_initialized is True
-
-
-class TestLLMAnalysis:
-    """测试 LLM 分析集成"""
-
-    @patch("qrclaw.providers.provider")
-    def test_analyze_with_llm_success(self, mock_provider):
-        """测试：LLM 分析成功"""
-        mock_provider.chat.return_value = MagicMock(
-            content="类型: PROJECT\n描述: 用户喜欢简洁回复\n内容: 用户多次强调不要废话"
-        )
-
-        mock_memory = MockMemory()
-        extractor = MemoryExtractionNode(mock_memory)
-
-        result = extractor._analyze_with_llm("请分析...")
-
-        assert "PROJECT" in result
-        mock_provider.chat.assert_called_once()
-
-    @patch("qrclaw.providers.provider")
-    def test_analyze_with_llm_no_extraction_needed(self, mock_provider):
-        """测试：LLM 判定无需提取"""
-        mock_provider.chat.return_value = MagicMock(content="无需提取")
-
-        mock_memory = MockMemory()
-        extractor = MemoryExtractionNode(mock_memory)
-
-        result = extractor._analyze_with_llm("请分析...")
-
-        assert result.strip() == "无需提取"
-
-    @patch("qrclaw.providers.provider")
-    def test_analyze_with_llm_failure(self, mock_provider):
-        """测试：LLM 调用失败"""
-        mock_provider.chat.side_effect = Exception("API Error")
-
-        mock_memory = MockMemory()
-        extractor = MemoryExtractionNode(mock_memory)
-
-        result = extractor._analyze_with_llm("请分析...")
-
-        assert result == "无需提取"
-
-
-class TestFlushPending:
-    """测试批量写入"""
-
-    @patch("qrclaw.providers.provider")
-    def test_flush_pending_success(self, mock_provider):
-        """测试：批量写入成功"""
-        mock_provider.chat.return_value = MagicMock(
-            content="类型: USER\n描述: 测试偏好\n内容: 用户偏好简洁风格"
-        )
-
-        mock_memory = MockMemory()
-        extractor = MemoryExtractionNode(mock_memory)
-
-        # 手动加入一个待处理项（Wiki 架构用 tags 替代 memory_type）
-        with extractor._pending_lock:
-            extractor._pending_extractions.append({
-                "index_summary": "测试索引",
-                "messages_text": "测试提取",
-            })
-
-        count = extractor.flush_pending()
-
-        assert count == 1
-        assert len(mock_memory.saved) == 1
-        assert mock_memory.saved[0]["name"] is not None
-
-
-class TestMemoryExtractionIntegration:
-    """测试集成类"""
-
-    def test_on_react_loop_end_calls_extractor(self):
-        """测试：on_react_loop_end 调用 extractor"""
-        mock_memory = MockMemory()
-        config = ExtractionConfig(
-            minimum_message_tokens_to_init=100,
-            minimum_tokens_between_update=50,
-            tool_calls_between_updates=0,
-        )
-        extractor = MemoryExtractionNode(mock_memory, config)
-
-        integration = MemoryExtractionIntegration(extractor)
-
-        # 创建模拟 session - 传入足够长的内容满足阈值
-        session = MagicMock()
-        session.messages = [MockMessage("user", "Test " * 200)]  # 约 1000 chars
-
-        integration.on_react_loop_end(session, current_round=1)
-
-        assert extractor._is_initialized is True
-
-
-class TestTokenEstimation:
-    """测试 Token 估算"""
-
-    def test_estimate_tokens_text(self):
-        """测试：纯文本估算"""
-        mock_memory = MockMemory()
-        extractor = MemoryExtractionNode(mock_memory)
-
-        messages = [MockMessage("user", "Hello world")]
-        tokens = extractor._estimate_tokens(messages)
-
-        assert tokens > 0
-
-    def test_estimate_tokens_mixed_content(self):
-        """测试：混合内容估算"""
-        mock_memory = MockMemory()
-        extractor = MemoryExtractionNode(mock_memory)
-
-        messages = [
-            MockMessage("user", "Hello"),
-            MagicMock(
-                type="assistant",
-                role="assistant",
-                content=[
-                    {"type": "text", "text": "Response text"},
-                    {"type": "tool_use", "input": {"key": "value"}},
-                ]
-            ),
-        ]
-
-        tokens = extractor._estimate_tokens(messages)
-
-        assert tokens > 0
-
-
-class TestExtractionConfig:
-    """测试配置"""
-
-    def test_default_values(self):
-        """测试：默认配置值合理"""
-        config = ExtractionConfig()
-
-        # 验证默认阈值不是原始的 10000/5000
-        assert config.minimum_message_tokens_to_init < 10000
-        assert config.minimum_tokens_between_update < 5000
-
-    def test_custom_config(self):
-        """测试：自定义配置"""
-        config = ExtractionConfig(
-            minimum_message_tokens_to_init=1000,
-            minimum_tokens_between_update=500,
-            tool_calls_between_updates=5,
-        )
-
-        assert config.minimum_message_tokens_to_init == 1000
-        assert config.minimum_tokens_between_update == 500
-        assert config.tool_calls_between_updates == 5
+from qrclaw.memory.wiki.extraction.llm import WikiLLMAnalyzer
+from qrclaw.memory.wiki.extraction.schemas import ExtractionSchema, WikiPageSchema
+from qrclaw.memory.wiki.wiki_memory import WikiMemory
+from qrclaw.providers.base import LLMResponse
+from qrclaw.tools.wiki_tools import write_wiki_page
+from qrclaw.workspace import Workspace
+
+
+def _config(**overrides):
+    values = dict(minimum_message_tokens_to_init=10, minimum_tokens_between_update=5)
+    values.update(overrides)
+    return ExtractionConfig(**values)
+
+
+def _result(action="create", name="用户偏好", content="喜欢简洁回复"):
+    return ExtractionSchema(
+        needs_update=True,
+        pages=[WikiPageSchema(action=action, name=name, content=content, description="回复风格", tags=["偏好"])],
+    )
+
+
+def test_thresholds_and_optional_tool_gate(temp_dir):
+    node = MemoryExtractionNode(WikiMemory(temp_dir), _config())
+    assert not node.should_extract([], 9)
+    assert node.should_extract([], 10)
+
+    node._tokens_at_last_extraction = 10
+    assert not node.should_extract([], 14)
+    assert node.should_extract([], 15)
+
+    gated = MemoryExtractionNode(WikiMemory(temp_dir), _config(tool_calls_between_updates=2))
+    messages = [{"role": "assistant", "tool_calls": [{"id": "1"}]}]
+    assert not gated.should_extract(messages, 10)
+    messages[0]["tool_calls"].append({"id": "2"})
+    assert gated.should_extract(messages, 10)
+
+
+def test_queued_messages_use_previous_cutoff(temp_dir):
+    node = MemoryExtractionNode(WikiMemory(temp_dir), _config())
+    messages = [
+        {"role": "user", "content": "第一条偏好", "uuid": "u1"},
+        {"role": "assistant", "content": "已记录", "uuid": "a1"},
+    ]
+    assert node.check_and_extract(messages, 10)
+    assert "第一条偏好" in node._pending_extractions[0]["messages_text"]
+
+    messages.append({"role": "user", "content": "第二条偏好", "uuid": "u2"})
+    assert node.check_and_extract(messages, 15)
+    second = node._pending_extractions[1]["messages_text"]
+    assert "第二条偏好" in second
+    assert "第一条偏好" not in second
+
+
+def test_flush_persists_page_and_index(temp_dir):
+    analyzer = MagicMock()
+    analyzer.analyze.return_value = _result()
+    wiki = WikiMemory(temp_dir)
+    node = MemoryExtractionNode(wiki, _config(), analyzer)
+    messages = [{"role": "user", "content": "请记住我喜欢简洁回复", "uuid": "u1"}]
+
+    assert node.check_and_extract(messages, 10)
+    assert node.flush_pending() == 1
+    assert node.get_pending_count() == 0
+    assert "请记住" in analyzer.analyze.call_args.args[1]
+
+    reopened = WikiMemory(temp_dir)
+    assert reopened.get_page("用户偏好").content == "喜欢简洁回复"
+    assert reopened.index.all_entries()[0]["name"] == "用户偏好"
+    assert reopened.search_pages("简洁")[0].name == "用户偏好"
+
+
+def test_existing_page_is_appended_even_when_llm_says_create(temp_dir):
+    wiki = WikiMemory(temp_dir)
+    wiki.save_page("用户偏好", "原有偏好")
+    analyzer = MagicMock()
+    analyzer.analyze.return_value = _result(content="新增偏好")
+    node = MemoryExtractionNode(wiki, _config(), analyzer)
+
+    assert node.write_now("新增偏好") == 1
+    assert "原有偏好" in wiki.get_page("用户偏好").content
+    assert "新增偏好" in wiki.get_page("用户偏好").content
+    assert node.write_now("新增偏好") == 0
+    assert wiki.get_page("用户偏好").content.count("新增偏好") == 1
+    analyzer.consolidate.assert_not_called()
+
+
+def test_failed_analysis_stays_queued_for_retry(temp_dir):
+    analyzer = MagicMock()
+    analyzer.analyze.side_effect = RuntimeError("temporary failure")
+    node = MemoryExtractionNode(WikiMemory(temp_dir), _config(), analyzer)
+    assert node.check_and_extract([{"role": "user", "content": "偏好", "uuid": "u1"}], 10)
+
+    assert node.flush_pending() == 0
+    assert node.get_pending_count() == 1
+
+    analyzer.analyze.side_effect = None
+    analyzer.analyze.return_value = _result()
+    assert node.flush_pending() == 1
+    assert node.get_pending_count() == 0
+
+
+def test_manual_write_reports_real_result(temp_dir):
+    analyzer = MagicMock()
+    analyzer.analyze.return_value = _result()
+    node = MemoryExtractionNode(WikiMemory(temp_dir), _config(), analyzer)
+
+    with patch("qrclaw.agent.get_extractor", return_value=node):
+        message = write_wiki_page("用户喜欢简洁回复")
+
+    assert "已写入 1 个 Wiki 页面" in message
+    assert node.memory.get_page("用户偏好") is not None
+
+
+def test_integration_flushes_first_task(temp_dir):
+    analyzer = MagicMock()
+    analyzer.analyze.return_value = _result()
+    node = MemoryExtractionNode(WikiMemory(temp_dir), _config(), analyzer)
+    session = SimpleNamespace(messages=[{"role": "assistant", "content": "请记住用户偏好" * 10, "uuid": "a1"}])
+
+    with patch("qrclaw.graph.nodes.memory_extraction.threading.Thread") as thread:
+        thread.return_value.start.side_effect = lambda: thread.call_args.kwargs["target"]()
+        MemoryExtractionIntegration(node).on_react_loop_end(session)
+
+    assert thread.call_args.kwargs["daemon"] is False
+    assert node.memory.get_page("用户偏好") is not None
+
+
+def test_background_worker_drains_queue_without_duplicate_worker(temp_dir):
+    started = threading.Event()
+    release = threading.Event()
+    calls = []
+
+    def analyze(*_):
+        calls.append(len(calls) + 1)
+        if len(calls) == 1:
+            started.set()
+            assert release.wait(5)
+        return _result(name=f"偏好{len(calls)}")
+
+    analyzer = MagicMock()
+    analyzer.analyze.side_effect = analyze
+    node = MemoryExtractionNode(WikiMemory(temp_dir), _config(max_pending=1), analyzer)
+    assert node.check_and_extract([{"role": "user", "content": "偏好一", "uuid": "u1"}], 10)
+    assert node.check_and_extract([{"role": "user", "content": "偏好一", "uuid": "u1"}, {"role": "user", "content": "偏好二", "uuid": "u2"}], 15)
+    integration = MemoryExtractionIntegration(node)
+    integration.on_react_loop_end(SimpleNamespace(messages=[]))
+    try:
+        assert started.wait(5)
+        worker = integration._worker
+        integration.on_react_loop_end(SimpleNamespace(messages=[]))
+        assert integration._worker is worker
+    finally:
+        release.set()
+    worker.join(timeout=5)
+    assert not worker.is_alive()
+    assert calls == [1, 2]
+    assert node.get_pending_count() == 0
+    assert len(node.memory.list_pages()) == 2
+
+
+def test_structured_llm_output_is_parsed_without_network():
+    class FakeProvider:
+        _model = "fake"
+
+        def chat(self, messages, **kwargs):
+            return LLMResponse(content='```json\n{"needs_update": true, "pages": [{"action": "create", "name": "用户偏好", "content": "喜欢简洁回复"}]}\n```')
+
+    analyzer = WikiLLMAnalyzer(LLMService(FakeProvider()), _config())
+    result = analyzer.analyze("（暂无页面）", "[user] 记住偏好")
+
+    assert result.needs_update
+    assert result.pages[0].name == "用户偏好"
+
+
+def test_invalid_page_name_cannot_escape_wiki_directory(temp_dir):
+    wiki = WikiMemory(temp_dir)
+    with pytest.raises(ValueError, match="无效的 Wiki 页面名称"):
+        wiki.save_page("../outside", "不应写出目录")
+    assert not (temp_dir / "outside.md").exists()
+    assert wiki.get_page("../outside") is None
+    assert not wiki.page_exists("../outside")
+
+    analyzer = MagicMock()
+    analyzer.analyze.return_value = _result(name="../outside")
+    node = MemoryExtractionNode(wiki, _config(), analyzer)
+    with pytest.raises(RuntimeError, match="Wiki 页面写入失败"):
+        node.write_now("不应写出目录")
+
+
+def test_partial_write_reports_failed_page(temp_dir):
+    analyzer = MagicMock()
+    analyzer.analyze.return_value = ExtractionSchema(
+        needs_update=True,
+        pages=[
+            WikiPageSchema(action="create", name="用户偏好", content="简洁回复"),
+            WikiPageSchema(action="create", name="../outside", content="不应写出目录"),
+        ],
+    )
+    node = MemoryExtractionNode(WikiMemory(temp_dir), _config(), analyzer)
+    with pytest.raises(RuntimeError, match="已写入 1 个"):
+        node.write_now("记录偏好")
+    assert node.memory.get_page("用户偏好") is not None
+    assert not (temp_dir / "outside.md").exists()
+
+
+def test_semantic_recall_when_keyword_search_misses(temp_dir, monkeypatch):
+    wiki = WikiMemory(temp_dir)
+    wiki.save_page("回复风格", "尽量简洁")
+    monkeypatch.setattr(
+        "qrclaw.memory.wiki.selection.WikiPageSelector.select",
+        lambda self, query, messages: SimpleNamespace(selected=[SimpleNamespace(name="回复风格")]),
+    )
+
+    pages = wiki.select_relevant_pages("怎样回答用户", [], top_k=1)
+    assert [page.name for page in pages] == ["回复风格"]
+
+
+def test_memory_integration_tracks_workspace(temp_dir):
+    react = ReactLoopNode()
+    first = react._get_memory_integration(Workspace("one", _root=temp_dir / "one"))
+    second = react._get_memory_integration(Workspace("two", _root=temp_dir / "two"))
+
+    assert first is not second
+    assert second.extractor.memory.memory_dir == temp_dir / "two" / "memory"
+
+
+def test_default_and_custom_config():
+    default = ExtractionConfig()
+    assert default.minimum_message_tokens_to_init < 10000
+    assert default.minimum_tokens_between_update < 5000
+    assert default.tool_calls_between_updates == 0
+
+    custom = _config(tool_calls_between_updates=5)
+    assert custom.tool_calls_between_updates == 5

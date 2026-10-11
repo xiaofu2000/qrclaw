@@ -98,6 +98,8 @@ class MemoryExtractionNode:
 
         # 提取逻辑执行器（委托给 Runner）
         self._runner: Optional[ExtractionRunner] = None
+        self._llm_analyzer = llm_analyzer
+        self._flush_lock = threading.Lock()
 
         logger.info(
             f"MemoryExtractionNode 初始化完成 | "
@@ -112,7 +114,7 @@ class MemoryExtractionNode:
             self._runner = ExtractionRunner(
                 wiki_memory=self.memory,
                 config=self.config,
-                llm_analyzer=None,  # Runner 内部懒加载
+                llm_analyzer=self._llm_analyzer,
             )
         return self._runner
 
@@ -124,7 +126,7 @@ class MemoryExtractionNode:
 
         参考 Claude Code shouldExtractMemory()：
         1. Token 阈值必须满足（初始化 + 更新间隔）
-        2. 工具调用阈值 OR 最后一条消息无工具调用（自然间隙）
+        2. 如果配置了工具调用阈值，工具调用次数也须满足
         """
         # 初始化检查
         if not self._is_initialized:
@@ -180,35 +182,46 @@ class MemoryExtractionNode:
         if not self.should_extract(messages, token_count):
             return False
 
-        # 更新状态
+        # 先用上次的截断点构建任务，再记录本次截断点
+        if not self._trigger_extraction(messages):
+            return False
         self._tokens_at_last_extraction = token_count
         if messages:
             last_msg = messages[-1]
-            if isinstance(last_msg, dict):
-                self._last_message_uuid = last_msg.get('uuid')
-            else:
-                self._last_message_uuid = getattr(last_msg, 'uuid', None)
-
-        # 启动提取（委托给 Runner）
-        self._trigger_extraction(messages)
+            self._last_message_uuid = last_msg.get('uuid') if isinstance(last_msg, dict) else getattr(last_msg, 'uuid', None)
 
         return True
 
-    def _trigger_extraction(self, messages: list):
+    def _trigger_extraction(self, messages: list) -> bool:
         """触发提取：委托给 Runner 构建提取数据并加入队列"""
         runner = self._get_runner()
         extraction_data = runner.trigger_extraction(
             messages=messages,
             last_message_uuid=self._last_message_uuid,
         )
+        if not extraction_data["messages_text"].strip():
+            return False
 
         with self._pending_lock:
             self._pending_extractions.append(extraction_data)
             pending_count = len(self._pending_extractions)
 
         logger.warning(f"[记忆提取] 任务已加入队列，pending: {pending_count}")
+        return True
 
     # ── 批量写入 ──────────────────────────────────────────────────────────────
+
+    def write_now(self, content: str) -> int:
+        """同步处理主动写入，返回实际写入的页面数。"""
+        with self._flush_lock:
+            runner = self._get_runner()
+            extraction = runner.analyze_with_llm({
+                "index_summary": runner.build_index_summary(),
+                "messages_text": content,
+            })
+            if extraction is None:
+                raise RuntimeError("记忆分析失败")
+            return runner.process_extraction_result(extraction)
 
     def flush_pending(self) -> int:
         """
@@ -220,6 +233,10 @@ class MemoryExtractionNode:
         Returns:
             int: 成功写入的数量
         """
+        with self._flush_lock:
+            return self._flush_pending_batch()
+
+    def _flush_pending_batch(self) -> int:
         with self._pending_lock:
             if not self._pending_extractions:
                 logger.debug("[记忆提取] flush_pending: 无待处理任务")
@@ -233,6 +250,7 @@ class MemoryExtractionNode:
 
         success_count = 0
         total_pages = 0
+        failed = []
         runner = self._get_runner()
 
         for extraction_data in to_write:
@@ -241,7 +259,8 @@ class MemoryExtractionNode:
                 extraction = runner.analyze_with_llm(extraction_data)
 
                 if extraction is None:
-                    logger.warning("[记忆提取] LLM 分析返回 None，跳过")
+                    logger.warning("[记忆提取] LLM 分析失败，保留任务待下次重试")
+                    failed.append(extraction_data)
                     continue
                 if not extraction.needs_update:
                     logger.info("[记忆提取] LLM 判定无需更新")
@@ -258,6 +277,11 @@ class MemoryExtractionNode:
 
             except Exception as e:
                 logger.warning(f"[记忆提取] 写入异常: {e}", exc_info=True)
+                failed.append(extraction_data)
+
+        if failed:
+            with self._pending_lock:
+                self._pending_extractions = failed + self._pending_extractions
 
         if success_count > 0:
             logger.info(f"[记忆提取] 批量写入完成: {success_count}/{total_pages} 页面")
@@ -347,6 +371,14 @@ class MemoryExtractionIntegration:
 
     def __init__(self, extractor: MemoryExtractionNode):
         self.extractor = extractor
+        self._worker: Optional[threading.Thread] = None
+
+    def _flush_until_idle(self) -> None:
+        while self.extractor.get_pending_count():
+            before = self.extractor.get_pending_count()
+            self.extractor.flush_pending()
+            if self.extractor.get_pending_count() >= before:
+                break  # 失败任务保留到下次会话重试，避免立即重试风暴
 
     def on_react_loop_end(
         self,
@@ -358,7 +390,7 @@ class MemoryExtractionIntegration:
 
         集成到 ReactLoopNode.run() 的循环结束后：
         1. check_and_extract 判断是否需要提取（加入待处理队列）
-        2. 如果待处理队列达到阈值，启动后台线程执行 flush_pending，不阻塞 CLI
+        2. 有待处理任务时，后台写入，不阻塞 CLI
         """
         messages = getattr(session, 'messages', [])
         token_count = self.extractor._estimate_tokens(messages)
@@ -370,11 +402,10 @@ class MemoryExtractionIntegration:
 
         self.extractor.check_and_extract(messages, token_count, current_round)
 
-        # 检查是否需要批量写入，放后台线程执行，不阻塞主线程
-        if self.extractor.get_pending_count() >= self.extractor.config.max_pending:
-            t = threading.Thread(
-                target=self.extractor.flush_pending,
-                daemon=True,
+        if self.extractor.get_pending_count() and (self._worker is None or not self._worker.is_alive()):
+            self._worker = threading.Thread(
+                target=self._flush_until_idle,
+                daemon=False,
                 name="memory-extraction-flush",
             )
-            t.start()
+            self._worker.start()

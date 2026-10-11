@@ -314,20 +314,22 @@ class ExtractionRunner:
             return 0
 
         success_count = 0
-        pages_to_consolidate = []
+        failures = []
 
         for page in extraction.pages:
             try:
-                # A. 模糊匹配：修正 LLM 填的名字
-                if page.action == "append":
-                    real_name = self.wiki_memory.fuzzy_find_name(page.name)
-                    if real_name:
-                        page.name = real_name
-                    else:
-                        logger.warning(
-                            f"[ExtractionRunner] append页面不存在，降级为create: {page.name}"
-                        )
-                        page.action = "create"
+                if page.action == "skip" or not page.content.strip():
+                    continue
+
+                real_name = self.wiki_memory.fuzzy_find_name(page.name)
+                if real_name:
+                    page.name = real_name
+                    existing = self.wiki_memory.get_page(real_name)
+                    if existing and page.content.strip() in existing.content:
+                        continue
+                    page.action = "append"
+                elif page.action == "append":
+                    page.action = "create"
 
                 if page.action == "append":
                     self.wiki_memory.append_page(
@@ -336,7 +338,6 @@ class ExtractionRunner:
                         tags=page.tags or None,
                         related=page.related or None,
                     )
-                    pages_to_consolidate.append(page.name)
                     success_count += 1
                 elif page.action == "create":
                     self.wiki_memory.save_page(
@@ -352,10 +353,10 @@ class ExtractionRunner:
 
             except Exception as e:
                 logger.warning(f"[ExtractionRunner] 写入页面失败: {page.name}, {e}")
+                failures.append(page.name)
 
-        # 整理 append 的页面
-        if pages_to_consolidate:
-            self.consolidate_pages(pages_to_consolidate)
+        if failures:
+            raise RuntimeError(f"Wiki 页面写入失败: {', '.join(failures)}（已写入 {success_count} 个）")
 
         return success_count
 

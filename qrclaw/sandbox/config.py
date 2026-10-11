@@ -203,14 +203,5 @@ BLOCKED_HOST_PATHS = [
 
 def validate_mount_path(host_path: str) -> bool:
     """验证挂载路径是否安全"""
-    path = Path(host_path).expanduser().resolve()
-    path_str = str(path)
-    
-    for blocked in BLOCKED_HOST_PATHS:
-        if path_str.startswith(blocked):
-            raise ValueError(f"🚫 禁止挂载敏感路径: {host_path} (匹配 {blocked})")
-    
-    if "docker.sock" in path_str:
-        raise ValueError(f"🚫 禁止挂载 Docker socket: {host_path}")
-    
-    return True
+    from .validator import validate_mount_path as validate
+    return validate(host_path)

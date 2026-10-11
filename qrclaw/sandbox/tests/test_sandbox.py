@@ -103,8 +103,15 @@ class TestValidateMountPath:
     def test_blocked_path(self):
         """测试禁止挂载的敏感路径"""
         for blocked in BLOCKED_HOST_PATHS:
-            with pytest.raises(ValueError, match="禁止挂载敏感路径"):
+            message = "Docker socket" if "docker.sock" in blocked else "禁止挂载敏感路径"
+            with pytest.raises(ValueError, match=message):
                 validate_mount_path(blocked)
+
+    def test_blocked_symlink(self, tmp_path):
+        link = tmp_path / "etc-link"
+        link.symlink_to("/etc", target_is_directory=True)
+        with pytest.raises(ValueError, match="禁止挂载敏感路径"):
+            validate_mount_path(str(link))
     
     def test_docker_sock_blocked(self):
         """测试禁止挂载 Docker socket"""

@@ -6,14 +6,6 @@ Wiki LLM Analyzer - LLM 调用封装
 - WikiLLMAnalyzer.consolidate (行 336-376)
 """
 
-try:
-    import instructor
-    _HAS_INSTRUCTOR = True
-except ImportError:
-    _HAS_INSTRUCTOR = False
-
-from pydantic import ValidationError
-
 from qrclaw.memory.wiki.extraction.config import ExtractionConfig
 from qrclaw.memory.wiki.extraction.schemas import (
     ExtractionSchema,
@@ -36,23 +28,6 @@ class WikiLLMAnalyzer:
         """
         self.llm = llm_service
         self.config = config
-        self._client = None
-
-    def _get_client(self):
-        """获取 instructor 封装的 client"""
-        if not _HAS_INSTRUCTOR:
-            raise ImportError(
-                "The 'instructor' package is required for WikiLLMAnalyzer. "
-                "Install it with: pip install instructor"
-            )
-        if self._client is None:
-            # 适配 LiteLLMProvider，它使用 chat 方法而不是 create
-            # 使用 MD_JSON 模式，避免依赖 response_format=json_object（部分模型不支持）
-            self._client = instructor.patch(
-                create=self.llm.create_openai_like,
-                mode=instructor.Mode.MD_JSON,
-            )
-        return self._client
 
     def analyze(
         self,
@@ -74,23 +49,11 @@ class WikiLLMAnalyzer:
             messages_text=messages_text,
         )
 
-        client = self._get_client()
-
-        for attempt in range(self.config.max_retries):
-            try:
-                response = client(
-                    messages=[
-                        {"role": "user", "content": prompt},
-                    ],
-                    response_model=ExtractionSchema,
-                )
-                return response
-            except ValidationError as e:
-                if attempt == self.config.max_retries - 1:
-                    raise
-                continue
-
-        return ExtractionSchema(needs_update=False, pages=[])
+        return self.llm.structured(
+            messages=[{"role": "user", "content": prompt}],
+            response_model=ExtractionSchema,
+            max_retries=self.config.max_retries,
+        )
 
     def consolidate(
         self,
@@ -115,24 +78,8 @@ class WikiLLMAnalyzer:
             page_name=page_name,
         )
 
-        client = self._get_client()
-
-        for attempt in range(self.config.max_retries):
-            try:
-                response = client(
-                    messages=[
-                        {"role": "user", "content": prompt},
-                    ],
-                    response_model=ConsolidatePageSchema,
-                )
-                return response
-            except ValidationError as e:
-                if attempt == self.config.max_retries - 1:
-                    raise
-                continue
-
-        return ConsolidatePageSchema(
-            content=new_content,
-            description="",
-            tags=[],
+        return self.llm.structured(
+            messages=[{"role": "user", "content": prompt}],
+            response_model=ConsolidatePageSchema,
+            max_retries=self.config.max_retries,
         )

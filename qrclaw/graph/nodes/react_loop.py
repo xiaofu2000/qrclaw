@@ -159,7 +159,9 @@ class ReactLoopNode:
 
     def _get_memory_integration(self, workspace: Workspace):
         """懒加载 MemoryExtractionIntegration（仅主 agent）"""
-        if self._memory_integration is None:
+        if workspace is None:
+            return None
+        if self._memory_integration is None or self._memory_integration.extractor.memory.memory_dir.resolve() != workspace.memory_dir.resolve():
             from qrclaw.graph.nodes.memory_extraction import (
                 MemoryExtractionNode,
                 MemoryExtractionIntegration,

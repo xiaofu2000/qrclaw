@@ -68,6 +68,14 @@ class WikiMemory:
 
     # ── 核心 CRUD ─────────────────────────────────────────────────────────────
 
+    def _page_path(self, name: str) -> Path:
+        if not isinstance(name, str) or not name.strip() or name != name.strip() or any(c in name for c in "/\\\r\n\0"):
+            raise ValueError(f"无效的 Wiki 页面名称: {name!r}")
+        path = self.pages_dir / f"{name}.md"
+        if not path.resolve().is_relative_to(self.pages_dir.resolve()):
+            raise ValueError(f"无效的 Wiki 页面名称: {name!r}")
+        return path
+
     def save_page(
         self,
         name: str,
@@ -87,6 +95,7 @@ class WikiMemory:
         tags = tags or []
         related = related or []
 
+        filepath = self._page_path(name)
         existing = self.get_page(name)
         now = datetime.now()
 
@@ -114,7 +123,6 @@ class WikiMemory:
             action = "write"
 
         # 写入文件
-        filepath = self.pages_dir / page.filename
         filepath.write_text(page.to_markdown(), encoding="utf-8")
 
         # 更新索引
@@ -165,7 +173,10 @@ class WikiMemory:
 
     def get_page(self, name: str) -> Optional[WikiPage]:
         """读取指定页面，不存在返回 None"""
-        filepath = self.pages_dir / f"{name}.md"
+        try:
+            filepath = self._page_path(name)
+        except ValueError:
+            return None
         if not filepath.exists():
             return None
         try:
@@ -177,7 +188,7 @@ class WikiMemory:
 
     def delete_page(self, name: str) -> bool:
         """删除页面及其索引条目"""
-        filepath = self.pages_dir / f"{name}.md"
+        filepath = self._page_path(name)
         if not filepath.exists():
             logger.warning(f"页面不存在: {name}")
             return False
@@ -254,8 +265,7 @@ class WikiMemory:
 
         # 第一阶段：关键词初筛，获取候选页面
         candidates = self.search_pages(query)
-        if not candidates:
-            logger.debug(f"select_relevant_pages: 关键词初筛无候选页面 (query={query})")
+        if not candidates and not self.index.all_entries():
             return []
 
         # 第二阶段：LLM 精选
@@ -276,11 +286,14 @@ class WikiMemory:
         logger.debug(
             f"select_relevant_pages: 关键词候选 {len(candidates)} 个，LLM 选中 {len(selected_pages)} 个"
         )
-        return selected_pages
+        return selected_pages or candidates[:top_k]
 
     def page_exists(self, name: str) -> bool:
         """检查页面是否存在"""
-        return (self.pages_dir / f"{name}.md").exists()
+        try:
+            return self._page_path(name).exists()
+        except ValueError:
+            return False
 
     # ── system prompt 注入 ────────────────────────────────────────────────────
 

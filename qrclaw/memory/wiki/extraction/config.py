@@ -14,15 +14,15 @@ class ExtractionConfig:
 
     # 初始化阈值：Token 数量达到多少时开始提取
     # 支持环境变量覆盖：MEMORY_INIT_THRESHOLD
-    minimum_message_tokens_to_init: int = 10000
+    minimum_message_tokens_to_init: int = 1500
 
     # 更新间隔：Token 增长多少时触发下一次提取
     # 支持环境变量覆盖：MEMORY_UPDATE_INTERVAL
-    minimum_tokens_between_update: int = 5000
+    minimum_tokens_between_update: int = 1000
 
     # 工具调用次数间隔
     # 支持环境变量覆盖：MEMORY_TOOL_CALL_INTERVAL
-    tool_calls_between_updates: int = 3
+    tool_calls_between_updates: int = 0
 
     # 最大待处理数量
     max_pending: int = 3

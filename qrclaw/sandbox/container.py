@@ -10,7 +10,7 @@ from typing import Optional
 from dataclasses import dataclass
 
 from qrclaw.logger import get_logger
-from .config import BLOCKED_HOST_PATHS, MountConfig
+from .config import MountConfig
 
 logger = get_logger("qrclaw.sandbox.container")
 
@@ -251,7 +251,8 @@ class ContainerManager:
     
     def _validate_mount_path(self, host_path: str):
         """验证挂载路径"""
-        path = Path(host_path).resolve()
-        for blocked in BLOCKED_HOST_PATHS:
-            if str(path).startswith(blocked):
-                raise ContainerError(f"禁止挂载敏感路径: {host_path}")
+        from .validator import validate_mount_path, PathValidationError
+        try:
+            validate_mount_path(host_path)
+        except PathValidationError as e:
+            raise ContainerError(str(e)) from e

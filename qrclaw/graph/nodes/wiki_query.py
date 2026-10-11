@@ -108,11 +108,11 @@ class WikiQueryNode:
             if self.memory_dir:
                 self._wiki = WikiMemory.for_workspace(self.memory_dir)
             else:
-                # 尝试从全局上下文获取 memory_dir
-                from qrclaw.graph.context import get_context_manager
+                from qrclaw.agent import get_workspace
+                from qrclaw.workspace import Workspace
 
-                ctx = get_context_manager()
-                self._wiki = WikiMemory.for_workspace(ctx.memory_dir)
+                workspace = get_workspace() or Workspace("default")
+                self._wiki = WikiMemory.for_workspace(workspace.memory_dir)
         return self._wiki
 
     def run(
