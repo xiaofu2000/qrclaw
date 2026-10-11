@@ -45,15 +45,15 @@ def list_sessions(sessions_dir: Path) -> list[dict]:
     ):
         try:
             data = json.loads(path.read_text(encoding="utf-8"))
-            if isinstance(data, dict):
-                raw_messages = data.get("messages", [])
-                msg_count = len([m for m in raw_messages if m.get("role") != "system"])
-            else:
-                msg_count = len([m for m in data if m.get("role") != "system"])
+            raw_messages = data.get("messages", []) if isinstance(data, dict) else data
+            messages = [m for m in raw_messages if m.get("role") != "system"]
+            first_user_text = next((m.get("content") for m in messages if m.get("role") == "user" and isinstance(m.get("content"), str)), "")
+            title = " ".join(first_user_text.split())[:48] or path.stem
             mtime = datetime.fromtimestamp(path.stat().st_mtime).strftime("%Y-%m-%d %H:%M")
             sessions.append({
                 "id": path.stem,
-                "message_count": msg_count,
+                "title": title,
+                "message_count": len(messages),
                 "updated_at": mtime,
             })
         except Exception:

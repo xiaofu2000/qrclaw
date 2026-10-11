@@ -20,6 +20,7 @@ class ChatCompletionRequest(BaseModel):
 
 class SessionSummary(BaseModel):
     id: str
+    title: str
     message_count: int
     updated_at: str
 
@@ -32,6 +33,7 @@ class SessionDetail(BaseModel):
     completion_tokens: int = 0
     total_tokens: int = 0
     messages: list[dict[str, Any]] = Field(default_factory=list)
+    events: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class CreateSessionRequest(BaseModel):

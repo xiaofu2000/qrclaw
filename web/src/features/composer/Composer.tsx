@@ -10,7 +10,7 @@ export function Composer({ onSend, disabled }: ComposerProps) {
 
   async function submit() {
     const trimmed = value.trim()
-    if (!trimmed) return
+    if (!trimmed || disabled) return
     setValue('')
     await onSend(trimmed)
   }
@@ -29,6 +29,12 @@ export function Composer({ onSend, disabled }: ComposerProps) {
         placeholder="输入任务，Enter 发送，Shift+Enter 换行"
         rows={3}
         disabled={disabled}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
+            event.preventDefault()
+            void submit()
+          }
+        }}
       />
       <button type="submit" disabled={disabled}>
         发送

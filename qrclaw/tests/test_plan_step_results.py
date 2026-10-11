@@ -6,6 +6,7 @@ from rich.console import Console
 from qrclaw.graph.nodes.plan_executor import PlanExecutorNode
 from qrclaw.graph.nodes.router import Plan, PlanStep, RouteResult
 from qrclaw.graph.runner import GraphRunner
+from qrclaw.memory.context.prompt.builder import build_react_messages, build_router_messages
 from qrclaw.memory.context.context_manager import init_context_manager
 from qrclaw.memory.context.session import Session
 from qrclaw.workspace import Workspace
@@ -18,7 +19,8 @@ def test_plan_passes_previous_result_to_next_step_and_replanner(temp_dir):
     ctx.set_plan("目标", [PlanStep(1, "第一步"), PlanStep(2, "第二步", [1])])
     tasks = []
 
-    def run_sub_agent(task, workspace, agent_id, console=None):
+    def run_sub_agent(task, workspace, agent_id, console=None, sandbox_policy_agent_id=None):
+        assert sandbox_policy_agent_id == workspace.agent_id
         tasks.append(task)
         return f"结果{len(tasks)}", None
 
@@ -53,6 +55,19 @@ def test_graph_runner_keeps_router_wiki_context(temp_dir):
     runner.router.run = route
     runner.plan_executor.run = lambda **_: ctx.plan_state.wiki_context
     assert runner.run("任务", session, Console(file=StringIO()), workspace) == "已选中的 Wiki 正文"
+
+
+def test_internal_execution_report_is_context_not_assistant_reply():
+    history = [
+        {"role": "user", "content": "任务"},
+        {"role": "assistant", "kind": "execution_report", "content": "执行汇报：完成"},
+    ]
+    react = build_react_messages("系统提示", history)
+    router = build_router_messages(history, "判断路由")
+
+    assert react[-1] == {"role": "user", "content": "执行汇报：完成"}
+    assert router[-2] == {"role": "user", "content": "执行汇报：完成"}
+    assert history[-1]["role"] == "assistant"
 
 
 def test_cyclic_plan_does_not_report_success(temp_dir):

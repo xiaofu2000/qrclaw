@@ -22,10 +22,13 @@ def is_valid_agent_id(agent_id: str) -> bool:
 class Workspace:
     """agent 工作空间，持有该 agent 所有资源的路径。"""
 
-    def __init__(self, agent_id: str = "default", _root: Path = None):
+    def __init__(self, agent_id: str = "default", _root: Path = None, _sandbox_policy_agent_id: str | None = None):
         if not is_valid_agent_id(agent_id):
             raise ValueError(f"无效的 Agent ID: {agent_id!r}")
+        if _sandbox_policy_agent_id is not None and not is_valid_agent_id(_sandbox_policy_agent_id):
+            raise ValueError(f"无效的沙箱策略 Agent ID: {_sandbox_policy_agent_id!r}")
         self.agent_id = agent_id
+        self.sandbox_policy_agent_id = _sandbox_policy_agent_id or agent_id
         self.root = _root or (AGENTS_ROOT / agent_id)
 
         # 各子目录/文件路径

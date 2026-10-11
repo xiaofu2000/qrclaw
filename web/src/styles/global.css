@@ -141,6 +141,9 @@ textarea {
 
 .conversation-title {
   font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .conversation-meta,
@@ -194,6 +197,34 @@ textarea {
 .chat-message.assistant,
 .chat-message.tool {
   max-width: 92%;
+}
+
+.chat-empty {
+  margin: auto;
+  color: #667085;
+  font-size: 14px;
+}
+
+.tool-result {
+  border: 1px solid #dfe3ea;
+  border-radius: 10px;
+  background: #f8fafc;
+}
+
+.tool-result summary {
+  cursor: pointer;
+  padding: 9px 12px;
+  color: #475467;
+  font-size: 13px;
+}
+
+.tool-result pre {
+  margin: 0;
+  max-height: 240px;
+  overflow: auto;
+  padding: 0 12px 12px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .message-bubble {

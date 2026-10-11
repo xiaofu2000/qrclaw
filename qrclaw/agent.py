@@ -225,6 +225,7 @@ def run_sub_agent(
     workspace: Workspace,
     agent_id: str,
     console: Console | None = None,
+    sandbox_policy_agent_id: str | None = None,
 ) -> tuple[str, Session]:
     """
     启动子 agent，返回 (结果字符串, 子session)。
@@ -234,7 +235,7 @@ def run_sub_agent(
     from rich.console import Console as RichConsole
     import uuid
 
-    sub_workspace = Workspace(agent_id=agent_id, _root=workspace.root)
+    sub_workspace = Workspace(agent_id=agent_id, _root=workspace.root, _sandbox_policy_agent_id=sandbox_policy_agent_id)
     saved_session = get_session()
     saved_workspace = get_workspace()
 

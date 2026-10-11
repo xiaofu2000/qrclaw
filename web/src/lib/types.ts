@@ -6,12 +6,15 @@ export type Message = {
   content: string
   kind?: 'user' | 'assistant' | 'tool' | 'execution_report' | 'message'
   collapsed?: boolean
+  toolName?: string
 }
 
 export type MessagePayload = {
   role: MessageRole | string
   content: string
   kind?: Message['kind']
+  tool_call_id?: string
+  tool_calls?: Array<{ id: string; function?: { name: string } }>
 }
 
 export type Conversation = {
@@ -25,6 +28,7 @@ export type RunStatus = 'ready' | 'busy' | 'error'
 
 export type SessionSummary = {
   id: string
+  title?: string
   message_count: number
   updated_at: string
 }

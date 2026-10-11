@@ -14,7 +14,6 @@ from .config import (
     SandboxConfig,
     MountConfig,
     get_sandbox_config,
-    get_sandbox_mounts,
     is_sandbox_enabled,
     validate_mount_path,
 )
@@ -91,9 +90,6 @@ class SandboxManager:
         
         # 合并挂载配置
         effective_mounts = list(config.mounts) if config.mounts else []
-        config_mounts = get_sandbox_mounts(agent_id)
-        if config_mounts:
-            effective_mounts.extend(config_mounts)
         if mounts:
             effective_mounts.extend(mounts)
         
@@ -166,13 +162,14 @@ class SandboxManager:
         cwd: str = "/workspace",
         timeout: int = 300,
         env: Optional[dict] = None,
+        require_sandbox: bool = False,
     ) -> ExecResult:
         """在沙箱中执行命令"""
         handle = self._containers.get(agent_id)
         
         # 已启用沙箱时不能静默转为宿主机执行
         if not handle or not handle.container_id:
-            if is_sandbox_enabled(agent_id):
+            if require_sandbox or is_sandbox_enabled(agent_id):
                 raise ContainerError(f"Agent {agent_id} 的沙箱未创建")
             return self._exec_direct(command, cwd, timeout, env)
         

@@ -1,25 +1,38 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { ChatPanel } from '../features/chat/ChatPanel'
 import { InspectorPanel } from '../features/inspector/InspectorPanel'
 import { Composer } from '../features/composer/Composer'
 import { createApiClient } from '../lib/api'
-import type { Conversation, Message, RunStatus, SessionDetail } from '../lib/types'
+import type { Conversation, Message, RunStatus, SessionDetail, SessionSummary } from '../lib/types'
 import { Sidebar } from '../components/Sidebar'
 import { Topbar } from '../components/Topbar'
 
-function normalizeMessage(message: { role: string; content: string; kind?: string }, index: number, sessionId: string): Message {
-  return {
-    id: `${sessionId}-${index}`,
-    role: message.role as Message['role'],
-    kind: message.kind as Message['kind'],
-    content: message.content ?? '',
-  }
+function toConversation(session: SessionSummary): Conversation {
+  return { id: session.id, title: session.title || session.id, updatedAt: session.updated_at, messageCount: session.message_count }
+}
+
+function normalizeMessages(session: SessionDetail): Message[] {
+  const toolNames = new Map<string, string>()
+  return session.messages.flatMap((message, index) => {
+    for (const call of message.tool_calls ?? []) {
+      toolNames.set(call.id, call.function?.name ?? '工具')
+    }
+    if (message.role === 'assistant' && message.tool_calls?.length && !message.content) return []
+    return [{
+      id: `${session.id}-${index}`,
+      role: message.role as Message['role'],
+      kind: message.kind,
+      content: typeof message.content === 'string' ? message.content : JSON.stringify(message.content),
+      toolName: message.tool_call_id ? toolNames.get(message.tool_call_id) : undefined,
+    }]
+  })
 }
 
 export function App() {
   const api = useMemo(() => createApiClient(), [])
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [activeConversationId, setActiveConversationId] = useState<string>('')
+  const activeIdRef = useRef('')
   const [messages, setMessages] = useState<Message[]>([])
   const [activeSession, setActiveSession] = useState<SessionDetail | null>(null)
   const [status, setStatus] = useState<RunStatus>('ready')
@@ -34,36 +47,20 @@ export function App() {
         if (cancelled) {
           return
         }
-        const mapped = sessions.map((session) => ({
-          id: session.id,
-          title: session.id,
-          updatedAt: session.updated_at,
-          messageCount: session.message_count,
-        }))
-        setConversations(mapped)
+        setConversations(sessions.map(toConversation))
         if (sessions.length > 0) {
           const first = sessions[0]
+          activeIdRef.current = first.id
           setActiveConversationId(first.id)
           const detail = await api.getSession(first.id)
-          if (!cancelled) {
+          if (!cancelled && activeIdRef.current === first.id) {
             setActiveSession(detail)
-            setMessages(
-              detail.messages.map((message, index) =>
-                normalizeMessage(
-                  {
-                    role: message.role,
-                    content: typeof message.content === 'string' ? message.content : JSON.stringify(message.content),
-                    kind: message.kind,
-                  },
-                  index,
-                  first.id,
-                ),
-              ),
-            )
+            setMessages(normalizeMessages(detail))
           }
         } else {
           const created = await api.createSession()
           if (!cancelled) {
+            activeIdRef.current = created.id
             setConversations([
               {
                 id: created.id,
@@ -93,33 +90,16 @@ export function App() {
 
   async function refreshConversations() {
     const sessions = await api.listSessions()
-    setConversations(
-      sessions.map((session) => ({
-        id: session.id,
-        title: session.id,
-        updatedAt: session.updated_at,
-        messageCount: session.message_count,
-      })),
-    )
+    setConversations(sessions.map(toConversation))
   }
 
   async function loadConversation(conversationId: string) {
+    activeIdRef.current = conversationId
     const detail = await api.getSession(conversationId)
+    if (activeIdRef.current !== conversationId) return
     setActiveConversationId(conversationId)
     setActiveSession(detail)
-    setMessages(
-      detail.messages.map((message, index) =>
-        normalizeMessage(
-          {
-            role: message.role,
-            content: typeof message.content === 'string' ? message.content : JSON.stringify(message.content),
-            kind: message.kind,
-          },
-          index,
-          conversationId,
-        ),
-      ),
-    )
+    setMessages(normalizeMessages(detail))
   }
 
   async function handleNewChat() {
@@ -128,6 +108,7 @@ export function App() {
     try {
       const created = await api.createSession()
       await refreshConversations()
+      activeIdRef.current = created.id
       setActiveConversationId(created.id)
       setActiveSession(created)
       setMessages([])
@@ -143,6 +124,7 @@ export function App() {
     if (!activeConversationId) {
       return
     }
+    const sessionId = activeConversationId
     const userMessage: Message = {
       id: crypto.randomUUID(),
       role: 'user',
@@ -154,31 +136,24 @@ export function App() {
 
     try {
       const nextMessages = [...messages, userMessage]
-      const reply = await api.chat(activeConversationId, nextMessages)
-      const updated = await api.getSession(activeConversationId)
-      setActiveSession(updated)
-      setMessages((current) => [
-        ...current,
-        {
-          id: crypto.randomUUID(),
-          role: 'assistant',
-          kind: 'assistant',
-          content: reply,
-        },
-      ])
+      await api.chat(sessionId, nextMessages)
+      const updated = await api.getSession(sessionId)
+      if (activeIdRef.current === sessionId) {
+        setActiveSession(updated)
+        setMessages(normalizeMessages(updated))
+      }
       await refreshConversations()
       setStatus('ready')
       setStatusText('完成')
     } catch (error) {
-      setMessages((current) => [
-        ...current,
-        {
+      if (activeIdRef.current === sessionId) {
+        setMessages((current) => [...current, {
           id: crypto.randomUUID(),
           role: 'assistant',
           kind: 'assistant',
           content: `请求失败：${error instanceof Error ? error.message : String(error)}`,
-        },
-      ])
+        }])
+      }
       setStatus('error')
       setStatusText('调用失败')
     }
@@ -200,7 +175,7 @@ export function App() {
           </div>
           <Composer onSend={handleSend} disabled={status === 'busy'} />
         </main>
-        <InspectorPanel session={activeSession} />
+        <InspectorPanel session={activeSession} status={status} />
       </div>
     </div>
   )

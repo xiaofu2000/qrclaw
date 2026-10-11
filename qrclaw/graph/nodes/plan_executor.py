@@ -161,6 +161,7 @@ class PlanExecutorNode:
         result, _ = run_sub_agent_fn(
             task, workspace, f"step-{step.id}",
             console=console,
+            sandbox_policy_agent_id=workspace.sandbox_policy_agent_id,
         )
         logger.info(f"Step {step.id} 串行完成")
         return result
@@ -193,6 +194,7 @@ class PlanExecutorNode:
                 result, _ = run_sub_agent_fn(
                     task, workspace, f"step-{step.id}",
                     console=None,
+                    sandbox_policy_agent_id=workspace.sandbox_policy_agent_id,
                 )
                 with lock:
                     results[step.id] = result

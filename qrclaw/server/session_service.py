@@ -42,5 +42,6 @@ class SessionService:
             "completion_tokens": session.usage["completion_tokens"],
             "total_tokens": session.usage["total_tokens"],
             "messages": session.messages,
+            "events": session.events,
         }
 

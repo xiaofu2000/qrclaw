@@ -79,7 +79,8 @@ def spawn_agent(agent_id: str, task: str) -> str:
     parent_workspace = get_workspace() or Workspace("default")
     
     # 检查是否需要创建沙箱
-    sandbox_enabled = is_sandbox_enabled(agent_id)
+    policy_agent_id = parent_workspace.sandbox_policy_agent_id if is_sandbox_enabled(parent_workspace.sandbox_policy_agent_id) else agent_id
+    sandbox_enabled = is_sandbox_enabled(policy_agent_id)
     
     logger.info(f"启动子 agent: {agent_id}, 共享工作空间: {parent_workspace.root}, 沙箱: {sandbox_enabled}")
 
@@ -90,16 +91,17 @@ def spawn_agent(agent_id: str, task: str) -> str:
             # 创建沙箱（如果启用）
             if sandbox_enabled:
                 from pathlib import Path
-                from qrclaw.sandbox import create_sandbox
+                from qrclaw.sandbox import SandboxConfig, create_sandbox, get_sandbox_config
                 create_sandbox(
                     agent_id=agent_id,
                     workspace=Path(parent_workspace.root),
+                    config=get_sandbox_config(policy_agent_id) or SandboxConfig(enabled=True),
                 )
                 sandbox_created = True
                 logger.info(f"已为子 agent {agent_id} 创建沙箱")
             
             # 执行子 agent（共享父 agent 的工作空间）
-            result, _ = run_sub_agent(task, parent_workspace, agent_id)
+            result, _ = run_sub_agent(task, parent_workspace, agent_id, sandbox_policy_agent_id=policy_agent_id)
             
             with _task_pool_lock:
                 _task_pool[agent_id]["status"] = "done"

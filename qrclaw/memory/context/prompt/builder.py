@@ -7,7 +7,7 @@ from qrclaw.prompts import ROUTER_SYSTEM_PROMPT, REPLANNER_PROMPT_TEMPLATE
 
 
 def build_react_messages(system_prompt: str, session_messages: list[dict]) -> list[dict]:
-    return [{"role": "system", "content": system_prompt}, *session_messages]
+    return [{"role": "system", "content": system_prompt}, *[_model_message(msg) for msg in session_messages]]
 
 
 def build_router_messages(session_messages: list[dict], route_instruction: str) -> list[dict]:
@@ -39,9 +39,18 @@ def build_replanner_messages(
 def _filter_for_router(messages: list[dict]) -> list[dict]:
     filtered = []
     for msg in messages:
+        if msg.get("kind") == "execution_report":
+            filtered.append(_model_message(msg))
+            continue
         role = msg.get("role")
         if role == "user":
             filtered.append(msg)
         elif role == "assistant" and not msg.get("tool_calls"):
             filtered.append(msg)
     return filtered
+
+
+def _model_message(message: dict) -> dict:
+    if message.get("kind") == "execution_report":
+        return {"role": "user", "content": message.get("content", "")}
+    return message

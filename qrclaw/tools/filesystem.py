@@ -226,7 +226,7 @@ def _resolve_path(path: str) -> Path:
     from qrclaw.agent import get_workspace
     from qrclaw.sandbox import is_sandbox_enabled
     ws = get_workspace()
-    if ws and is_sandbox_enabled(ws.agent_id):
+    if ws and is_sandbox_enabled(ws.sandbox_policy_agent_id):
         root = ws.root.resolve()
         requested = Path(path).expanduser()
         if requested.is_absolute():

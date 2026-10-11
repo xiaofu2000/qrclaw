@@ -8,6 +8,8 @@ from unittest.mock import patch
 from fastapi.testclient import TestClient
 
 from qrclaw.server.app import create_app
+from qrclaw.memory.context.session import Session, SessionEvent
+from qrclaw.workspace import Workspace
 import qrclaw.workspace as workspace_module
 
 
@@ -40,6 +42,21 @@ def test_new_empty_session_survives_refresh(temp_dir, monkeypatch):
 
     assert created["id"] in {item["id"] for item in sessions}
     assert restored["messages"] == []
+
+
+def test_session_list_has_readable_title_and_detail_has_events(temp_dir, monkeypatch):
+    monkeypatch.setattr(workspace_module, "AGENTS_ROOT", temp_dir / "agents")
+    workspace = Workspace()
+    session = Session(workspace.sessions_dir, session_id="test-ui", resume=False)
+    session.add({"role": "user", "content": "  检查项目\n架构  "})
+    session.add_event(SessionEvent(kind="status", title="执行中", content="检查代码"))
+
+    with TestClient(create_app(workspace), client=("127.0.0.1", 50000)) as client:
+        summary = next(item for item in client.get("/v1/sessions").json() if item["id"] == "test-ui")
+        detail = client.get("/v1/sessions/test-ui").json()
+
+    assert summary["title"] == "检查项目 架构"
+    assert detail["events"][0]["content"] == "检查代码"
 
 
 def test_api_serializes_agent_runs(temp_dir, monkeypatch):

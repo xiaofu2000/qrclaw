@@ -45,21 +45,26 @@ def _get_workspace_root() -> str:
 def _is_sandbox_enabled() -> bool:
     """检查是否启用沙箱"""
     from qrclaw.sandbox import is_sandbox_enabled
-    return is_sandbox_enabled(_get_current_agent_id())
+    from qrclaw.agent import get_workspace
+    ws = get_workspace()
+    return is_sandbox_enabled(ws.sandbox_policy_agent_id if ws else _get_current_agent_id())
 
 
 def _exec_in_sandbox(command: str, cwd: str, timeout: int = 1800) -> str:
     """在沙箱中执行命令"""
-    from qrclaw.sandbox import sandbox_manager, ContainerError
+    from qrclaw.sandbox import sandbox_manager, ContainerError, SandboxConfig, get_sandbox_config
+    from qrclaw.agent import get_workspace
 
     agent_id = _get_current_agent_id()
+    ws = get_workspace()
+    policy_agent_id = ws.sandbox_policy_agent_id if ws else agent_id
 
     # 检查沙箱是否已创建
     if not sandbox_manager.has_sandbox(agent_id):
         try:
             from pathlib import Path
             workspace = Path(cwd) if cwd else None
-            sandbox_manager.create_sandbox(agent_id, workspace=workspace)
+            sandbox_manager.create_sandbox(agent_id, workspace=workspace, config=get_sandbox_config(policy_agent_id) or SandboxConfig(enabled=True))
             logger.info(f"已为 Agent {agent_id} 创建沙箱")
         except Exception as e:
             logger.error(f"创建沙箱失败: {e}")
@@ -72,6 +77,7 @@ def _exec_in_sandbox(command: str, cwd: str, timeout: int = 1800) -> str:
             command=command,
             cwd="/workspace",
             timeout=timeout,
+            require_sandbox=True,
         )
 
         output = result.stdout
