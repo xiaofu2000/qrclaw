@@ -21,8 +21,9 @@ from qrclaw.memory.wiki import WikiMemoryManager, WikiMemory
 from qrclaw.memory.storage import MemoryIndexer
 
 # 上下文管理
-from qrclaw.memory.context.session import Session
-from qrclaw.memory.context.step_result import StepResult
+from qrclaw.memory.context.session import Session, SessionStore
+from qrclaw.memory.context.plan import PlanState, PlanController, StepResult
+from qrclaw.memory.context.prompt import SystemPromptCache
 
 # 类型定义
 from qrclaw.memory.types import (
@@ -51,7 +52,7 @@ from qrclaw.memory.compression import (
 # ContextManager 延迟导入（避免 context 层在包初始化阶段触发复杂依赖）
 ContextManager = None
 try:
-    from qrclaw.memory.context.context_manager import ContextManager
+    from qrclaw.memory.context.runtime.manager import ContextManager
 except ImportError:
     pass
 
@@ -65,6 +66,10 @@ __all__ = [
 
     # 上下文管理
     "Session",
+    "SessionStore",
+    "PlanState",
+    "PlanController",
+    "SystemPromptCache",
     "ContextManager",
     "StepResult",
 

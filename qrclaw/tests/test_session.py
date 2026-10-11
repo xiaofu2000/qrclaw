@@ -38,6 +38,15 @@ class TestSessionCreation:
         assert session.session_id == "test-session-123"
         assert session._path.name == "test-session-123.json"
 
+    def test_corrupt_session_does_not_block_startup(self, temp_dir):
+        path = temp_dir / "broken.json"
+        path.write_text("{", encoding="utf-8")
+
+        session = Session(temp_dir, session_id="broken")
+
+        assert session.messages == []
+        assert path.read_text(encoding="utf-8") == "{"
+
     def test_resume_last_session(self, temp_dir):
         """测试恢复最近会话"""
         # 创建第一个会话

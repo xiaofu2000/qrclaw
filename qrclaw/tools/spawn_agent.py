@@ -101,7 +101,7 @@ def spawn_agent(agent_id: str, task: str) -> str:
                     logger.warning(f"为子 agent {agent_id} 创建沙箱失败: {e}")
             
             # 执行子 agent（共享父 agent 的工作空间）
-            result = run_sub_agent(task, parent_workspace, agent_id)
+            result, _ = run_sub_agent(task, parent_workspace, agent_id)
             
             with _task_pool_lock:
                 _task_pool[agent_id]["status"] = "done"

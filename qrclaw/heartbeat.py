@@ -180,7 +180,7 @@ def execute_heartbeat_tasks(workspace) -> str:
     try:
         # 创建心跳专用子 agent
         sub_workspace = workspace.sub_agent("heartbeat")
-        result = run_sub_agent(task, sub_workspace)
+        result, _ = run_sub_agent(task, sub_workspace, "heartbeat")
         logger.info(f"心跳任务执行完成: {result[:100]}...")
         return result
     except Exception as e:
