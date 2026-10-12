@@ -43,6 +43,6 @@ class LLMProvider(ABC):
             json_mode:   为 True 时强制 LLM 输出合法 JSON（OpenAI response_format）
                          不支持的 provider 忽略此参数，由调用方自行做正则兜底
             temperature: 温度参数，越低越确定性输出。为 None 时使用默认值。
-            on_delta: 流式文本回调；为 None 时使用非流式调用。
+            on_delta: 传入时逐块回调可见正文，仍返回完整响应供工具循环处理。
         """
         ...

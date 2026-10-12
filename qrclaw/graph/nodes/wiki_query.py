@@ -19,7 +19,6 @@ WikiQueryNode —— 计划目标触发式 Wiki 知识精排注入节点
 from __future__ import annotations
 
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Optional
 
 from qrclaw.logger import get_logger
@@ -92,6 +91,8 @@ class WikiQueryNode:
             memory_dir: WikiMemory 工作目录，默认使用 ~/.qrclaw/agents/default/memory
             top_k: LLM 精排最多返回的页面数，默认 3
         """
+        from pathlib import Path
+
         if memory_dir:
             self.memory_dir = Path(memory_dir)
         else:
@@ -107,11 +108,11 @@ class WikiQueryNode:
             if self.memory_dir:
                 self._wiki = WikiMemory.for_workspace(self.memory_dir)
             else:
-                # 尝试从全局上下文获取 memory_dir
-                from qrclaw.memory.context.context_manager import get_context_manager
+                from qrclaw.agent import get_workspace
+                from qrclaw.workspace import Workspace
 
-                ctx = get_context_manager()
-                self._wiki = WikiMemory.for_workspace(ctx.workspace.memory_dir)
+                workspace = get_workspace() or Workspace("default")
+                self._wiki = WikiMemory.for_workspace(workspace.memory_dir)
         return self._wiki
 
     def run(
@@ -148,7 +149,7 @@ class WikiQueryNode:
         )
 
         if not selected:
-            logger.info("WikiQueryNode: 精排无结果，返回空上下文")
+            logger.info(f"WikiQueryNode: 精排无结果，返回空上下文")
             return WikiQueryResult(pages=[], injected_context="")
 
         logger.info(f"WikiQueryNode: LLM 选中 {len(selected)} 个页面: {[p.name for p in selected]}")

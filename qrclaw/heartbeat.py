@@ -23,7 +23,9 @@ Heartbeat.md 格式示例：
 - 总结常见的错误和解决方案
 """
 import threading
+import time
 from datetime import datetime
+from pathlib import Path
 from typing import Callable, Optional
 from qrclaw.logger import get_logger
 
@@ -152,6 +154,7 @@ def execute_heartbeat_tasks(workspace) -> str:
         str: 执行结果摘要
     """
     from qrclaw.agent import run_sub_agent
+    from qrclaw.workspace import Workspace
     
     heartbeat_file = workspace.heartbeat_file
     if not heartbeat_file.exists():
@@ -176,8 +179,7 @@ def execute_heartbeat_tasks(workspace) -> str:
     
     try:
         # 创建心跳专用子 agent
-        sub_workspace = workspace.sub_agent("heartbeat")
-        result = run_sub_agent(task, sub_workspace)
+        result, _ = run_sub_agent(task, workspace, "heartbeat", sandbox_policy_agent_id=workspace.sandbox_policy_agent_id)
         logger.info(f"心跳任务执行完成: {result[:100]}...")
         return result
     except Exception as e:

@@ -1,6 +1,7 @@
+import os
 import time
 import requests
-from typing import List
+from typing import List, Optional, Dict, Any
 from qrclaw.web_search.types import WebSearchProvider, SearchResult, WebSearchResponse
 from qrclaw.config import TAVILY_API_KEY
 from qrclaw.logger import get_logger
@@ -50,7 +51,7 @@ class TavilySearchProvider(WebSearchProvider):
         }
         
         try:
-            logger.debug(f"Tavily 搜索请求： {query} (count={count})")
+            logger.debug(f"Tavily search request: {query} (count={count})")
             response = requests.post(url, json=payload, timeout=30)
             response.raise_for_status()
             data = response.json()
@@ -80,5 +81,5 @@ class TavilySearchProvider(WebSearchProvider):
             )
             
         except requests.exceptions.RequestException as e:
-            logger.error(f"Tavily 搜索失败： {e}")
+            logger.error(f"Tavily search failed: {e}")
             raise RuntimeError(f"Tavily API error: {e}")

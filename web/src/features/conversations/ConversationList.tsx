@@ -1,36 +1,55 @@
-import type { Conversation } from '../../models/workbench'
+import { useState } from 'react'
+import { Check, LoaderCircle, Pencil, Trash2, X } from 'lucide-react'
+import type { Conversation } from '../../lib/types'
 
 type ConversationListProps = {
   conversations: Conversation[]
-  activeId: string | null
-  disabled: boolean
-  onSelect: (id: string) => void
-  onRename: (id: string, title: string) => void
-  onDelete: (id: string) => void
+  activeId: string
+  runningIds: Set<string>
+  mutatingIds: Set<string>
+  onSelect: (conversationId: string) => void
+  onRename: (conversationId: string, title: string) => void
+  onDelete: (conversationId: string) => void
 }
 
-/** 格式化会话更新时间。 */
-function formatUpdatedAt(value: string): string {
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return ''
-  return new Intl.DateTimeFormat('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }).format(date)
-}
+/** 会话列表只管理改名输入和删除确认，数据操作交给工作区。 */
+export function ConversationList({ conversations, activeId, runningIds, mutatingIds, onSelect, onRename, onDelete }: ConversationListProps) {
+  const [editingId, setEditingId] = useState('')
+  const [title, setTitle] = useState('')
 
-/** 可切换、重命名和删除的会话列表。 */
-export function ConversationList({ conversations, activeId, disabled, onSelect, onRename, onDelete }: ConversationListProps) {
-  if (!conversations.length) return <div className="empty-compact">还没有会话</div>
+  function saveTitle() {
+    if (!title.trim() || !editingId || mutatingIds.has(editingId)) return
+    onRename(editingId, title.trim())
+    setEditingId('')
+  }
+
   return (
     <div className="conversation-list">
       {conversations.map((conversation) => (
-        <div key={conversation.id} className={`conversation-item ${conversation.id === activeId ? 'active' : ''}`}>
-          <button className="conversation-main" type="button" disabled={disabled} onClick={() => onSelect(conversation.id)}>
-            <span className="conversation-title">{conversation.title}</span>
-            <span className="conversation-meta">{formatUpdatedAt(conversation.updatedAt)}</span>
-          </button>
-          {conversation.id === activeId && <div className="conversation-actions">
-            <button type="button" onClick={() => { const title = window.prompt('输入新的会话名称', conversation.title); if (title) onRename(conversation.id, title) }}>改名</button>
-            <button type="button" onClick={() => { if (window.confirm(`确认删除会话“${conversation.title}”？不会删除工作区文件。`)) onDelete(conversation.id) }}>删除</button>
-          </div>}
+        <div key={conversation.id} className={`conversation-row ${conversation.id === activeId ? 'active' : ''}`}>
+          {editingId === conversation.id ? <>
+            <input className="conversation-rename" aria-label="会话名称" autoFocus value={title} maxLength={80}
+              onChange={event => setTitle(event.target.value)} onKeyDown={event => {
+                if (event.key === 'Enter') saveTitle()
+                if (event.key === 'Escape') setEditingId('')
+              }} />
+            <button className="conversation-action" type="button" aria-label="保存会话名称" disabled={!title.trim() || mutatingIds.has(conversation.id)} onClick={saveTitle}><Check size={15} /></button>
+            <button className="conversation-action" type="button" aria-label="取消改名" onClick={() => setEditingId('')}><X size={15} /></button>
+          </> : <>
+            <button type="button" title={conversation.title} aria-current={conversation.id === activeId ? 'page' : undefined}
+              className="conversation-item" onClick={() => onSelect(conversation.id)}>
+              <span className="conversation-title">{conversation.title}</span>
+              {runningIds.has(conversation.id) && <LoaderCircle size={15} className="spin" aria-label="任务处理中" />}
+              {mutatingIds.has(conversation.id) && <LoaderCircle size={15} className="spin" aria-label="更新会话中" />}
+            </button>
+            <button className="conversation-action" type="button" aria-label={`重命名会话 ${conversation.title}`}
+              disabled={mutatingIds.has(conversation.id)}
+              onClick={() => { setEditingId(conversation.id); setTitle(conversation.title) }}><Pencil size={14} /></button>
+            <button className="conversation-action danger" type="button" aria-label={`删除会话 ${conversation.title}`}
+              disabled={runningIds.has(conversation.id) || mutatingIds.has(conversation.id)} onClick={() => {
+                if (window.confirm(`确定删除会话“${conversation.title}”及其中的全部消息吗？此操作无法撤销。`)) onDelete(conversation.id)
+              }}><Trash2 size={14} /></button>
+          </>}
         </div>
       ))}
     </div>

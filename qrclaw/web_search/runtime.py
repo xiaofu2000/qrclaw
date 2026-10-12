@@ -1,6 +1,9 @@
-from typing import Optional
-from qrclaw.web_search.types import WebSearchResponse
+import os
+import time
+from typing import Optional, Dict, Any, List
+from qrclaw.web_search.types import WebSearchResponse, SearchResult, WebSearchProvider
 from qrclaw.web_search.provider_registry import list_providers, get_provider
+from qrclaw.config import TAVILY_API_KEY
 from qrclaw.logger import get_logger
 
 logger = get_logger("qrclaw.web_search.runtime")
@@ -32,7 +35,7 @@ def resolve_web_search_provider_id(prefer_provider: Optional[str] = None) -> Opt
         if p_cls:
             provider = p_cls()
             if provider.is_available():
-                logger.info(f"自动选择网页搜索渠道： {provider.name}")
+                logger.info(f"Auto-detected web search provider: {provider.name}")
                 return provider.id
             
     # 如果上面的都没选中（理论上 DuckDuckGo 总是可用），再尝试剩下的
@@ -41,7 +44,7 @@ def resolve_web_search_provider_id(prefer_provider: Optional[str] = None) -> Opt
         if provider.is_available():
              # 避免重复选
             if provider.id not in priority_order:
-                logger.info(f"自动选择备用搜索渠道： {provider.name}")
+                logger.info(f"Auto-detected fallback provider: {provider.name}")
                 return provider.id
 
     return None
@@ -50,31 +53,42 @@ def run_web_search(query: str, max_results: int = 5, provider_id: Optional[str] 
     """
     执行 Web 搜索
     """
-    selected_id = provider_id or resolve_web_search_provider_id()
-    
-    if not selected_id:
-        error_msg = "No web search provider is available."
-        logger.error(error_msg)
-        raise WebSearchError(error_msg)
-        
-    provider_cls = get_provider(selected_id)
-    if not provider_cls:
-        raise WebSearchError(f"Provider '{selected_id}' not found.")
-        
-    provider = provider_cls()
-    logger.info(f"使用搜索渠道： {provider.name}")
-    
-    try:
-        return provider.search(query=query, max_results=max_results, **kwargs)
-    except Exception as e:
-        logger.error(f"网页搜索失败，渠道： {provider.name}: {e}")
-        
-        # 简单的故障转移逻辑：如果首选失败，尝试降级到 DuckDuckGo
-        if provider.id != "duckduckgo":
-            logger.warning("尝试降级到 DuckDuckGo…")
-            fallback_cls = get_provider("duckduckgo")
-            if fallback_cls:
-                fallback = fallback_cls()
-                return fallback.search(query=query, max_results=max_results, **kwargs)
-        
-        raise
+    if provider_id:
+        provider_ids = [provider_id]
+    else:
+        provider_ids = []
+        selected_id = resolve_web_search_provider_id()
+        if selected_id:
+            provider_ids.append(selected_id)
+            for candidate in ["tavily", "google", "duckduckgo"]:
+                if candidate not in provider_ids:
+                    provider_ids.append(candidate)
+        else:
+            provider_ids = ["tavily", "google", "duckduckgo"]
+
+    tried: list[str] = []
+    last_error: Exception | None = None
+
+    for pid in provider_ids:
+        provider_cls = get_provider(pid)
+        if not provider_cls:
+            continue
+
+        provider = provider_cls()
+        if not provider.is_available():
+            continue
+
+        tried.append(provider.id)
+        logger.info(f"Executing web search with provider: {provider.name}")
+
+        try:
+            return provider.search(query=query, max_results=max_results, **kwargs)
+        except Exception as e:
+            last_error = e
+            logger.error(f"Web search failed with {provider.name}: {e}")
+            continue
+
+    fallback_error = f"No web search provider succeeded. Tried: {tried or provider_ids}"
+    if last_error:
+        raise WebSearchError(f"{fallback_error}; last error: {last_error}") from last_error
+    raise WebSearchError(fallback_error)

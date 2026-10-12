@@ -28,18 +28,22 @@ def handle(args: str, current_session: Session, console: Console, workspace: Wor
     subcommand = parts[0]
     sub_args = parts[1].strip() if len(parts) > 1 else ""
 
-    if subcommand == "list":
-        return _cmd_list(current_session, console, workspace)
-    elif subcommand == "new":
-        return _cmd_new(sub_args, current_session, console, workspace)
-    elif subcommand == "switch":
-        return _cmd_switch(sub_args, current_session, console, workspace)
-    elif subcommand == "delete":
-        return _cmd_delete(sub_args, current_session, console, workspace)
-    else:
-        console.print(f"[red]未知子命令: {subcommand}[/red]")
-        _print_help(console)
+    try:
+        if subcommand == "list":
+            return _cmd_list(current_session, console, workspace)
+        if subcommand == "new":
+            return _cmd_new(sub_args, current_session, console, workspace)
+        if subcommand == "switch":
+            return _cmd_switch(sub_args, current_session, console, workspace)
+        if subcommand == "delete":
+            return _cmd_delete(sub_args, current_session, console, workspace)
+    except ValueError as exc:
+        console.print(f"[red]{exc}[/red]")
         return current_session
+
+    console.print(f"[red]未知子命令: {subcommand}[/red]")
+    _print_help(console)
+    return current_session
 
 
 def _cmd_list(current_session: Session, console: Console, workspace: Workspace) -> Session:

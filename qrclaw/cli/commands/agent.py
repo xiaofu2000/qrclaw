@@ -1,9 +1,10 @@
 """
 /agent 命令处理模块
 """
+import shutil
 from rich.console import Console
 from rich.table import Table
-from qrclaw.workspace import Workspace, list_agents, AGENTS_ROOT
+from qrclaw.workspace import Workspace, list_agents, AGENTS_ROOT, is_valid_agent_id
 from qrclaw.memory.context.session import Session
 from qrclaw.logger import setup_logger
 from qrclaw.config import LOG_LEVEL, LOG_MAX_DAYS, LOG_TO_FILE, LOG_TO_CONSOLE, LOG_CONSOLE_LEVEL
@@ -86,6 +87,10 @@ def _cmd_new(agent_id: str, current_workspace: Workspace, current_session: Sessi
 def _cmd_switch(agent_id: str, current_workspace: Workspace, current_session: Session, console: Console) -> tuple[Workspace, Session]:
     if not agent_id:
         console.print("[red]用法: /agent switch <agentID>[/red]")
+        return current_workspace, current_session
+
+    if not is_valid_agent_id(agent_id):
+        console.print(f"[red]无效的 Agent ID: {agent_id}[/red]")
         return current_workspace, current_session
 
     if agent_id == current_workspace.agent_id:

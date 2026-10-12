@@ -27,16 +27,16 @@ class LLMService:
         temperature: float | None = None,
         on_delta: Callable[[str], None] | None = None,
     ) -> LLMResponse:
-        # 所有调用（含 Wiki 提取、选页和摘要）都经过同一输入上限校验。
-        from qrclaw.memory.token_utils import check_input_budget
-        check_input_budget(messages, tools)
-        return self.provider.chat(
+        """调用当前 Provider；需要逐块正文时传入 on_delta。"""
+        kwargs = dict(
             messages=messages,
             tools=tools,
             json_mode=json_mode,
             temperature=temperature,
-            on_delta=on_delta,
         )
+        if on_delta is not None:
+            kwargs["on_delta"] = on_delta
+        return self.provider.chat(**kwargs)
 
     def structured(
         self,
@@ -73,8 +73,6 @@ class LLMService:
 
     def make_instructor_kwargs(self, messages: list[dict], temperature: float = 0.1) -> dict:
         """Compatibility bridge for providers that expose instructor kwargs."""
-        from qrclaw.memory.token_utils import check_input_budget
-        check_input_budget(messages)
         if not hasattr(self.provider, "make_instructor_kwargs"):
             raise RuntimeError("当前 provider 不支持 instructor 结构化调用")
         return self.provider.make_instructor_kwargs(messages, temperature=temperature)

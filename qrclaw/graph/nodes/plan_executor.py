@@ -11,7 +11,8 @@ PlanExecutor 节点
     4. Replanner 评估：目标已达成 → DONE，否则更新剩余步骤（可能调整方向）
   结束后交主 agent 整合
 
-串行和并行步骤均使用独立会话，共用目标、Wiki 正文和前置步骤结果。
+串行和并行步骤都使用独立子会话；父会话记录任务卡片和步骤状态。
+前置步骤结果通过任务提示传给子 Agent，最终结果交主 Agent 汇总。
 """
 import threading
 import queue
@@ -20,11 +21,14 @@ from rich.panel import Panel
 from rich.text import Text
 from qrclaw.memory.context.session import Session
 from qrclaw.memory.context.step_result import StepResult
+from qrclaw.memory.context.events import SessionEvent
 from qrclaw.memory.context.context_manager import get_context_manager
 from qrclaw.workspace import Workspace
 from qrclaw.graph.executor import get_next_layer
 from qrclaw.graph.nodes.replanner import ReplannerNode
 from qrclaw.logger import get_logger
+from qrclaw.config import MAX_ITERATIONS
+from qrclaw.subagent_progress import prepare_sub_agent, record_sub_agent_end, sub_agent_snapshot
 
 logger = get_logger("qrclaw.graph.nodes.plan_executor")
 
@@ -42,82 +46,65 @@ class PlanExecutorNode:
         auto_confirm: bool,
         run_sub_agent_fn,
         react_loop_fn,
-        execution_context=None,
     ) -> str:
         ctx = get_context_manager()
         ps = ctx.plan_state
-        known_steps = {str(step.id): step for step in ps.remaining}
-        revision = 1
+        session.add_event(SessionEvent(kind="status", title="规划执行开始", content=ps.goal))
 
+        def fail(reason: str) -> str:
+            logger.error("规划执行失败: %s", reason)
+            session.add_event(SessionEvent(kind="status", title="规划执行失败", content=reason))
+            ctx.clear_plan()
+            return f"错误：规划执行失败：{reason}"
+
+        rounds = 0
         while ps.remaining:
-            if execution_context is not None:
-                execution_context.check_cancelled()
+            if rounds >= MAX_ITERATIONS:
+                return fail(f"重规划轮次达到上限 {MAX_ITERATIONS}")
+            rounds += 1
             layer = get_next_layer(ps.remaining)
             if not layer:
-                logger.error("剩余步骤存在循环依赖，中止执行")
-                console.print("[red]错误：步骤存在循环依赖，中止执行[/red]")
-                break
+                return fail("步骤存在循环依赖")
 
             is_serial = len(layer) == 1
 
-            if is_serial:
-                step = layer[0]
-                console.print(f"[yellow]→ {step.description} (串行)[/yellow]")
-                if execution_context is not None:
-                    execution_context.publish(
-                        "step.started",
-                        {"step_id": str(step.id), "description": step.description},
-                    )
-                try:
-                    result = self._run_step(
-                        step,
-                        self._build_task(step, ps.goal, ps.past_steps, ps),
-                        workspace,
-                        run_sub_agent_fn,
-                        console,
-                        execution_context,
-                    )
-                except Exception as exc:
-                    if execution_context is not None:
-                        execution_context.publish(
-                            "step.failed",
-                            {"step_id": str(step.id), "error": str(exc)},
-                        )
-                    raise
-                ctx.add_step_result(StepResult(
-                    step_id=step.id,
-                    description=step.description,
-                    output=result,
-                ))
-                if execution_context is not None:
-                    execution_context.publish(
-                        "step.completed",
-                        {"step_id": str(step.id), "output": result},
-                    )
-            else:
-                console.print(f"[yellow]→ 并行执行 {len(layer)} 个步骤[/yellow]")
-                for step in layer:
-                    console.print(f"  [dim]Step {step.id}:[/dim] {step.description}")
-                    if execution_context is not None:
-                        execution_context.publish(
-                            "step.started",
-                            {"step_id": str(step.id), "description": step.description},
-                        )
-                results = self._run_parallel(
-                    layer,
-                    ps.goal,
-                    ps.past_steps,
-                    workspace,
-                    run_sub_agent_fn,
-                    console,
-                    execution_context,
-                )
-                for step in layer:
+            try:
+                if is_serial:
+                    step = layer[0]
+                    session.add_event(SessionEvent(kind="status", title="执行中", content=step.description))
+                    console.print(f"[yellow]→ {step.description} (串行)[/yellow]")
+                    child_id = prepare_sub_agent(session, workspace, f"step-{step.id}", step.description)
+                    try:
+                        result = self._run_serial(step, ps.goal, ps.past_steps, workspace, run_sub_agent_fn,
+                                                  console, child_id, session.session_id)
+                    except Exception:
+                        if sub_agent_snapshot(child_id):
+                            record_sub_agent_end(workspace.sessions_dir, session.session_id, child_id, "failed")
+                        raise
+                    if sub_agent_snapshot(child_id):
+                        record_sub_agent_end(workspace.sessions_dir, session.session_id, child_id, "completed")
+                    session.add_event(SessionEvent(kind="status", title="步骤完成", content=step.description))
                     ctx.add_step_result(StepResult(
                         step_id=step.id,
                         description=step.description,
-                        output=results.get(step.id, ""),
+                        output=result,
                     ))
+                else:
+                    console.print(f"[yellow]→ 并行执行 {len(layer)} 个步骤[/yellow]")
+                    for step in layer:
+                        session.add_event(SessionEvent(kind="status", title="执行中", content=step.description))
+                        console.print(f"  [dim]Step {step.id}:[/dim] {step.description}")
+                    results = self._run_parallel(layer, ps.goal, ps.past_steps, workspace, run_sub_agent_fn, console, session)
+                    for step in layer:
+                        ctx.add_step_result(StepResult(
+                            step_id=step.id,
+                            description=step.description,
+                            output=results.get(step.id, ""),
+                        ))
+            except Exception as e:
+                if is_serial:
+                    session.add_event(SessionEvent(kind="status", title="步骤失败", content=step.description))
+                return fail(f"子任务执行失败：{e}")
 
             # 从剩余步骤中移除已完成的这一层
             done_ids = {s.id for s in layer}
@@ -126,37 +113,23 @@ class PlanExecutorNode:
             # 不管 remaining 是否为空，都让 Replanner 评估一次
             # 避免最后一层并行完成后跳过 Replanner 直接交给主 agent
             console.print("\n[dim]🔄 重新评估剩余计划...[/dim]")
-            new_remaining = self.replanner.run()
+            session.add_event(SessionEvent(kind="status", title="重规划中", content="正在评估剩余计划"))
+            try:
+                new_remaining = self.replanner.run()
+            except Exception as e:
+                return fail(f"重规划失败：{e}")
 
             if new_remaining is None:
                 console.print("[bold green]✅ Replanner 判断目标已达成[/bold green]\n")
+                session.add_event(SessionEvent(kind="status", title="重规划完成", content="目标已达成"))
                 ps.remaining = []
                 break
 
+            if not new_remaining:
+                return fail("重规划要求继续，但没有可执行步骤")
+
             if new_remaining != ps.remaining:
-                console.print("[cyan]📝 Replanner 调整了计划")
-                for step in new_remaining:
-                    known_steps[str(step.id)] = step
-                revision += 1
-                if execution_context is not None:
-                    execution_context.publish(
-                        "plan.updated",
-                        {
-                            "plan_id": execution_context.plan_id or execution_context.new_id("plan"),
-                            "goal": ps.goal,
-                            "project_path": ps.project_path,
-                            "steps": [
-                                {
-                                    "step_id": step_id,
-                                    "description": item.description,
-                                    "depends_on": [str(value) for value in item.depends_on],
-                                    "status": "pending",
-                                }
-                                for step_id, item in known_steps.items()
-                            ],
-                            "revision": revision,
-                        },
-                    )
+                console.print(f"[cyan]📝 Replanner 调整了计划")
             ctx.update_remaining(new_remaining)
 
         # 所有步骤执行完毕，把 past_steps 汇总写入主 session，交主 agent 整合
@@ -168,108 +141,122 @@ class PlanExecutorNode:
         summary = "\n".join(summary_lines)
 
         session.add({
-            "role": "user",
-            "content": f"以上是任务「{ps.goal}」的执行结果，请根据这些结果给出最终的整合回复。\n\n{summary}",
+            "role": "assistant",
+            "kind": "execution_report",
+            "content": f"执行汇报：任务「{ps.goal}」已完成。\n\n{summary}",
         })
-        try:
-            return react_loop_fn()
-        finally:
-            ctx.clear_plan()
+        session.add_event(SessionEvent(
+            kind="execution_report",
+            title="执行汇报",
+            content=summary,
+            collapsed=True,
+        ))
+        ctx.clear_plan()
+        return react_loop_fn()
 
-    @staticmethod
-    def _build_task(step, goal: str, past_steps: list[StepResult], plan_state) -> str:
-        """串行、并行共用任务上下文，完整传递 Wiki 和已完成步骤结果。"""
-        sections = [f"【计划目标】{goal}"]
-        if plan_state:
-            if plan_state.project_path:
-                sections.append(f"【项目根目录】{plan_state.project_path}")
-            if plan_state.wiki_context:
-                sections.append(plan_state.wiki_context)
+    def _run_serial(self, step, goal: str, past_steps: list[StepResult], workspace, run_sub_agent_fn,
+                    console, child_id: str, parent_id: str) -> str:
+        """执行一个已登记的计划子任务。"""
+        prior_context = ""
         if past_steps:
-            sections.append("【前置步骤结果】\n" + "\n---\n".join(step.to_context_prompt() for step in past_steps))
-        sections.extend([
-            f"【当前任务】{step.description}",
-            "【要求】只完成当前任务。完成后汇报结果摘要，不准写 MD 文档；路径必须使用绝对路径。包括做了什么、发现了什么、产出了哪些文件。",
-        ])
-        return "\n\n".join(sections)
-
-    def _run_step(
-        self,
-        step,
-        task: str,
-        workspace,
-        run_sub_agent_fn,
-        console,
-        execution_context=None,
-    ) -> str:
-        """执行一个已组装上下文的子任务，供串行与并行调度复用。"""
-        child_context = None
-        if execution_context is not None:
-            child_context = execution_context.child_agent(
-                name=f"步骤 {step.id}",
-                task=task,
-                step_id=str(step.id),
+            prior_context = "\n\n【前置步骤结果】\n" + "\n---\n".join(
+                sr.to_context_prompt() for sr in past_steps
             )
+
+        ps = get_context_manager().plan_state
+        project_path_hint = f"\n\n【项目根目录】{ps.project_path}" if ps and ps.project_path else ""
+
+        task = (
+            f"【计划目标】{goal}"
+            f"{project_path_hint}"
+            f"{prior_context}\n\n"
+            f"【当前任务】{step.description}\n\n"
+            f"【要求】只完成当前任务。完成后返回简洁的纯文本结果摘要，不要主动写 Markdown 文档或 .md 文件；如果用户明确要求文档，再按需求输出。如果有路径请使用绝对路径，禁止使用相对路径，包括：做了什么、发现了什么、产出了哪些文件。"
+        )
         result, _ = run_sub_agent_fn(
             task, workspace, f"step-{step.id}",
             console=console,
-            execution_context=child_context,
+            sandbox_policy_agent_id=workspace.sandbox_policy_agent_id,
+            child_session_id=child_id,
+            parent_session_id=parent_id,
         )
-        logger.info(f"步骤 {step.id} 执行完成")
+        logger.info(f"Step {step.id} 串行完成")
         return result
 
-    def _run_parallel(
-        self,
-        layer,
-        goal: str,
-        past_steps: list[StepResult],
-        workspace,
-        run_sub_agent_fn,
-        console,
-        execution_context=None,
-    ) -> dict[int, str]:
+    def _run_parallel(self, layer, goal: str, past_steps: list[StepResult], workspace, run_sub_agent_fn, console, session: Session) -> dict[int, str]:
+        """先按计划顺序登记卡片，再并行执行子任务。"""
         results: dict[int, str] = {}
+        errors: list[str] = []
         lock = threading.Lock()
         notify_queue: queue.Queue = queue.Queue()
 
+        # 构建前置步骤上下文（用 past_steps 里的真实结果）
+        prior_context = ""
+        if past_steps:
+            prior_context = "\n\n【前置步骤结果】\n" + "\n---\n".join(
+                sr.to_context_prompt() for sr in past_steps
+            )
+
         ps = get_context_manager().plan_state
-        tasks = {step.id: self._build_task(step, goal, past_steps, ps) for step in layer}
+        project_path_hint = f"\n【项目根目录】{ps.project_path}" if ps and ps.project_path else ""
+        child_ids: dict[str, str] = {}
+        try:
+            for step in layer:
+                child_ids[step.id] = prepare_sub_agent(session, workspace, f"step-{step.id}", step.description)
+        except Exception:
+            for child_id in child_ids.values():
+                record_sub_agent_end(workspace.sessions_dir, session.session_id, child_id, "failed")
+            raise
 
         def _run(step):
-            """在独立线程执行已组装好的步骤，不读取父线程局部上下文。"""
-            task = tasks[step.id]
+            child_id = child_ids[step.id]
+            task = (
+                f"【计划目标】{goal}\n"
+                f"{project_path_hint}\n\n"
+                f"【步骤】{step.description}"
+                f"{prior_context}\n\n"
+                f"【要求】完成上述步骤。完成后返回简洁的纯文本结果摘要，不要主动写 Markdown 文档或 .md 文件；如果用户明确要求文档，再按需求输出。包括：做了什么、发现了什么、产出了哪些文件。"
+            )
             try:
-                result = self._run_step(step, task, workspace, run_sub_agent_fn, None, execution_context)
+                result, _ = run_sub_agent_fn(
+                    task, workspace, f"step-{step.id}",
+                    console=None,
+                    sandbox_policy_agent_id=workspace.sandbox_policy_agent_id,
+                    child_session_id=child_id,
+                    parent_session_id=session.session_id,
+                )
+                if sub_agent_snapshot(child_id):
+                    record_sub_agent_end(workspace.sessions_dir, session.session_id, child_id, "completed")
                 with lock:
                     results[step.id] = result
+                session.add_event(SessionEvent(kind="status", title="步骤完成", content=step.description))
                 notify_queue.put(("ok", step.id, step.description, result))
-                if execution_context is not None:
-                    execution_context.publish(
-                        "step.completed",
-                        {"step_id": str(step.id), "output": result},
-                    )
             except Exception as e:
+                if sub_agent_snapshot(child_id):
+                    record_sub_agent_end(workspace.sessions_dir, session.session_id, child_id, "failed")
                 logger.error(f"Step {step.id} 执行失败: {e}", exc_info=True)
                 with lock:
-                    results[step.id] = f"执行失败: {e}"
+                    errors.append(f"Step {step.id}: {e}")
+                session.add_event(SessionEvent(kind="status", title="步骤失败", content=step.description))
                 notify_queue.put(("err", step.id, step.description, str(e)))
-                if execution_context is not None:
-                    execution_context.publish(
-                        "step.failed",
-                        {"step_id": str(step.id), "error": str(e)},
-                    )
 
         threads = [
             threading.Thread(target=_run, args=(step,), name=f"plan-step-{step.id}", daemon=True)
             for step in layer
         ]
-        for t in threads:
-            t.start()
+        started = []
+        try:
+            for t in threads:
+                t.start()
+                started.append(t)
+        except Exception:
+            for step in layer[len(started):]:
+                record_sub_agent_end(workspace.sessions_dir, session.session_id, child_ids[step.id], "failed")
+            for t in started:
+                t.join()
+            raise
         for t in threads:
             t.join()
-
-        if execution_context is not None:
-            execution_context.check_cancelled()
 
         # 打印结果
         while not notify_queue.empty():
@@ -278,9 +265,12 @@ class PlanExecutorNode:
                 _, sid, desc, result = item
                 short_desc = desc[:40] + ("..." if len(desc) > 40 else "")
                 console.print(f"[bold green]✅ 完成[/bold green] {short_desc}")
-                console.print(Panel(Text(result), title="[bold green]汇报[/bold green]", border_style="green", expand=False))
+                console.print(Panel(Text(result), title=f"[bold green]汇报[/bold green]", border_style="green", expand=False))
             else:
                 _, sid, desc, err = item
                 console.print(f"[bold red]❌ 失败[/bold red]: {err} ({desc})")
+
+        if errors:
+            raise RuntimeError("; ".join(errors))
 
         return results

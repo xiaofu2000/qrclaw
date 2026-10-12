@@ -15,7 +15,6 @@ spawn_agent 工具
 
 重要：子 agent 不允许再派生子 agent，防止无限嵌套。
 """
-import os
 import threading
 from rich.console import Console
 from rich.panel import Panel
@@ -60,75 +59,49 @@ class SpawnAgentArgs(BaseModel):
 )
 def spawn_agent(agent_id: str, task: str) -> str:
     """在后台线程启动子 agent"""
-    from qrclaw.agent import (
-        get_execution_context,
-        get_workspace,
-        is_sub_agent,
-        run_sub_agent,
-    )
-    from qrclaw.workspace import Workspace
+    from qrclaw.agent import get_session, get_workspace, run_sub_agent, is_sub_agent
+    from qrclaw.subagent_progress import prepare_sub_agent, record_sub_agent_end, sub_agent_snapshot
+    from qrclaw.workspace import Workspace, is_valid_agent_id
     from qrclaw.sandbox import is_sandbox_enabled
 
     # 子 agent 不允许再派生子 agent
     if is_sub_agent():
         return "错误：子 agent 不允许再派生子 agent，这会导致无限嵌套。请直接执行任务，不要使用 spawn_agent。"
 
-    # 检查是否已在运行
+    if not is_valid_agent_id(agent_id):
+        return f"错误：无效的子 Agent ID: {agent_id}"
+
+    parent_session = get_session()
+    parent_id = parent_session.session_id if parent_session else ""
+    parent_workspace = get_workspace() or Workspace("default")
+    pool_key = (str(parent_workspace.sessions_dir.resolve()), parent_id, agent_id)
+
+    # 同一父会话中的同名子任务不能同时运行。
     with _task_pool_lock:
-        if agent_id in _task_pool and _task_pool[agent_id]["status"] == "running":
+        if pool_key in _task_pool and _task_pool[pool_key]["status"] == "running":
             return f"子 agent '{agent_id}' 已在运行中，请等待完成或使用不同的 agent_id"
 
     # 获取父 agent 的工作空间（子 agent 共享）
-    parent_workspace = get_workspace() or Workspace("default")
-    parent_execution_context = get_execution_context()
-    child_execution_context = None
-    if parent_execution_context is not None:
-        child_execution_context = parent_execution_context.child_agent(
-            name=agent_id,
-            task=task,
-        )
-    sandbox_agent_id = (
-        child_execution_context.agent_id if child_execution_context is not None else agent_id
-    )
-    
     # 检查是否需要创建沙箱
-    sandbox_enabled = is_sandbox_enabled(agent_id)
+    policy_agent_id = parent_workspace.sandbox_policy_agent_id if is_sandbox_enabled(parent_workspace.sandbox_policy_agent_id) else agent_id
+    sandbox_enabled = is_sandbox_enabled(policy_agent_id)
     
     logger.info(f"启动子 agent: {agent_id}, 共享工作空间: {parent_workspace.root}, 沙箱: {sandbox_enabled}")
+    child_id = prepare_sub_agent(parent_session, parent_workspace, agent_id, task) if parent_session else None
 
     def _run():
-        original_cwd = os.getcwd()
-        sandbox_created = False
-        
         try:
-            # 创建沙箱（如果启用）
-            if sandbox_enabled:
-                from pathlib import Path
-                from qrclaw.sandbox import create_sandbox
-                sandbox_workspace = (
-                    Path(child_execution_context.workspace_path)
-                    if child_execution_context is not None
-                    and child_execution_context.workspace_path
-                    else Path(parent_workspace.root)
-                )
-                create_sandbox(
-                    agent_id=sandbox_agent_id,
-                    workspace=sandbox_workspace,
-                )
-                sandbox_created = True
-                logger.info(f"已为子 agent {agent_id} 创建沙箱")
-            
             # 执行子 agent（共享父 agent 的工作空间）
-            result, _ = run_sub_agent(
-                task,
-                parent_workspace,
-                agent_id,
-                execution_context=child_execution_context,
-            )
+            kwargs = {"sandbox_policy_agent_id": policy_agent_id}
+            if child_id:
+                kwargs.update(child_session_id=child_id, parent_session_id=parent_id)
+            result, _ = run_sub_agent(task, parent_workspace, agent_id, **kwargs)
+            if child_id and sub_agent_snapshot(child_id):
+                record_sub_agent_end(parent_workspace.sessions_dir, parent_id, child_id, "completed")
             
             with _task_pool_lock:
-                _task_pool[agent_id]["status"] = "done"
-                _task_pool[agent_id]["result"] = result
+                _task_pool[pool_key]["status"] = "done"
+                _task_pool[pool_key]["result"] = result
             
             logger.info(f"子 agent {agent_id} 完成")
             
@@ -144,39 +117,32 @@ def spawn_agent(agent_id: str, task: str) -> str:
                 
         except Exception as e:
             logger.error(f"子 agent {agent_id} 出错: {e}", exc_info=True)
+            if child_id and sub_agent_snapshot(child_id):
+                record_sub_agent_end(parent_workspace.sessions_dir, parent_id, child_id, "failed")
             with _task_pool_lock:
-                _task_pool[agent_id]["status"] = "error"
-                _task_pool[agent_id]["result"] = f"执行出错: {e}"
+                _task_pool[pool_key]["status"] = "error"
+                _task_pool[pool_key]["result"] = f"执行出错: {e}"
             if _console:
                 _console.print(f"\n[bold red]子 agent '{agent_id}' 执行出错: {e}[/bold red]\n")
-        finally:
-            # 销毁沙箱
-            if sandbox_created:
-                try:
-                    from qrclaw.sandbox import destroy_sandbox, sandbox_manager
-                    if sandbox_manager.has_sandbox(sandbox_agent_id):
-                        destroy_sandbox(sandbox_agent_id)
-                        logger.info(f"已销毁子 agent {agent_id} 的沙箱")
-                except Exception as e:
-                    logger.warning(f"销毁子 agent {agent_id} 的沙箱失败: {e}")
             
-            # 恢复 cwd
-            try:
-                os.chdir(original_cwd)
-            except Exception:
-                pass
-
     thread = threading.Thread(target=_run, name=f"sub-agent-{agent_id}", daemon=True)
 
     with _task_pool_lock:
-        _task_pool[agent_id] = {
+        _task_pool[pool_key] = {
             "status": "running",
             "result": None,
             "thread": thread,
             "sandbox_enabled": sandbox_enabled,
         }
 
-    thread.start()
+    try:
+        thread.start()
+    except Exception:
+        with _task_pool_lock:
+            _task_pool.pop(pool_key, None)
+        if child_id:
+            record_sub_agent_end(parent_workspace.sessions_dir, parent_id, child_id, "failed")
+        raise
     
     sandbox_hint = " (沙箱已启用)" if sandbox_enabled else ""
     return f"子 agent '{agent_id}' 已在后台启动{sandbox_hint}，任务：{task[:50]}{'...' if len(task) > 50 else ''}"

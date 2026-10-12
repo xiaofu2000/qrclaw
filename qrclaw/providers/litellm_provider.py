@@ -9,10 +9,10 @@ LiteLLM Provider
 
 """
 import litellm
+from typing import Callable
 from litellm import completion
 from litellm.exceptions import RateLimitError, ServiceUnavailableError, APIError, APIConnectionError
 from urllib.parse import urlparse
-from typing import Callable
 
 from qrclaw.providers.base import LLMProvider, LLMResponse, ToolCall
 from qrclaw.config import (
@@ -39,21 +39,7 @@ PROVIDER_PREFIX_MAP = {
     "api.mistral.ai": "mistral",
     "api.huggingface.co": "huggingface",
     "openrouter.ai": "openrouter",
-    "api.orcarouter.ai": "orcarouter",
 }
-
-
-def _normalize_orcarouter_model(model: str) -> str:
-    """
-    LiteLLM 没有内建的 orcarouter provider；OrcaRouter 是 OpenAI 兼容的路由网关，
-    通过 LiteLLM 的 openai/ 前缀 + api_base 即可路由。OrcaRouter 的模型 ID 形如
-    `orcarouter/fusion`，所以传给 LiteLLM 的完整模型名是 `openai/orcarouter/fusion`。
-    """
-    if model.startswith("orcarouter/"):
-        return f"openai/{model}"
-    return model
-
-
 def _infer_provider(model: str, base_url: str | None) -> str:
     """
     推断模型对应的 provider 前缀。
@@ -75,8 +61,6 @@ def _infer_provider(model: str, base_url: str | None) -> str:
     for pattern, provider in PROVIDER_PREFIX_MAP.items():
         if pattern in host:
             logger.debug(f"从 base_url 推断 provider: {base_url} -> {provider}")
-            if provider == "orcarouter":
-                return _normalize_orcarouter_model(f"{provider}/{model}")
             return f"{provider}/{model}"
 
     return model  # 无法推断，返回原值
@@ -93,30 +77,13 @@ class LiteLLMProvider(LLMProvider):
     - 详见 https://docs.litellm.ai/docs/providers
     """
 
-    def __init__(
-        self,
-        *,
-        api_key: str | None = None,
-        model: str | None = None,
-        base_url: str | None = None,
-        proxy_url: str | None = None,
-    ):
-        """使用显式设置或进程启动配置初始化 Provider。"""
-
-        self._api_key = LITELLM_API_KEY if api_key is None else api_key
-        configured_base_url = (
-            LITELLM_BASE_URL or LITELLM_API_BASE
-            if base_url is None
-            else base_url
-        )
-        self._base_url = configured_base_url or None
-        self._proxy_url = (LITELLM_PROXY_URL if proxy_url is None else proxy_url) or None
-        configured_model = LITELLM_MODEL if model is None else model
+    def __init__(self):
+        self._api_key = LITELLM_API_KEY
+        self._base_url = LITELLM_BASE_URL or LITELLM_API_BASE or None
+        self._proxy_url = LITELLM_PROXY_URL or None
 
         # 自动推断 provider 前缀
-        self._model = _infer_provider(configured_model, self._base_url)
-        # 兼容直接填写 orcarouter/<model> 的情况
-        self._model = _normalize_orcarouter_model(self._model)
+        self._model = _infer_provider(LITELLM_MODEL, self._base_url)
 
         # LiteLLM 配置
         litellm.drop_params = True  # 忽略不支持的参数
@@ -130,7 +97,7 @@ class LiteLLMProvider(LLMProvider):
         drop_if_null = {"refusal", "annotations", "audio", "function_call", "reasoning_content"}
         result = []
         for msg in messages:
-            cleaned = {k: v for k, v in msg.items() if k not in {"uuid", "memory_extracted"} and not (k in drop_if_null and v is None)}
+            cleaned = {k: v for k, v in msg.items() if not (k in drop_if_null and v is None)}
             if cleaned.get("content") is None:
                 cleaned["content"] = ""
             result.append(cleaned)
@@ -165,7 +132,7 @@ class LiteLLMProvider(LLMProvider):
             tools:       工具 schema 列表
             json_mode:   为 True 时强制 LLM 输出合法 JSON
             temperature: 温度参数，越低越确定性输出
-            on_delta: 流式文本回调；传入后启用 LiteLLM 流式响应
+            on_delta: 传入时使用 LiteLLM 流式接口并逐块回调正文
         """
         kwargs = {
             "model": self._model,
@@ -192,7 +159,7 @@ class LiteLLMProvider(LLMProvider):
             kwargs["temperature"] = temperature
 
         if on_delta is not None:
-            return self._chat_streaming(kwargs, on_delta)
+            return self._chat_stream(kwargs, on_delta)
 
         # 重试逻辑
         max_retries = 3
@@ -239,7 +206,7 @@ class LiteLLMProvider(LLMProvider):
 
         # finish_reason 修正
         finish_reason = choice.finish_reason
-        if tool_calls and finish_reason not in ("tool_calls", "stop"):
+        if tool_calls and finish_reason != "length":
             finish_reason = "tool_calls"
 
         # 提取 usage
@@ -260,105 +227,59 @@ class LiteLLMProvider(LLMProvider):
             raw=response,
         )
 
-    def _chat_streaming(
-        self,
-        kwargs: dict,
-        on_delta: Callable[[str], None],
-    ) -> LLMResponse:
-        """消费 LiteLLM 流，合并文字、工具调用和 Token 用量。"""
+    def _chat_stream(self, kwargs: dict, on_delta: Callable[[str], None]) -> LLMResponse:
+        """逐块转发正文，并拼装工具调用和最终用量供 ReAct 循环使用。"""
+        contents: list[str] = []
+        reasoning: list[str] = []
+        tool_parts: dict[int, dict[str, str]] = {}
+        finish_reason = "stop"
+        usage = None
+        kwargs = {**kwargs, "stream": True, "stream_options": {"include_usage": True}}
+        try:
+            for chunk in completion(**kwargs):
+                usage = getattr(chunk, "usage", None) or usage
+                choices = getattr(chunk, "choices", None) or []
+                if not choices:
+                    continue
+                choice = choices[0]
+                delta = choice.delta
+                content = getattr(delta, "content", None)
+                if content:
+                    contents.append(content)
+                    on_delta(content)
+                reason = self._extract_response_reasoning(delta)
+                if reason:
+                    reasoning.append(reason)
+                for part in getattr(delta, "tool_calls", None) or []:
+                    item = tool_parts.setdefault(part.index, {"id": "", "name": "", "arguments": "", "thought_signature": ""})
+                    item["id"] += getattr(part, "id", None) or ""
+                    function = getattr(part, "function", None)
+                    if function:
+                        item["name"] += getattr(function, "name", None) or ""
+                        item["arguments"] += getattr(function, "arguments", None) or ""
+                    item["thought_signature"] += getattr(part, "thought_signature", None) or ""
+                finish_reason = choice.finish_reason or finish_reason
+        except Exception as exc:
+            raise RuntimeError(f"LiteLLM 流式调用失败: {exc}") from exc
 
-        max_retries = 3
-        emitted = False
-        last_error = None
-
-        for attempt in range(max_retries):
-            try:
-                stream = completion(
-                    **kwargs,
-                    stream=True,
-                    stream_options={"include_usage": True},
-                )
-                content_parts: list[str] = []
-                reasoning_parts: list[str] = []
-                tool_parts: dict[int, dict[str, str]] = {}
-                finish_reason = "stop"
-                prompt_tokens = 0
-                completion_tokens = 0
-                total_tokens = 0
-
-                for chunk in stream:
-                    choices = getattr(chunk, "choices", None) or []
-                    if choices:
-                        choice = choices[0]
-                        delta = getattr(choice, "delta", None)
-                        if delta is not None:
-                            text = getattr(delta, "content", None) or ""
-                            if text:
-                                emitted = True
-                                content_parts.append(text)
-                                on_delta(text)
-                            reasoning = getattr(delta, "reasoning_content", None) or ""
-                            if reasoning:
-                                reasoning_parts.append(reasoning)
-                            for tool_delta in getattr(delta, "tool_calls", None) or []:
-                                index = int(getattr(tool_delta, "index", 0) or 0)
-                                part = tool_parts.setdefault(
-                                    index,
-                                    {"id": "", "name": "", "arguments": ""},
-                                )
-                                part["id"] += getattr(tool_delta, "id", None) or ""
-                                function = getattr(tool_delta, "function", None)
-                                if function is not None:
-                                    part["name"] += getattr(function, "name", None) or ""
-                                    part["arguments"] += getattr(function, "arguments", None) or ""
-                        if getattr(choice, "finish_reason", None):
-                            finish_reason = choice.finish_reason
-
-                    usage = getattr(chunk, "usage", None)
-                    if usage:
-                        prompt_tokens = getattr(usage, "prompt_tokens", 0) or 0
-                        completion_tokens = getattr(usage, "completion_tokens", 0) or 0
-                        total_tokens = getattr(usage, "total_tokens", 0) or 0
-
-                tool_calls = [
-                    ToolCall(
-                        id=part["id"] or f"stream_tool_{index}",
-                        name=part["name"],
-                        arguments=part["arguments"] or "{}",
-                    )
-                    for index, part in sorted(tool_parts.items())
-                    if part["name"]
-                ]
-                if tool_calls and finish_reason not in {"tool_calls", "stop"}:
-                    finish_reason = "tool_calls"
-                logger.info(f"LiteLLM 流式响应成功: {total_tokens} tokens")
-                return LLMResponse(
-                    content="".join(content_parts),
-                    reasoning_content="".join(reasoning_parts) or None,
-                    tool_calls=tool_calls,
-                    finish_reason=finish_reason,
-                    prompt_tokens=prompt_tokens,
-                    completion_tokens=completion_tokens,
-                    total_tokens=total_tokens,
-                )
-            except (RateLimitError, ServiceUnavailableError, APIConnectionError, APIError) as exc:
-                last_error = exc
-                if emitted or attempt == max_retries - 1:
-                    break
-                wait = 2 ** attempt
-                logger.warning(
-                    "LiteLLM 流式请求失败（%s），第 %d 次重试，等待 %ds...",
-                    type(exc).__name__,
-                    attempt + 1,
-                    wait,
-                )
-                import time
-
-                time.sleep(wait)
-            except Exception as exc:
-                raise RuntimeError(f"LiteLLM 流式调用失败: {exc}") from exc
-
-        raise RuntimeError(f"LiteLLM 流式调用失败: {last_error}")
+        tool_calls = [
+            ToolCall(id=item["id"], name=item["name"], arguments=item["arguments"],
+                     thought_signature=item["thought_signature"] or None)
+            for _, item in sorted(tool_parts.items())
+        ]
+        if tool_calls and finish_reason != "length":
+            finish_reason = "tool_calls"
+        if usage is None:
+            logger.warning("LiteLLM 流式响应未返回 token 用量")
+        return LLMResponse(
+            content="".join(contents),
+            reasoning_content="".join(reasoning) or None,
+            tool_calls=tool_calls,
+            finish_reason=finish_reason,
+            prompt_tokens=getattr(usage, "prompt_tokens", 0) or 0,
+            completion_tokens=getattr(usage, "completion_tokens", 0) or 0,
+            total_tokens=getattr(usage, "total_tokens", 0) or 0,
+        )
 
     def make_instructor_kwargs(self, messages: list[dict], temperature: float = 0.1) -> dict:
         """

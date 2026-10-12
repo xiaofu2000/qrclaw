@@ -27,6 +27,7 @@ DEFAULT_CONFIG = {
     "agent": {
         "name": "QRClaw",
         "max_iterations": 100,
+        "plan_enabled": False,
     },
     "llm": {
         "api_key": "",
@@ -34,7 +35,7 @@ DEFAULT_CONFIG = {
         "base_url": "",
         "api_base": "",
         "proxy_url": "",
-        "max_tokens": 128000,
+        "max_tokens": 485000,
     },
     "search": {
         "tavily_api_key": "",
@@ -51,7 +52,7 @@ DEFAULT_CONFIG = {
         "interval": 3600,
     },
     "compress": {
-        "threshold_ratio": 0.6,
+        "threshold_ratio": 0.9,
         "target_min_ratio": 0.20,
         "target_max_ratio": 0.25,
         "summary_max_tokens": 2560,
@@ -75,16 +76,13 @@ CONFIG_HEADER = """# ═══════════════════�
 
 
 def ensure_config_dir():
-    """确保配置目录存在，并限制为仅当前用户可访问。"""
-    CONFIG_DIR.mkdir(parents=True, exist_ok=True, mode=0o700)
-    CONFIG_DIR.chmod(0o700)
+    """确保配置目录存在"""
+    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
 
 
 def _write_config(config: dict):
-    """写入配置文件，并保护其中的 API 密钥等敏感信息。"""
+    """写入配置文件"""
     ensure_config_dir()
-    CONFIG_FILE.touch(mode=0o600, exist_ok=True)
-    CONFIG_FILE.chmod(0o600)
     with open(CONFIG_FILE, "w", encoding="utf-8") as f:
         f.write(CONFIG_HEADER)
         yaml.dump(config, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
@@ -137,6 +135,7 @@ def _inject_to_env(config: dict):
     agent_config = config.get("agent", {})
     os.environ.setdefault("AGENT_NAME", agent_config.get("name", "QRClaw"))
     os.environ.setdefault("MAX_ITERATIONS", str(agent_config.get("max_iterations", 100)))
+    os.environ.setdefault("PLAN_ENABLED", str(agent_config.get("plan_enabled", False)).lower())
 
     # LLM 配置
     llm_config = config.get("llm", {})
@@ -145,7 +144,7 @@ def _inject_to_env(config: dict):
     os.environ.setdefault("LITELLM_BASE_URL", llm_config.get("base_url", ""))
     os.environ.setdefault("LITELLM_API_BASE", llm_config.get("api_base", ""))
     os.environ.setdefault("LITELLM_PROXY_URL", llm_config.get("proxy_url", ""))
-    os.environ.setdefault("MODEL_MAX_TOKENS", str(llm_config.get("max_tokens", 128000)))
+    os.environ.setdefault("MODEL_MAX_TOKENS", str(llm_config.get("max_tokens", 485000)))
 
     # 搜索配置
     search_config = config.get("search", {})
@@ -166,6 +165,7 @@ def _inject_to_env(config: dict):
 
     # 压缩配置
     compress_config = config.get("compress", {})
+    os.environ.setdefault("COMPRESS_THRESHOLD_RATIO", str(compress_config.get("threshold_ratio", 0.9)))
     os.environ.setdefault("COMPRESS_SUMMARY_MAX_TOKENS", str(compress_config.get("summary_max_tokens", 2560)))
     os.environ.setdefault("COMPRESS_RECENT_MAX_TOKENS", str(compress_config.get("recent_max_tokens", 1536)))
 

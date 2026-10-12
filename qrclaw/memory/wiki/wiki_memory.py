@@ -21,9 +21,10 @@ from __future__ import annotations
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
+from filelock import FileLock
 
 from qrclaw.logger import get_logger
-from qrclaw.memory.wiki.index import IndexManager
+from qrclaw.memory.wiki.index import IndexManager, atomic_write
 from qrclaw.memory.wiki.page import WikiPage
 
 logger = get_logger("qrclaw.memory.wiki.wiki_memory")
@@ -61,23 +62,48 @@ class WikiMemory:
             self.memory_dir = AGENTS_ROOT / "default" / "memory"
 
         self.pages_dir = self.memory_dir / "pages"
-        self.index = IndexManager(self.memory_dir)
-
-        self.pages_dir.mkdir(parents=True, exist_ok=True)
+        self.memory_dir.mkdir(parents=True, exist_ok=True)
+        self._lock = FileLock(str(self.memory_dir / ".wiki.lock"))
+        with self._lock:
+            self.index = IndexManager(self.memory_dir)
+            self.pages_dir.mkdir(parents=True, exist_ok=True)
         logger.debug(f"WikiMemory 初始化: {self.memory_dir}")
 
     # ── 核心 CRUD ─────────────────────────────────────────────────────────────
 
     def _page_path(self, name: str) -> Path:
-        """校验页面名和符号链接，确保读写都限定在当前 Wiki 目录内。"""
-        if not name.strip() or name in {".", ".."} or any(char in name for char in "/\\\x00\n\r"):
-            raise ValueError("Wiki 页面名不能为空或包含路径分隔符、换行")
+        if not isinstance(name, str) or not name.strip() or name != name.strip() or any(c in name for c in "/\\\r\n\0"):
+            raise ValueError(f"无效的 Wiki 页面名称: {name!r}")
         path = self.pages_dir / f"{name}.md"
-        if path.resolve().parent != self.pages_dir.resolve():
-            raise ValueError("Wiki 页面不能指向当前知识库目录之外")
+        if not path.resolve().is_relative_to(self.pages_dir.resolve()):
+            raise ValueError(f"无效的 Wiki 页面名称: {name!r}")
         return path
 
     def save_page(
+        self,
+        name: str,
+        content: str,
+        description: str = "",
+        tags: list[str] = None,
+        related: list[str] = None,
+        *,
+        expected_page: WikiPage | None = None,
+    ) -> WikiPage:
+        """保存页面；模型整理结果须基于未被其他任务修改的旧页面。"""
+        with self._lock:
+            if expected_page is not None:
+                if not content.strip():
+                    raise ValueError("整理后的页面正文为空，保留原页面")
+                current = self.get_page(name)
+                # 旧格式页面可能没有时间戳，按正文和元数据检查并发变化。
+                if current is None or any(
+                    getattr(current, field) != getattr(expected_page, field)
+                    for field in ("name", "content", "description", "tags", "related")
+                ):
+                    raise RuntimeError(f"页面「{name}」在整理期间发生变化，请重新读取后更新")
+            return self._save_page(name, content, description, tags, related)
+
+    def _save_page(
         self,
         name: str,
         content: str,
@@ -96,6 +122,8 @@ class WikiMemory:
         tags = tags or []
         related = related or []
 
+        filepath = self._page_path(name)
+        self.index.all_entries()
         existing = self.get_page(name)
         now = datetime.now()
 
@@ -123,8 +151,7 @@ class WikiMemory:
             action = "write"
 
         # 写入文件
-        filepath = self._page_path(name)
-        filepath.write_text(page.to_markdown(), encoding="utf-8")
+        atomic_write(filepath, page.to_markdown())
 
         # 更新索引
         self.index.upsert(page)
@@ -145,20 +172,21 @@ class WikiMemory:
         页面不存在时自动创建（等同于 save_page）。
         tags/related 为空时保留已有值。
         """
-        existing = self.get_page(name)
-        if not existing:
-            return self.save_page(name=name, content=content, tags=tags or [], related=related or [])
+        with self._lock:
+            existing = self.get_page(name)
+            if not existing:
+                return self._save_page(name=name, content=content, tags=tags or [], related=related or [])
 
-        new_content = existing.content.rstrip() + "\n\n" + content.strip()
-        merged_tags = list(dict.fromkeys(existing.tags + (tags or [])))
-        merged_related = list(dict.fromkeys(existing.related + (related or [])))
-        return self.save_page(
-            name=name,
-            content=new_content,
-            description=existing.description,
-            tags=merged_tags,
-            related=merged_related,
-        )
+            new_content = existing.content.rstrip() + "\n\n" + content.strip()
+            merged_tags = list(dict.fromkeys(existing.tags + (tags or [])))
+            merged_related = list(dict.fromkeys(existing.related + (related or [])))
+            return self._save_page(
+                name=name,
+                content=new_content,
+                description=existing.description,
+                tags=merged_tags,
+                related=merged_related,
+            )
 
     def fuzzy_find_name(self, name: str) -> Optional[str]:
         """
@@ -174,7 +202,10 @@ class WikiMemory:
 
     def get_page(self, name: str) -> Optional[WikiPage]:
         """读取指定页面，不存在返回 None"""
-        filepath = self._page_path(name)
+        try:
+            filepath = self._page_path(name)
+        except ValueError:
+            return None
         if not filepath.exists():
             return None
         try:
@@ -186,16 +217,18 @@ class WikiMemory:
 
     def delete_page(self, name: str) -> bool:
         """删除页面及其索引条目"""
-        filepath = self._page_path(name)
-        if not filepath.exists():
-            logger.warning(f"页面不存在: {name}")
-            return False
+        with self._lock:
+            filepath = self._page_path(name)
+            if not filepath.exists():
+                logger.warning(f"页面不存在: {name}")
+                return False
 
-        filepath.unlink()
-        self.index.remove(name)
-        self.index.append_log("delete", name)
-        logger.info(f"WikiMemory.delete_page: {name}")
-        return True
+            self.index.all_entries()
+            filepath.unlink()
+            self.index.remove(name)
+            self.index.append_log("delete", name)
+            logger.info(f"WikiMemory.delete_page: {name}")
+            return True
 
     # ── 查询 ──────────────────────────────────────────────────────────────────
 
@@ -263,10 +296,10 @@ class WikiMemory:
 
         # 第一阶段：关键词初筛，获取候选页面
         candidates = self.search_pages(query)
-        if top_k <= 0 or not query.strip() or not self.index.all_entries():
+        if not candidates and not self.index.all_entries():
             return []
 
-        # 自然语言问题不必完整匹配页面子串，仍然允许模型根据索引进行语义选择。
+        # 第二阶段：LLM 精选
         selector = WikiPageSelector(self)
         selection_result = selector.select(query, messages)
 
@@ -284,11 +317,14 @@ class WikiMemory:
         logger.debug(
             f"select_relevant_pages: 关键词候选 {len(candidates)} 个，LLM 选中 {len(selected_pages)} 个"
         )
-        return selected_pages
+        return selected_pages or candidates[:top_k]
 
     def page_exists(self, name: str) -> bool:
         """检查页面是否存在"""
-        return self._page_path(name).exists()
+        try:
+            return self._page_path(name).exists()
+        except ValueError:
+            return False
 
     # ── system prompt 注入 ────────────────────────────────────────────────────
 
@@ -304,14 +340,16 @@ class WikiMemory:
 
     def rebuild_index(self) -> None:
         """从 pages/ 目录完整重建 index.json 和 index.md（修复用）"""
-        self.index.rebuild_from_pages_dir()
+        with self._lock:
+            self.index.rebuild_from_pages_dir()
         logger.info("WikiMemory: 重建索引完成")
 
     def clear_all(self) -> None:
         """清空所有页面和索引（开发/测试用）"""
-        for md_file in self.pages_dir.glob("*.md"):
-            md_file.unlink()
-        self.index.rebuild_from_pages_dir()
+        with self._lock:
+            for md_file in self.pages_dir.glob("*.md"):
+                md_file.unlink()
+            self.index.rebuild_from_pages_dir()
         logger.info("WikiMemory: 已清空所有页面")
 
     def stats(self) -> dict:

@@ -5,16 +5,30 @@
 子 agent 共享父 agent 的工作空间（子 agent 是一次性的）。
 """
 from pathlib import Path
+import re
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from qrclaw.memory import WikiMemoryManager
 
 # 所有 agent 的根目录
 AGENTS_ROOT = Path.home() / ".qrclaw" / "agents"
 
 
+def is_valid_agent_id(agent_id: str) -> bool:
+    return isinstance(agent_id, str) and re.fullmatch(r"[a-zA-Z0-9_-]+", agent_id) is not None
+
+
 class Workspace:
     """agent 工作空间，持有该 agent 所有资源的路径。"""
 
-    def __init__(self, agent_id: str = "default", _root: Path = None):
+    def __init__(self, agent_id: str = "default", _root: Path = None, _sandbox_policy_agent_id: str | None = None):
+        if not is_valid_agent_id(agent_id):
+            raise ValueError(f"无效的 Agent ID: {agent_id!r}")
+        if _sandbox_policy_agent_id is not None and not is_valid_agent_id(_sandbox_policy_agent_id):
+            raise ValueError(f"无效的沙箱策略 Agent ID: {_sandbox_policy_agent_id!r}")
         self.agent_id = agent_id
+        self.sandbox_policy_agent_id = _sandbox_policy_agent_id or agent_id
         self.root = _root or (AGENTS_ROOT / agent_id)
 
         # 各子目录/文件路径
@@ -32,6 +46,16 @@ class Workspace:
         self.logs_dir.mkdir(parents=True, exist_ok=True)
         self.skills_dir.mkdir(parents=True, exist_ok=True)
         self.memory_dir.mkdir(parents=True, exist_ok=True)
+
+    def get_memory_manager(self) -> "WikiMemoryManager":
+        """
+        获取 WikiMemoryManager 实例（记忆管理器）
+        
+        Returns:
+            WikiMemoryManager: Wiki 架构的记忆管理器
+        """
+        from qrclaw.memory import WikiMemoryManager
+        return WikiMemoryManager.for_workspace(self.memory_dir)
 
     def sub_agent(self, sub_id: str) -> "Workspace":
         """

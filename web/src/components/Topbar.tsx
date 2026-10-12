@@ -1,41 +1,27 @@
-import type { ConnectionState, Run } from '../models/workbench'
+import { List, PanelRight } from 'lucide-react'
+import type { RunStatus } from '../lib/types'
 
 type TopbarProps = {
-  workspaceTitle: string
-  connection: ConnectionState
-  run: Run | null
-  canCancel: boolean
-  onCancel: () => void
-  onOpenSettings: () => void
+  status: RunStatus
+  statusText: string
+  title: string
+  sidebarOpen: boolean
+  inspectorOpen: boolean
+  onToggleSidebar: () => void
+  onToggleInspector: () => void
 }
 
-const connectionLabels: Record<ConnectionState, string> = {
-  connecting: '正在连接',
-  connected: '本地服务已连接',
-  disconnected: '连接已断开，正在恢复',
-  error: '本地服务异常',
-}
-
-const runLabels: Record<string, string> = {
-  queued: '任务排队中', routing: '正在判断路由', running: '任务运行中',
-  waiting_approval: '等待工具授权', cancelling: '正在取消', completed: '任务已完成',
-  failed: '任务失败', cancelled: '任务已取消',
-}
-
-/** 工作台固定顶栏。 */
-export function Topbar({ workspaceTitle, connection, run, canCancel, onCancel, onOpenSettings }: TopbarProps) {
+export function Topbar({ status, statusText, title, sidebarOpen, inspectorOpen, onToggleSidebar, onToggleInspector }: TopbarProps) {
   return (
     <header className="topbar">
-      <div className="brand-row">
-        <span className="brand-mark">QR</span>
-        <strong>QRClaw</strong>
+      <div className="topbar-heading">
+        <button className="icon-button sidebar-toggle" aria-label="切换会话列表" aria-expanded={sidebarOpen} aria-controls="session-sidebar" onClick={onToggleSidebar}><List size={20} /></button>
+        <span className="brand">QRClaw</span>
+        <span className="conversation-heading" title={title}>{title}</span>
       </div>
-      <div className="workspace-title">{workspaceTitle || '本地工作台'}</div>
       <div className="topbar-actions">
-        {run && <span className={`run-label status-${run.status}`}>{runLabels[run.status]}</span>}
-        {canCancel && <button className="text-button danger" type="button" onClick={onCancel}>停止任务</button>}
-        <span className={`connection-status ${connection}`}><i aria-hidden="true" />{connectionLabels[connection]}</span>
-        <button className="text-button" type="button" onClick={onOpenSettings}>设置</button>
+        <span className={`status-label ${status}`} role="status">{statusText}</span>
+        <button className="icon-button" aria-label="切换执行过程" aria-expanded={inspectorOpen} aria-controls="run-inspector" onClick={onToggleInspector}><PanelRight size={19} /></button>
       </div>
     </header>
   )

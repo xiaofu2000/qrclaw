@@ -16,6 +16,7 @@ from __future__ import annotations
 from typing import Literal
 from pydantic import BaseModel, Field
 
+from qrclaw.prompts import ROUTE_INSTRUCTION
 from qrclaw.providers.litellm_provider import LiteLLMProvider
 from qrclaw.llm_service import get_llm_service
 from qrclaw.memory.context.context_manager import get_context_manager
@@ -23,9 +24,6 @@ from qrclaw.graph.nodes.wiki_query import WikiQueryNode
 from qrclaw.logger import get_logger
 
 logger = get_logger("qrclaw.graph.nodes.router")
-
-# 用户指令
-_ROUTE_INSTRUCTION = """请根据以上对话判断并输出 JSON。"""
 
 
 def _get_instructor_client():
@@ -82,7 +80,7 @@ class RouterNode:
     def run(self, user_input: str) -> RouteResult:
         logger.info(f"Router 判断路由: {user_input[:60]}...")
         ctx = get_context_manager()
-        messages = ctx.build_messages("router", route_instruction=_ROUTE_INSTRUCTION)
+        messages = ctx.build_messages("router", route_instruction=ROUTE_INSTRUCTION)
 
         try:
             llm = get_llm_service()
@@ -141,8 +139,19 @@ def _query_wiki_context(goal: str, messages: list[dict]) -> str:
     Returns:
         格式化后的 Wiki 正文内容，无相关内容时返回空字符串
     """
+    # 延迟导入避免循环依赖
+    from qrclaw.agent import get_workspace
+
     try:
-        return WikiQueryNode().run(user_input=goal, plan_goal=goal, messages=messages).injected_context
-    except Exception as exc:
-        logger.warning(f"Wiki 查询失败：{exc}")
+        workspace = get_workspace()
+        if not workspace or not workspace.memory_dir:
+            logger.debug("无 workspace 或 memory_dir，跳过 Wiki 查询")
+            return ""
+
+        return WikiQueryNode(memory_dir=workspace.memory_dir).run(
+            user_input=goal, plan_goal=goal, messages=messages,
+        ).injected_context
+
+    except Exception as e:
+        logger.warning(f"Wiki 查询失败: {e}")
         return ""

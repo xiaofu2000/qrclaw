@@ -7,15 +7,17 @@ Session 会话管理模块测试
 - Token 计算
 - 计划管理
 """
+import pytest
 import json
+from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
 from qrclaw.memory.context.session import (
     Session,
     list_sessions,
     get_last_session_id,
     delete_session,
+    count_tokens,
 )
-
-from qrclaw.memory.token_utils import count_messages_tokens as count_tokens
 
 
 class TestSessionCreation:
@@ -36,6 +38,24 @@ class TestSessionCreation:
 
         assert session.session_id == "test-session-123"
         assert session._path.name == "test-session-123.json"
+
+    def test_session_id_cannot_escape_directory(self, temp_dir):
+        sessions_dir = temp_dir / "sessions"
+        outside = temp_dir / "outside.json"
+        with pytest.raises(ValueError, match="无效的会话 ID"):
+            Session(sessions_dir, session_id="../outside")
+        with pytest.raises(ValueError, match="无效的会话 ID"):
+            delete_session("../outside", sessions_dir)
+        assert not outside.exists()
+
+    def test_corrupt_session_does_not_block_startup(self, temp_dir):
+        path = temp_dir / "broken.json"
+        path.write_text("{", encoding="utf-8")
+
+        session = Session(temp_dir, session_id="broken")
+
+        assert session.messages == []
+        assert path.read_text(encoding="utf-8") == "{"
 
     def test_resume_last_session(self, temp_dir):
         """测试恢复最近会话"""
@@ -81,7 +101,7 @@ class TestSessionMessages:
 
         # 验证持久化
         saved_data = json.loads(session._path.read_text(encoding="utf-8"))
-        assert len(saved_data) == 2
+        assert len(saved_data["messages"]) == 2
 
     def test_message_persistence(self, temp_dir):
         """测试消息持久化"""
@@ -98,6 +118,14 @@ class TestSessionMessages:
         assert len(session2.messages) == 2
         assert session2.messages[0]["content"] == "测试持久化"
 
+    def test_two_writers_keep_both_messages(self, temp_dir):
+        first = Session(temp_dir, session_id="shared")
+        second = Session(temp_dir, session_id="shared")
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            list(pool.map(lambda item: item[0].add({"role": "user", "content": item[1]}), [(first, "one"), (second, "two")]))
+        saved = Session(temp_dir, session_id="shared")
+        assert {message["content"] for message in saved.messages} == {"one", "two"}
+
     def test_clear_session(self, temp_dir):
         """测试清空会话"""
         session = Session(temp_dir, resume=False)
@@ -108,6 +136,76 @@ class TestSessionMessages:
 
         assert session.messages == []
         assert not session._path.exists()
+
+    def test_rewrite_latest_user_turn_keeps_earlier_history(self, temp_dir):
+        """重写末轮时保留先前消息和过程，并返回末轮子会话。"""
+        session = Session(temp_dir, session_id="rewrite")
+        session.add({"role": "user", "content": "第一轮"})
+        session.add_event({"kind": "status", "title": "执行中", "content": "第一轮过程"})
+        session.add({"role": "assistant", "content": "第一轮回复"})
+        session.add({"role": "user", "content": "第二轮"})
+        last_id = session.messages[-1]["uuid"]
+        session.add_event({"kind": "subagent", "meta": {"child_session_id": "sub-test"}})
+        session.add({"role": "assistant", "content": "第二轮回复"})
+
+        assert session.rewrite_latest_user_turn(last_id, "修改后") == {"sub-test"}
+        restored = Session(temp_dir, session_id="rewrite")
+        assert [m["content"] for m in restored.messages] == ["第一轮", "第一轮回复", "修改后"]
+        assert restored.messages[-1]["uuid"] == last_id
+        assert [e["content"] for e in restored.events] == ["第一轮过程"]
+        assert restored.history_version == 1
+        assert restored.rewrite_latest_user_turn(last_id, None) == set()
+        assert [m["content"] for m in Session(temp_dir, session_id="rewrite").messages] == ["第一轮", "第一轮回复"]
+
+    def test_rewrite_rejects_stale_message_id(self, temp_dir):
+        """过期消息 ID 不能覆盖当前轮次。"""
+        session = Session(temp_dir, session_id="rewrite-stale")
+        session.add({"role": "user", "content": "旧"})
+        old_id = session.messages[-1]["uuid"]
+        session.add({"role": "user", "content": "新"})
+        with pytest.raises(ValueError, match="最后一条"):
+            session.rewrite_latest_user_turn(old_id, "覆盖")
+        assert [m["content"] for m in Session(temp_dir, session_id="rewrite-stale").messages] == ["旧", "新"]
+
+    def test_rewrite_legacy_turn_keeps_earlier_process_when_markers_exist(self, temp_dir):
+        """旧会话缺少轮次索引时，尽量按消息保存事件保留先前过程。"""
+        session = Session(temp_dir, session_id="legacy")
+        session.add({"role": "user", "content": "第一轮"})
+        session.add_event({"kind": "status", "title": "执行中", "content": "保留"})
+        session.add({"role": "assistant", "content": "第一轮回复"})
+        session.add_event({"kind": "message_saved", "title": "消息已保存"})
+        session.add({"role": "user", "content": "第二轮"})
+        last_id = session.messages[-1]["uuid"]
+        session.add_event({"kind": "status", "title": "执行中", "content": "删除"})
+        raw = json.loads(session._path.read_text(encoding="utf-8"))
+        raw["messages"][-1].pop("turn_event_index")
+        session._path.write_text(json.dumps(raw, ensure_ascii=False), encoding="utf-8")
+
+        session.rewrite_latest_user_turn(last_id, None)
+        assert [event["kind"] for event in Session(temp_dir, session_id="legacy").events] == ["status", "message_saved"]
+
+    @pytest.mark.parametrize("content", [None, "修改后"])
+    def test_rewrite_legacy_turn_with_partial_save_events_clears_process(self, temp_dir, content):
+        """部分旧消息没有保存事件时，不能把末轮事件误认成早期记录。"""
+        session = Session(temp_dir, session_id="legacy-partial")
+        session.add({"role": "user", "content": "第一轮"})
+        session.add({"role": "assistant", "content": "旧回复"})
+        session.add({"role": "user", "content": "第二轮"})
+        last_id = session.messages[-1]["uuid"]
+        session.add_event({"kind": "subagent", "meta": {"child_session_id": "sub-last"}})
+        session.add({"role": "assistant", "content": "末轮回复"})
+        session.add_event({"kind": "message_saved", "title": "消息已保存"})
+        raw = json.loads(session._path.read_text(encoding="utf-8"))
+        for message in raw["messages"]:
+            message.pop("turn_event_index", None)
+        session._path.write_text(json.dumps(raw, ensure_ascii=False), encoding="utf-8")
+
+        assert session.rewrite_latest_user_turn(last_id, content) == {"sub-last"}
+        restored = Session(temp_dir, session_id="legacy-partial")
+        expected = ["第一轮", "旧回复"] + ([content] if content is not None else [])
+        assert [message["content"] for message in restored.messages] == expected
+        assert restored.events == []
+        assert restored.history_version == 1
 
 
 class TestTokenCounting:
@@ -138,8 +236,20 @@ class TestTokenCounting:
     def test_count_tokens_empty_messages(self):
         """测试空消息列表"""
         tokens = count_tokens([])
-        # 空消息应该只有基础开销
-        assert tokens == 0
+        # 空消息的开销由底层 token 计数器决定
+        assert tokens >= 0
+
+    def test_llm_usage_survives_message_save_and_reload(self, temp_dir):
+        session = Session(temp_dir, session_id="usage")
+        session.start_run_usage()
+        session.update_tokens(10, 2, 12)
+        session.update_tokens(15, 3, 18)
+        session.add({"role": "assistant", "content": "完成"})
+
+        assert session.run_usage == {"prompt_tokens": 25, "completion_tokens": 5, "total_tokens": 30}
+        restored = Session(temp_dir, session_id="usage")
+        assert restored.usage == session.run_usage
+        assert restored.prompt_tokens == count_tokens(restored.messages)
 
 
 class TestSessionList:

@@ -24,8 +24,8 @@ def _get_max_read_chars() -> int:
     if _max_read_chars_cached is not None:
         return _max_read_chars_cached
     try:
-        from qrclaw.config import load_config
-        cfg = load_config()
+        from qrclaw.config_manager import get_config
+        cfg = get_config()
         val = cfg.get("file_read_max_chars")
         if isinstance(val, (int, float)) and val > 0:
             _max_read_chars_cached = int(val)
@@ -180,7 +180,7 @@ def get_read_files_summary(task_id: str = "default") -> list:
 def _check_file_staleness(filepath: str, task_id: str = "default") -> str | None:
     """检查文件是否在 agent 上次读取后被外部修改。返回警告字符串或 None。"""
     try:
-        resolved = str(Path(filepath).expanduser().resolve())
+        resolved = str(_resolve_path(filepath))
     except (OSError, ValueError):
         return None
     with _read_tracker_lock:
@@ -205,7 +205,7 @@ def _check_file_staleness(filepath: str, task_id: str = "default") -> str | None
 def _update_read_timestamp(filepath: str, task_id: str = "default") -> None:
     """写入成功后更新文件修改时间记录，防止连续写入触发误报。"""
     try:
-        resolved = str(Path(filepath).expanduser().resolve())
+        resolved = str(_resolve_path(filepath))
         current_mtime = os.path.getmtime(resolved)
     except (OSError, ValueError):
         return
@@ -223,19 +223,22 @@ def _resolve_path(path: str) -> Path:
     """
     解析文件路径。沙箱模式下将 /workspace/... 映射到主机 workspace 目录。
     """
-    try:
-        from qrclaw.agent import get_workspace
-        from qrclaw.sandbox import is_sandbox_enabled
-        ws = get_workspace()
-        if ws and is_sandbox_enabled(ws.agent_id):
-            p = Path(path)
-            if path.startswith("/workspace"):
-                relative = p.relative_to("/workspace") if path != "/workspace" else Path(".")
-                return (ws.root / relative).resolve()
-            if not p.is_absolute():
-                return (ws.root / p).resolve()
-    except Exception:
-        pass
+    from qrclaw.agent import get_workspace
+    from qrclaw.sandbox import is_sandbox_enabled
+    ws = get_workspace()
+    if ws and is_sandbox_enabled(ws.sandbox_policy_agent_id):
+        root = ws.root.resolve()
+        requested = Path(path).expanduser()
+        if requested.is_absolute():
+            if not requested.is_relative_to("/workspace"):
+                raise PermissionError(f"沙箱模式仅允许访问 /workspace: {path}")
+            requested = root / requested.relative_to("/workspace")
+        else:
+            requested = root / requested
+        resolved = requested.resolve()
+        if not resolved.is_relative_to(root):
+            raise PermissionError(f"路径超出沙箱工作区: {path}")
+        return resolved
     return Path(path).expanduser().resolve()
 
 
@@ -269,6 +272,8 @@ class ListDirectoryArgs(BaseModel):
 
 
 class PatchArgs(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
     mode: str = Field(
         default="replace",
         description="编辑模式：'replace' 精确/模糊替换单文件，'patch' 应用 V4A 多文件补丁"
@@ -311,10 +316,6 @@ class PatchArgs(BaseModel):
             "*** End Patch"
         )
     )
-
-    class Config:
-        populate_by_name = True
-
 
 class GrepCodeArgs(BaseModel):
     pattern: str = Field(description="搜索的文本或正则表达式")
@@ -654,19 +655,17 @@ def _patch_v4a(patch_content: str, task_id: str) -> str:
     if not patch_content:
         return "错误：patch mode 需要提供 patch 内容"
 
-    # 敏感路径检查：从 patch 内容中提取所有涉及的文件路径
-    _file_pattern = r'^\*\*\*\s+(?:Update|Add|Delete)\s+File:\s*(.+)$'
-    for m in re.finditer(_file_pattern, patch_content, re.MULTILINE):
-        sensitive_err = _check_sensitive_path(m.group(1).strip())
-        if sensitive_err:
-            return sensitive_err
-
     try:
         from qrclaw.tools.patch_parser import parse_v4a_patch, apply_v4a_operations
 
         operations, parse_error = parse_v4a_patch(patch_content)
         if parse_error:
             return f"错误：解析补丁失败 — {parse_error}"
+
+        for op in operations:
+            for path in (op.file_path, op.new_path):
+                if path and (sensitive_err := _check_sensitive_path(path)):
+                    return sensitive_err
 
         # 陈旧检测
         stale_warnings = []

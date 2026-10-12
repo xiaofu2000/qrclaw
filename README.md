@@ -1,159 +1,82 @@
-# QRClaw: 一个先进的自主 Agent 框架
+# QRClaw
 
-QRClaw 是一个先进的、运行在本地的自主 AI 框架，专为执行复杂任务而设计。其核心设计强调智能规划、操作安全和极致效率。与简单的 Agent 不同，QRClaw 利用其先进的架构来动态应对不同复杂度的挑战。
+QRClaw 是一个本地 AI Agent。它提供交互式 CLI、Web UI、OpenAI 兼容 API、工具调用和跨会话 Wiki 记忆。默认直接执行任务，启用 Plan 后由路由器选择直接执行或分步执行。
 
-## 核心架构与设计哲学
+## 从源码运行
 
-QRClaw 的强大源于一系列独特且深度集成的架构组件：
+需要 Python 3.11+、[uv](https://docs.astral.sh/uv/)；修改 Web UI 源码还需要 Node.js 和 npm。
 
-### 🚀 分层式智能执行图 (Hierarchical Smart Execution Graph)
-这是 QRClaw 的“大脑”。它摒弃了单一的 ReAct 循环，采用了一个智能的、多层次的执行图：
-- **路由节点 (RouterNode)**: 首先评估任务的复杂度。
-- **条件执行**:
-    - **简单任务**: 由一个标准的 `ReactLoopNode` 高效处理。
-    - **复杂任务**: 委托给 `PlanExecutorNode`，它会分解问题，然后编排多个子 Agent 进行并行或串行执行。
-
-### 💡 上下文优化的动态技能系统 (Context-Optimized Dynamic Skill System)
-为了最大化 Token 使用效率，QRClaw 设计了独特的两阶段技能加载机制：
-1.  **轻量级发现**: 首先，只向 LLM 提供所有可用技能的轻量级描述。
-2.  **按需加载 (Just-in-Time Loading)**: 只有当 LLM 决定使用某个技能时，该技能的完整文档和规范才会被加载到上下文中。这种“即时加载”策略极大地节省了成本和宝贵的上下文窗口空间。
-
-### 🛡️ 隔离且灵活的安全沙箱 (Isolated & Flexible Secure Sandbox)
-安全是最高优先级。所有代码和 Shell 命令都在一个隔离的容器化沙箱（如 Docker）中执行，防止对主机系统产生任何影响。沙箱支持高度可配置，同时会阻止访问敏感路径，并在容器环境不可用时优雅地降级为本地执行。
-
-### ⚡ 并行能力与清晰的状态管理 (Parallelism & Clean State Management)
-QRClaw 为并发而生。它可以并行运行多个子 Agent 来处理复杂计划的不同部分。一个清晰的生命周期管理系统使用 `threading.local` 来确保每个 Agent 都在其隔离的状态下运行，从而避免冲突并确保执行的可预测性。
-
-### 🧠 持久化 Wiki 记忆系统 (Persistent Wiki Memory System)
-QRClaw 拥有一套类似人类长期记忆的知识管理系统。它不依赖简单的文本追加，而是构建了一个结构化的 Wiki 知识库，让 Agent 真正具备跨会话的学习与记忆能力：
-- **双通道写入**: 支持阈值驱动的自动提取（基于 Token 增量和工具调用频率）与 Agent 主动触发写入，两条路径互补，确保关键知识不丢失。
-- **增量截断**: 通过 UUID 锚点精确定位上次提取位置，每次只分析新增对话，避免对历史会话的重复处理和 Token 浪费。
-- **LLM 驱动的知识治理**: 写入时由 LLM 自主决定新建页面或追加已有页面；追加后自动触发并发整理，对页面内容去重、合并、精炼，保持知识库始终简洁可用。
-
-## 快速上手
-
-### 1. 安装
-
-**通过 pip 安装 (推荐)**:
 ```bash
-pip install qrclaw
+uv sync --extra dev
+uv run qrclaw
 ```
 
-**从源码安装**:
+首次运行会创建 `~/.qrclaw/config.yaml`。在该文件的 `llm` 部分填写 `api_key`、`model` 和需要时的 `base_url`，例如：
+
+```yaml
+llm:
+  api_key: "你的 API Key"
+  model: "openai/deepseek-flash"
+  base_url: "https://api.deepseek.com"
+```
+
+CLI 使用 `/agent`、`/session`、`/skill` 管理对应资源，输入 `exit` 退出。CLI 默认自动执行工具调用，包括 Shell 与文件写入，请仅在信任任务来源的环境中运行。
+
+## Web UI 和 API
+
+运行 `uv run qrclaw serve`，打开 `http://127.0.0.1:8765` 即可使用随包提供的 Web UI。
+
+修改前端时，在源码目录运行 `./start_ui.sh`，脚本会启动本地 API 和 Web 开发服务器；打开终端显示的 Vite 地址。也可以分别运行：
+
 ```bash
-git clone https://github.com/your-repo/qrclaw.git
-cd qrclaw
-pip install .
+uv run qrclaw serve
+npm --prefix web ci
+npm --prefix web run dev
 ```
 
-### 2. 初始化与配置
-首次运行，请先初始化 Agent。这会自动创建所需的工作区和配置文件。
+API 默认只监听 `127.0.0.1:8765`，提供 `/health`、`/v1/models`、`/v1/sessions`、`/v1/chat/completions`。聊天接口使用模型名 `qrclaw-agent`：默认返回完整 JSON，传入 `"stream": true` 时返回 OpenAI 风格的 SSE 片段。`GET /v1/sessions/{session_id}/events/stream?after=-1` 按序号推送计划和工具状态，断线后可用最后收到的事件序号续接。Web UI 开发服务器通过 `/api` 代理到本地 API。
+
+执行 `npm --prefix web run build` 会更新 `qrclaw/server/static` 中的发布资源；Python 包和开发模式共用 `web/src` 中的界面。任务运行状态与错误由后端维护，刷新页面会重新获取；草稿在当前页面按会话分别保留。执行过程可通过右上角展开查看。
+
+输入框上方提供 Plan 模式开关，默认关闭，选择保存在当前浏览器并用于下一次发送及编辑重跑。关闭时跳过路由判断、自动计划与重规划调用。CLI 和未指定开关的 API 使用 `~/.qrclaw/config.yaml` 的 `agent.plan_enabled`（默认 `false`），也可设置环境变量 `PLAN_ENABLED=true`；聊天请求可用 `plan_enabled` 覆盖该默认值。
+
+会话详情返回 `context_tokens`、`context_limit` 和 `compression_threshold`。界面显示当前上下文估算及窗口占比，首次执行后计入系统提示词和工具定义；这与累计消耗的 `total_tokens` 不同。默认窗口为 485,000 tokens，超过窗口的 90%（436,500 tokens）时尝试自动压缩，预留 10% 给后续消息和回复。压缩中、完成、失败或跳过状态由 `compression` 事件实时推送，顶部、输入区和执行面板都能看到；完成提示包含压缩前后用量，刷新后保留。用量依据本地分词器估算，窗口上限来自 `llm.max_tokens` 配置，触发比例来自 `compress.threshold_ratio`（可用环境变量 `MODEL_MAX_TOKENS`、`COMPRESS_THRESHOLD_RATIO` 覆盖）。配置窗口应与实际使用的模型容量一致。
+
+主聊天会话的 `events` 会记录每次子 Agent 启动及完成状态，事件 `meta.child_session_id` 指向独立保存的子会话。Web UI 在主聊天中显示可点击的子任务卡片，右侧执行面板读取该子会话的完整消息与工具结果；切换面板不会切换主聊天。会话详情的 `active_subagents` 标记后台是否仍有子任务；子会话也可通过现有会话详情与事件流接口读取，运行中的可见文字由事件流的 `live_text` 帧推送。删除父会话时会清理它关联的子会话。
+
+修改 Python 后端代码后需要重启 `qrclaw serve`，更新前端发布资源后需要刷新浏览器页面；已运行的服务不会自动加载新代码。
+
+如果需要让 API 监听非本机地址，先设置 `QRCLAW_API_TOKEN`；远程请求须携带 `Authorization: Bearer <token>`。API 聊天也会自动执行工具调用，应妥善保管 token。通过反向代理开放服务时，应在代理处设置访问控制。
+
+兼容旧的 OpenWebUI 启动方式：`uv run python api_server.py` 在 `127.0.0.1:8000` 提供同一 API，并继续使用 `api-server` Agent 的原有数据目录。将 OpenWebUI 的 OpenAI 兼容接口地址设置为 `http://127.0.0.1:8000/v1`，模型选择 `qrclaw-agent`。
+
+## Wiki 记忆更新
+
+自动记忆按会话累计用户和助手正文，不提取工具结果、工具调用消息及参数、系统提示词、子任务执行报告或压缩摘要；触发 token 统计也使用同样的过滤规则。助手最终回复中引用的工具结论仍属于对话正文，由模型判断是否值得长期保存。
+
+默认累计至少 3 轮完整对话后，闲置 2 分钟再批量提取；新请求到来时延后计时。长对话中，未处理正文达到 5000 个估算 token 时在主请求结束后提取，不必等待闲置。两次自动提取至少间隔 5 分钟，失败重试也遵守冷却。`write_wiki_page` 主动记忆立即执行，不受自动阈值限制。
+
+未处理原文、消息版本和已处理进度保存在各工作空间的 `memory/.extractions/<session-id>.json`，同一会话合并为一个待处理批次。模型判定无需更新时也记录进度；服务重启会恢复待处理任务。压缩前保存尚未提取的原文，避免丢失内容或重复分析摘要；编辑、删除消息时撤销对应待处理版本，删除会话时清理其进度。尚未升级过的旧会话没有提取进度，首次恢复可能需要分析一次当前正文。
+
+可用环境变量调整：`MEMORY_MIN_TURNS`（默认 3）、`MEMORY_IDLE_SECONDS`（120）、`MEMORY_COOLDOWN_SECONDS`（300）、`MEMORY_INIT_THRESHOLD`（5000，首次长对话阈值）、`MEMORY_UPDATE_INTERVAL`（5000，后续长对话阈值）。修改后重启服务生效；这些 token 按正文字符数除以三估算，不是模型实际账单用量。
+
+自动提取和 `write_wiki_page` 共用写入流程：新页面直接创建；已有页面先读取旧正文，再由模型结合新增信息整理，替换明确过期的内容并保留有效信息。页面的标签和关联名称合并去重，正文、索引及操作日志同步更新；没有实际变化时跳过保存。
+
+模型合并失败、返回空正文，或合并期间页面被修改、删除时，不覆盖旧页面。自动提取任务会保留在队列中等待后续重试，主动写入会报告失败。每个需要更新的已有页面会增加一次合并模型调用；不批量重写已有记忆。
+
+进度与 Wiki 页面分别原子保存。如果进程恰好在页面写入后、进度确认前崩溃，恢复后可能重试该批次；优先保留待处理内容，不提前标记成功而漏写记忆。
+
+## 工作空间与沙箱
+
+Agent 数据存放在 `~/.qrclaw/agents/<agent-id>/`。默认 Agent 不启用 Docker 沙箱；其他 Agent 依配置启用沙箱。启用时需要 Docker，容器启动或执行失败会返回错误，不会改在宿主机执行；文件工具限制在对应工作空间内。CLI 和本机 API 的自动执行设置与沙箱开关是两件独立的事。
+
+## 检查
+
 ```bash
-qrclaw
-```
-然后，根据提示在 `.env` 文件中配置您的 LLM Provider 和 API Keys。
-
-### 3. 开始交互
-直接运行 `qrclaw` 与 Agent 对话：
-```
-$ qrclaw
-欢迎来到 QRClaw!
-> 你好
-...
+uv run --no-sync pytest -q
+npm --prefix web run lint
+npm --prefix web test
+npm --prefix web run build
 ```
 
-- **多行输入**: 输入 `"""` 或 `---` 开始多行模式，再次输入 `"""` 或 `---` 结束。
-- **管理 Agent**: 使用 `qrclaw agent list`、`qrclaw agent create <name>` 等命令管理多个 Agent。
-- **管理会话**: 使用 `qrclaw session start`、`qrclaw session list` 等命令进行会话管理。
-
-## 配置
-
-QRClaw 通过环境变量进行配置。您可以创建一个 `.env` 文件放在项目根目录。
-
-- **LLM 提供商**:
-  ```
-  LLM_PROVIDER=openai  # 或 vertex_ai
-  ```
-- **OpenAI**:
-  ```
-  OPENAI_API_KEY="sk-..."
-  OPENAI_MODEL="gpt-4-turbo"
-  ```
-- **Google Vertex AI**:
-  ```
-  VERTEX_API_KEY="your-google-cloud-project-id"
-  VERTEX_LOCATION="us-central1"
-  ```
-- **OrcaRouter**（OpenAI 兼容的路由网关，https://www.orcarouter.ai）:
-  ```
-  LITELLM_MODEL="orcarouter/fusion"  # 或 orcarouter/fusion-mini / orcarouter/auto
-  LITELLM_BASE_URL="https://api.orcarouter.ai/v1"
-  LITELLM_API_KEY="sk-orca-..."
-  ```
-- **联网搜索**:
-  ```
-  # Tavily 搜索 API
-  TAVILY_API_KEY="tvly-..."
-
-  # Google 自定义搜索引擎 API
-  # GOOGLE_API_KEY="AIza..."
-  # GOOGLE_CSE_ID="..."
-  ```
-
-## 技能开发 (Plugin Development)
-
-通过创建 `skills/your_skill/SKILL.md` 来扩展 Agent 的能力。系统会自动发现并加载。
-
-**示例: `skills/calculate/SKILL.md`**
-```markdown
----
-name: calculate
-description: "计算一个数学表达式的结果。示例: 2 * (3 + 4)"
-entry_point: "main"
-args:
-  expression: "要计算的数学表达式，例如：'2+2'"
----
-
-## Tool Code
-'''python
-import ast
-import operator as op
-
-# 支持的运算符
-operators = {
-    ast.Add: op.add, ast.Sub: op.sub, ast.Mult: op.mul,
-    ast.Div: op.truediv, ast.Pow: op.pow, ast.BitXor: op.xor,
-    ast.USub: op.neg
-}
-
-def eval_expr(expr):
-    """
-    安全地计算一个数学表达式字符串。
-    """
-    return eval_(ast.parse(expr, mode='eval').body)
-
-def eval_(node):
-    if isinstance(node, ast.Num):  # <number>
-        return node.n
-    elif isinstance(node, ast.BinOp):  # <left> <operator> <right>
-        return operators[type(node.op)](eval_(node.left), eval_(node.right))
-    elif isinstance(node, ast.UnaryOp):  # <operator> <operand> e.g., -1
-        return operators[type(node.op)](eval_(node.operand))
-    else:
-        raise TypeError(node)
-
-def main(expression: str):
-    """
-    计算一个数学表达式的结果。
-    """
-    result = eval_expr(expression)
-    print(f"'{expression}' 的计算结果是 {result}")
-    return result
-'''
-```
-
-## 贡献
-我们欢迎任何形式的贡献！请提交 Pull Request 或创建 Issue。
-
-## 开源协议
-本项目基于 [MIT License](LICENSE) 开源。
+开源协议见 [LICENSE](LICENSE)。

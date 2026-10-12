@@ -10,7 +10,7 @@ from typing import Optional
 from dataclasses import dataclass
 
 from qrclaw.logger import get_logger
-from .config import BLOCKED_HOST_PATHS, MountConfig
+from .config import MountConfig
 
 logger = get_logger("qrclaw.sandbox.container")
 
@@ -90,7 +90,7 @@ class ContainerManager:
         config: ContainerConfig,
     ) -> str:
         """创建容器"""
-        args = ["docker", "create", "--name", name, "--read-only"]
+        args = ["docker", "create", "--init", "--name", name, "--read-only"]
         
         # 安全选项
         for cap in config.cap_drop:
@@ -216,9 +216,17 @@ class ContainerManager:
                 ["docker", "inspect", "--format", "{{.Id}}", container_id],
                 capture_output=True, text=True, timeout=10
             )
-            return result.returncode == 0
-        except Exception:
+            if result.returncode == 0:
+                return True
+            available = subprocess.run(
+                ["docker", "info", "--format", "{{.ServerVersion}}"],
+                capture_output=True, text=True, timeout=10,
+            )
+            if available.returncode != 0:
+                raise ContainerError("Docker 不可用，无法确认容器是否已删除")
             return False
+        except Exception as exc:
+            raise ContainerError(f"无法确认容器状态: {exc}") from exc
     
     def is_running(self, container_id: str) -> bool:
         """检查容器是否运行"""
@@ -251,7 +259,8 @@ class ContainerManager:
     
     def _validate_mount_path(self, host_path: str):
         """验证挂载路径"""
-        path = Path(host_path).resolve()
-        for blocked in BLOCKED_HOST_PATHS:
-            if str(path).startswith(blocked):
-                raise ContainerError(f"禁止挂载敏感路径: {host_path}")
+        from .validator import validate_mount_path, PathValidationError
+        try:
+            validate_mount_path(host_path)
+        except PathValidationError as e:
+            raise ContainerError(str(e)) from e

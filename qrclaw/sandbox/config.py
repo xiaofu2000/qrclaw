@@ -23,7 +23,7 @@ class MountConfig(BaseModel):
 
     def to_docker_bind(self) -> str:
         """转换为 Docker 挂载格式"""
-        return f"{self.host}:{self.container}:{self.mode}"
+        return f"{Path(self.host).expanduser().resolve()}:{self.container}:{self.mode}"
 
 
 class SandboxConfig(BaseModel):
@@ -196,20 +196,12 @@ BLOCKED_HOST_PATHS = [
     "/boot",
     "/run",
     "/var/run",
+    "/var/run/docker.sock",
+    "/run/docker.sock",
 ]
 
 
 def validate_mount_path(host_path: str) -> bool:
     """验证挂载路径是否安全"""
-    path = Path(host_path).expanduser().resolve()
-    path_str = str(path)
-
-    if "docker.sock" in path_str:
-        raise ValueError(f"🚫 禁止挂载 Docker socket: {host_path}")
-    
-    for blocked in BLOCKED_HOST_PATHS:
-        blocked_path = Path(blocked).resolve()
-        if path == blocked_path or blocked_path in path.parents:
-            raise ValueError(f"🚫 禁止挂载敏感路径: {host_path} (匹配 {blocked})")
-    
-    return True
+    from .validator import validate_mount_path as validate
+    return validate(host_path)
