@@ -17,7 +17,7 @@ from .config import (
     is_sandbox_enabled,
     validate_mount_path,
 )
-from .container import ContainerManager, ContainerError, ExecResult
+from .container import ContainerConfig, ContainerManager, ContainerError, ExecResult
 
 logger = get_logger("qrclaw.sandbox.manager")
 
@@ -70,7 +70,8 @@ class SandboxManager:
         # 如果已存在，先销毁
         if agent_id in self._containers:
             logger.warning(f"沙箱已存在，将重新创建: {agent_id}")
-            self.destroy_sandbox(agent_id)
+            if not self.destroy_sandbox(agent_id):
+                raise ContainerError(f"无法销毁已有沙箱: {agent_id}")
         
         # 获取配置
         if config is None:
@@ -111,10 +112,12 @@ class SandboxManager:
                 name=container_name,
                 workspace=workspace,
                 mounts=effective_mounts,
-                image=config.image,
-                network=config.network,
-                memory=config.memory,
-                pids_limit=config.pids_limit,
+                config=ContainerConfig(
+                    image=config.image,
+                    network=config.network,
+                    memory=config.memory,
+                    pids_limit=config.pids_limit,
+                ),
             )
             
             handle = SandboxHandle(
@@ -126,12 +129,14 @@ class SandboxManager:
                 config=config,
             )
             
-            # 启动容器
-            container_mgr.start(container_id)
-            handle._started = True
-            
-            # 缓存
+            # 先登记，启动失败时仍可追踪和清理容器。
             self._containers[agent_id] = handle
+            try:
+                container_mgr.start(container_id)
+                handle._started = True
+            except ContainerError:
+                self.destroy_sandbox(agent_id, force=True)
+                raise
             
             logger.info(f"沙箱创建成功: {agent_id} (容器: {container_id[:12]})")
             return handle
@@ -232,8 +237,10 @@ class SandboxManager:
         
         try:
             container_mgr = self._get_container_mgr()
-            container_mgr.stop(handle.container_id)
-            container_mgr.remove(handle.container_id, force=force)
+            stopped = container_mgr.stop(handle.container_id)
+            removed = container_mgr.remove(handle.container_id, force=force or not stopped)
+            if not removed and container_mgr.exists(handle.container_id):
+                raise ContainerError(f"容器删除失败: {handle.container_id[:12]}")
             del self._containers[agent_id]
             logger.info(f"沙箱已销毁: {agent_id}")
             return True

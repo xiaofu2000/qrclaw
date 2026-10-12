@@ -4,7 +4,7 @@ QRClaw 是一个本地 AI Agent。它提供交互式 CLI、Web UI、OpenAI 兼�
 
 ## 从源码运行
 
-需要 Python 3.11+、[uv](https://docs.astral.sh/uv/)；运行 Web UI 还需要 Node.js 和 npm。
+需要 Python 3.11+、[uv](https://docs.astral.sh/uv/)；修改 Web UI 源码还需要 Node.js 和 npm。
 
 ```bash
 uv sync --extra dev
@@ -24,7 +24,9 @@ CLI 使用 `/agent`、`/session`、`/skill` 管理对应资源，输入 `exit` �
 
 ## Web UI 和 API
 
-在源码目录运行 `./start_ui.sh`，脚本会启动本地 API 和 Web 开发服务器；打开终端显示的 Vite 地址。也可以分别运行：
+运行 `uv run qrclaw serve`，打开 `http://127.0.0.1:8765` 即可使用随包提供的 Web UI。
+
+修改前端时，在源码目录运行 `./start_ui.sh`，脚本会启动本地 API 和 Web 开发服务器；打开终端显示的 Vite 地址。也可以分别运行：
 
 ```bash
 uv run qrclaw serve
@@ -33,6 +35,8 @@ npm --prefix web run dev
 ```
 
 API 默认只监听 `127.0.0.1:8765`，提供 `/health`、`/v1/models`、`/v1/sessions`、`/v1/chat/completions`。聊天接口使用模型名 `qrclaw-agent`，目前仅支持非流式响应。Web UI 开发服务器通过 `/api` 代理到本地 API。
+
+执行 `npm --prefix web run build` 会更新 `qrclaw/server/static` 中的发布资源；Python 包和开发模式共用 `web/src` 中的界面。任务运行状态与错误由后端维护，刷新页面会重新获取；草稿在当前页面按会话分别保留。执行过程可通过右上角展开查看。
 
 如果需要让 API 监听非本机地址，先设置 `QRCLAW_API_TOKEN`；远程请求须携带 `Authorization: Bearer <token>`。API 聊天也会自动执行工具调用，应妥善保管 token。通过反向代理开放服务时，应在代理处设置访问控制。
 
@@ -47,6 +51,7 @@ Agent 数据存放在 `~/.qrclaw/agents/<agent-id>/`。默认 Agent 不启用 Do
 ```bash
 uv run --no-sync pytest -q
 npm --prefix web run lint
+npm --prefix web test
 npm --prefix web run build
 ```
 

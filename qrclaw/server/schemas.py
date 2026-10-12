@@ -23,12 +23,15 @@ class SessionSummary(BaseModel):
     title: str
     message_count: int
     updated_at: str
+    run_status: Literal["idle", "queued", "running"] = "idle"
 
 
 class SessionDetail(BaseModel):
     id: str
     message_count: int
     updated_at: str
+    run_status: Literal["idle", "queued", "running"] = "idle"
+    run_error: str | None = None
     prompt_tokens: int = 0
     completion_tokens: int = 0
     total_tokens: int = 0

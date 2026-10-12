@@ -1,6 +1,6 @@
-import type { Message, SessionDetail, SessionSummary } from './types'
+import type { SessionDetail, SessionSummary } from './types'
 
-const baseUrl = import.meta.env.VITE_QRCLAW_API_BASE_URL ?? '/api'
+const baseUrl = import.meta.env.VITE_QRCLAW_API_BASE_URL ?? (import.meta.env.DEV ? '/api' : '')
 
 export function createApiClient() {
   return {
@@ -34,17 +34,14 @@ export function createApiClient() {
       })
       if (!response.ok) throw new Error('delete session failed')
     },
-    async chat(sessionId: string, messages: Message[]) {
+    async chat(sessionId: string, content: string) {
       const response = await fetch(`${baseUrl}/v1/chat/completions`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           model: 'qrclaw-agent',
           session_id: sessionId,
-          messages: messages.map((message) => ({
-            role: message.role,
-            content: message.content,
-          })),
+          messages: [{ role: 'user', content }],
         }),
       })
 

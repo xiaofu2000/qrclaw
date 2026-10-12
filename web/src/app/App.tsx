@@ -1,181 +1,73 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { ChatPanel } from '../features/chat/ChatPanel'
+import { useChatWorkspace } from '../features/chat/useChatWorkspace'
 import { InspectorPanel } from '../features/inspector/InspectorPanel'
 import { Composer } from '../features/composer/Composer'
 import { createApiClient } from '../lib/api'
-import type { Conversation, Message, RunStatus, SessionDetail, SessionSummary } from '../lib/types'
 import { Sidebar } from '../components/Sidebar'
 import { Topbar } from '../components/Topbar'
 
-function toConversation(session: SessionSummary): Conversation {
-  return { id: session.id, title: session.title || session.id, updatedAt: session.updated_at, messageCount: session.message_count }
-}
-
-function normalizeMessages(session: SessionDetail): Message[] {
-  const toolNames = new Map<string, string>()
-  return session.messages.flatMap((message, index) => {
-    for (const call of message.tool_calls ?? []) {
-      toolNames.set(call.id, call.function?.name ?? '工具')
-    }
-    if (message.role === 'assistant' && message.tool_calls?.length && !message.content) return []
-    return [{
-      id: `${session.id}-${index}`,
-      role: message.role as Message['role'],
-      kind: message.kind,
-      content: typeof message.content === 'string' ? message.content : JSON.stringify(message.content),
-      toolName: message.tool_call_id ? toolNames.get(message.tool_call_id) : undefined,
-    }]
-  })
-}
-
 export function App() {
   const api = useMemo(() => createApiClient(), [])
-  const [conversations, setConversations] = useState<Conversation[]>([])
-  const [activeConversationId, setActiveConversationId] = useState<string>('')
-  const activeIdRef = useRef('')
-  const [messages, setMessages] = useState<Message[]>([])
-  const [activeSession, setActiveSession] = useState<SessionDetail | null>(null)
-  const [status, setStatus] = useState<RunStatus>('ready')
-  const [statusText, setStatusText] = useState('已连接本地服务')
-
+  const chat = useChatWorkspace(api)
+  const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [inspectorOpen, setInspectorOpen] = useState(false)
   useEffect(() => {
-    let cancelled = false
-    async function bootstrap() {
-      try {
-        await api.health()
-        const sessions = await api.listSessions()
-        if (cancelled) {
-          return
-        }
-        setConversations(sessions.map(toConversation))
-        if (sessions.length > 0) {
-          const first = sessions[0]
-          activeIdRef.current = first.id
-          setActiveConversationId(first.id)
-          const detail = await api.getSession(first.id)
-          if (!cancelled && activeIdRef.current === first.id) {
-            setActiveSession(detail)
-            setMessages(normalizeMessages(detail))
-          }
-        } else {
-          const created = await api.createSession()
-          if (!cancelled) {
-            activeIdRef.current = created.id
-            setConversations([
-              {
-                id: created.id,
-                title: created.id,
-                updatedAt: created.updated_at,
-                messageCount: created.message_count,
-              },
-            ])
-            setActiveConversationId(created.id)
-            setActiveSession(created)
-            setMessages([])
-          }
-        }
-      } catch {
-        if (!cancelled) {
-          setStatus('error')
-          setStatusText('本地服务未连接')
-        }
-      }
+    function closePanels(event: KeyboardEvent) {
+      if (event.key === 'Escape') { setSidebarOpen(false); setInspectorOpen(false) }
     }
-
-    bootstrap()
+    window.addEventListener('keydown', closePanels)
+    return () => window.removeEventListener('keydown', closePanels)
+  }, [])
+  useEffect(() => {
+    const overlay = inspectorOpen && window.matchMedia('(max-width: 1100px)').matches ? 'run-inspector'
+      : sidebarOpen && window.matchMedia('(max-width: 760px)').matches ? 'session-sidebar' : ''
+    const panel = document.getElementById(overlay)
+    if (!panel) return
+    const previous = document.activeElement as HTMLElement | null
+    const buttons = [...panel.querySelectorAll<HTMLButtonElement>('button:not(:disabled)')]
+    panel.setAttribute('role', 'dialog')
+    panel.setAttribute('aria-modal', 'true')
+    buttons[0]?.focus()
+    function keepFocus(event: KeyboardEvent) {
+      if (event.key !== 'Tab' || !buttons.length) return
+      const first = buttons[0], last = buttons[buttons.length - 1]
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus() }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus() }
+    }
+    window.addEventListener('keydown', keepFocus)
     return () => {
-      cancelled = true
+      window.removeEventListener('keydown', keepFocus)
+      panel.removeAttribute('role')
+      panel.removeAttribute('aria-modal')
+      previous?.focus()
     }
-  }, [api])
-
-  async function refreshConversations() {
-    const sessions = await api.listSessions()
-    setConversations(sessions.map(toConversation))
-  }
-
-  async function loadConversation(conversationId: string) {
-    activeIdRef.current = conversationId
-    const detail = await api.getSession(conversationId)
-    if (activeIdRef.current !== conversationId) return
-    setActiveConversationId(conversationId)
-    setActiveSession(detail)
-    setMessages(normalizeMessages(detail))
-  }
-
-  async function handleNewChat() {
-    setStatus('busy')
-    setStatusText('新建会话中')
-    try {
-      const created = await api.createSession()
-      await refreshConversations()
-      activeIdRef.current = created.id
-      setActiveConversationId(created.id)
-      setActiveSession(created)
-      setMessages([])
-      setStatus('ready')
-      setStatusText('已创建新会话')
-    } catch (error) {
-      setStatus('error')
-      setStatusText(error instanceof Error ? error.message : '新建会话失败')
-    }
-  }
-
-  async function handleSend(content: string) {
-    if (!activeConversationId) {
-      return
-    }
-    const sessionId = activeConversationId
-    const userMessage: Message = {
-      id: crypto.randomUUID(),
-      role: 'user',
-      content,
-    }
-    setMessages((current) => [...current, userMessage])
-    setStatus('busy')
-    setStatusText('运行中')
-
-    try {
-      const nextMessages = [...messages, userMessage]
-      await api.chat(sessionId, nextMessages)
-      const updated = await api.getSession(sessionId)
-      if (activeIdRef.current === sessionId) {
-        setActiveSession(updated)
-        setMessages(normalizeMessages(updated))
-      }
-      await refreshConversations()
-      setStatus('ready')
-      setStatusText('完成')
-    } catch (error) {
-      if (activeIdRef.current === sessionId) {
-        setMessages((current) => [...current, {
-          id: crypto.randomUUID(),
-          role: 'assistant',
-          kind: 'assistant',
-          content: `请求失败：${error instanceof Error ? error.message : String(error)}`,
-        }])
-      }
-      setStatus('error')
-      setStatusText('调用失败')
-    }
-  }
+  }, [sidebarOpen, inspectorOpen])
+  const status = chat.running || chat.loading || chat.creating ? 'busy' : chat.error ? 'error' : 'ready'
+  const statusText = chat.loading ? '载入会话中' : chat.queued ? '等待执行' : chat.running ? '正在处理任务' : chat.creating ? '新建会话中'
+    : chat.error ? '需要检查' : chat.runningIds.size ? `${chat.runningIds.size} 个后台任务处理中` : '可以开始'
+  const title = chat.conversations.find(item => item.id === chat.activeId)?.title ?? '新对话'
 
   return (
     <div className="app-shell">
-      <Topbar status={status} statusText={statusText} />
-      <div className="workspace">
-        <Sidebar
-          conversations={conversations}
-          activeId={activeConversationId}
-          onNewChat={handleNewChat}
-          onSelectConversation={loadConversation}
-        />
-        <main className="chat-column">
-          <div className="chat-stage">
-            <ChatPanel messages={messages} />
+      <Topbar status={status} statusText={statusText} title={title}
+        sidebarOpen={sidebarOpen} onToggleSidebar={() => setSidebarOpen(value => !value)}
+        inspectorOpen={inspectorOpen} onToggleInspector={() => setInspectorOpen(value => !value)} />
+      {(sidebarOpen || inspectorOpen) && <button className="panel-backdrop" aria-label="关闭面板" onClick={() => { setSidebarOpen(false); setInspectorOpen(false) }} />}
+      <div className={`workspace ${inspectorOpen ? 'with-inspector' : ''}`}>
+        <Sidebar conversations={chat.conversations} activeId={chat.activeId} runningIds={chat.runningIds}
+          open={sidebarOpen} creating={chat.creating || chat.loading && !chat.activeId}
+          onNewChat={() => { setSidebarOpen(false); void chat.newConversation() }}
+          onSelectConversation={id => { setSidebarOpen(false); void chat.loadConversation(id) }} />
+        <main className="chat-column" id="conversation">
+          <ChatPanel sessionId={chat.activeId} messages={chat.messages} running={chat.running} queued={chat.queued} loading={chat.loading} />
+          <div className="composer-area">
+            {chat.error && <div className="chat-error" role="alert"><span>{chat.error}</span><button onClick={() => void chat.refresh()}>刷新会话</button></div>}
+            <Composer value={chat.draft} onChange={chat.setDraft} onSend={chat.send}
+              disabled={chat.running || chat.loading || chat.creating || !chat.session} loading={chat.loading || !chat.session} running={chat.running} />
           </div>
-          <Composer onSend={handleSend} disabled={status === 'busy'} />
         </main>
-        <InspectorPanel session={activeSession} status={status} />
+        {inspectorOpen && <InspectorPanel session={chat.session} status={status} queued={chat.queued} onClose={() => setInspectorOpen(false)} />}
       </div>
     </div>
   )

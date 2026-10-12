@@ -1,8 +1,9 @@
 """本机 API 的访问和输入边界。"""
 
 from concurrent.futures import ThreadPoolExecutor
-from threading import Lock
+from threading import Event, Lock
 from time import sleep
+import re
 from unittest.mock import patch
 
 from fastapi.testclient import TestClient
@@ -11,6 +12,18 @@ from qrclaw.server.app import create_app
 from qrclaw.memory.context.session import Session, SessionEvent
 from qrclaw.workspace import Workspace
 import qrclaw.workspace as workspace_module
+
+
+def test_packaged_ui_references_available_assets(temp_dir):
+    with TestClient(create_app(Workspace(_root=temp_dir)), client=("127.0.0.1", 50000)) as client:
+        response = client.get("/")
+        assert response.status_code == 200
+        assert 'lang="zh-CN"' in response.text
+        assets = re.findall(r'(?:src|href)="(/static/[^\"]+)"', response.text)
+        assert any(asset.endswith(".js") for asset in assets)
+        assert any(asset.endswith(".css") for asset in assets)
+        for asset in assets:
+            assert client.get(asset).status_code == 200
 
 
 def test_remote_api_requires_token(temp_dir, monkeypatch):
@@ -84,6 +97,47 @@ def test_api_serializes_agent_runs(temp_dir, monkeypatch):
 
     assert all(response.status_code == 200 for response in results)
     assert peak == 1
+
+
+def test_running_session_is_visible_and_cannot_be_submitted_or_deleted(temp_dir):
+    started, release = Event(), Event()
+
+    def fake_run(**_kwargs):
+        started.set()
+        assert release.wait(3)
+        return "完成"
+
+    with patch("qrclaw.server.routes.run_agent", side_effect=fake_run), \
+         TestClient(create_app(Workspace(_root=temp_dir)), client=("127.0.0.1", 50000)) as client, \
+         ThreadPoolExecutor(max_workers=1) as pool:
+        session_id = client.post("/v1/sessions").json()["id"]
+        request = {"session_id": session_id, "messages": [{"role": "user", "content": "执行一次"}]}
+        future = pool.submit(client.post, "/v1/chat/completions", json=request)
+        try:
+            assert started.wait(2)
+            assert client.get(f"/v1/sessions/{session_id}").json()["run_status"] == "running"
+            summary = next(item for item in client.get("/v1/sessions").json() if item["id"] == session_id)
+            assert summary["run_status"] == "running"
+            assert client.post("/v1/chat/completions", json=request).status_code == 409
+            assert client.delete(f"/v1/sessions/{session_id}").status_code == 409
+        finally:
+            release.set()
+        assert future.result().status_code == 200
+        assert client.get(f"/v1/sessions/{session_id}").json()["run_status"] == "idle"
+
+
+def test_failed_run_remains_visible_until_retry(temp_dir):
+    with TestClient(create_app(Workspace(_root=temp_dir)), client=("127.0.0.1", 50000)) as client:
+        session_id = client.post("/v1/sessions").json()["id"]
+        request = {"session_id": session_id, "messages": [{"role": "user", "content": "执行"}]}
+        with patch("qrclaw.server.routes.run_agent", side_effect=RuntimeError("model unavailable")):
+            assert client.post("/v1/chat/completions", json=request).status_code == 500
+        detail = client.get(f"/v1/sessions/{session_id}").json()
+        assert detail["run_status"] == "idle"
+        assert detail["run_error"] == "model unavailable"
+        with patch("qrclaw.server.routes.run_agent", return_value="完成"):
+            assert client.post("/v1/chat/completions", json=request).status_code == 200
+        assert client.get(f"/v1/sessions/{session_id}").json()["run_error"] is None
 
 
 def test_chat_usage_reports_this_run(temp_dir, monkeypatch):

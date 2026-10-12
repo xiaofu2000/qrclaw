@@ -31,12 +31,15 @@ export type SessionSummary = {
   title?: string
   message_count: number
   updated_at: string
+  run_status: 'idle' | 'queued' | 'running'
 }
 
 export type SessionDetail = {
   id: string
   message_count: number
   updated_at: string
+  run_status: SessionSummary['run_status']
+  run_error: string | null
   prompt_tokens: number
   completion_tokens: number
   total_tokens: number

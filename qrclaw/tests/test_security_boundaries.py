@@ -48,7 +48,8 @@ def test_sub_agent_uses_its_own_sandbox_identity(temp_dir):
         return "ok"
 
     try:
-        with patch("qrclaw.agent.run", side_effect=run_child) as run:
+        with patch("qrclaw.agent.run", side_effect=run_child) as run, \
+             patch("qrclaw.sandbox.is_sandbox_enabled", return_value=False):
             result, _ = run_sub_agent("test", workspace, "worker")
         assert get_session() is session
         assert get_workspace() is workspace
@@ -56,7 +57,7 @@ def test_sub_agent_uses_its_own_sandbox_identity(temp_dir):
         set_session(previous_session)
         set_workspace(previous_workspace)
     assert result == "ok"
-    assert run.call_args.args[3].agent_id == "worker"
+    assert run.call_args.args[3].agent_id.startswith("worker-")
     assert run.call_args.args[3].root == workspace.root
     assert run.call_args.args[3].sandbox_policy_agent_id == "worker"
 
@@ -73,7 +74,7 @@ def test_internal_step_inherits_parent_sandbox_policy(temp_dir):
     def run_child(_task, child_session, _console, child_workspace, **_kwargs):
         set_session(child_session)
         set_workspace(child_workspace)
-        assert child_workspace.agent_id == "step-1"
+        assert child_workspace.agent_id.startswith("step-1-")
         assert child_workspace.sandbox_policy_agent_id == "default"
         with patch("qrclaw.sandbox.is_sandbox_enabled", side_effect=lambda agent_id: agent_id != "default"):
             assert filesystem._resolve_path(str(test_file)) == test_file.resolve()
@@ -81,7 +82,8 @@ def test_internal_step_inherits_parent_sandbox_policy(temp_dir):
         return "ok"
 
     try:
-        with patch("qrclaw.agent.run", side_effect=run_child):
+        with patch("qrclaw.agent.run", side_effect=run_child), \
+             patch("qrclaw.sandbox.is_sandbox_enabled", return_value=False):
             result, _ = run_sub_agent("test", workspace, "step-1", sandbox_policy_agent_id="default")
     finally:
         set_session(previous_session)
@@ -96,7 +98,7 @@ def test_file_read_limit_uses_config(monkeypatch):
 
 
 def test_sandbox_failure_does_not_run_command_on_host(temp_dir):
-    with patch("qrclaw.sandbox.sandbox_manager.has_sandbox", return_value=False), \
+    with patch("qrclaw.sandbox.sandbox_manager.get_sandbox", return_value=None), \
          patch("qrclaw.sandbox.sandbox_manager.create_sandbox", side_effect=ContainerError("Docker 不可用")), \
          patch("qrclaw.tools.shell._exec_direct") as direct:
         result = shell._exec_in_sandbox("touch marker", str(temp_dir))
@@ -110,7 +112,7 @@ def test_internal_step_uses_parent_sandbox_config(temp_dir):
     config = SandboxConfig(enabled=True, network="none")
     with patch("qrclaw.agent.get_workspace", return_value=workspace), \
          patch("qrclaw.sandbox.get_sandbox_config", return_value=config), \
-         patch("qrclaw.sandbox.sandbox_manager.has_sandbox", return_value=False), \
+         patch("qrclaw.sandbox.sandbox_manager.get_sandbox", return_value=None), \
          patch("qrclaw.sandbox.sandbox_manager.create_sandbox", side_effect=ContainerError("Docker 不可用")) as create:
         result = shell._exec_in_sandbox("pwd", str(temp_dir))
 
@@ -122,7 +124,7 @@ def test_missing_sandbox_policy_config_still_requires_container(temp_dir):
     workspace = Workspace("default", _root=temp_dir, _sandbox_policy_agent_id="restricted")
     with patch("qrclaw.agent.get_workspace", return_value=workspace), \
          patch("qrclaw.sandbox.get_sandbox_config", return_value=None), \
-         patch.object(sandbox_manager, "has_sandbox", return_value=False), \
+         patch.object(sandbox_manager, "get_sandbox", return_value=None), \
          patch.object(sandbox_manager, "create_sandbox", side_effect=ContainerError("Docker 不可用")) as create, \
          patch("qrclaw.tools.shell._exec_direct") as direct:
         result = shell._exec_in_sandbox("touch marker", str(temp_dir))
@@ -160,16 +162,12 @@ def test_spawn_agent_inherits_restricted_parent_policy(temp_dir):
     with patch("qrclaw.agent.is_sub_agent", return_value=False), \
          patch("qrclaw.agent.get_workspace", return_value=workspace), \
          patch("qrclaw.sandbox.is_sandbox_enabled", side_effect=lambda agent_id: agent_id == "restricted"), \
-         patch("qrclaw.sandbox.get_sandbox_config", return_value=None), \
-         patch("qrclaw.sandbox.create_sandbox") as create, \
-         patch("qrclaw.sandbox.sandbox_manager.has_sandbox", return_value=False), \
          patch("qrclaw.agent.run_sub_agent", return_value=("ok", None)) as run, \
          patch("qrclaw.tools.spawn_agent._task_pool", {}), \
          patch("threading.Thread.start", lambda thread: thread.run()):
         result = spawn_tool.spawn_agent("default", "test")
 
     assert "沙箱已启用" in result
-    assert create.call_args.kwargs["config"].enabled is True
     assert run.call_args.kwargs["sandbox_policy_agent_id"] == "restricted"
 
 

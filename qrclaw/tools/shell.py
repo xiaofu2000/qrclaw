@@ -58,13 +58,14 @@ def _exec_in_sandbox(command: str, cwd: str, timeout: int = 1800) -> str:
     agent_id = _get_current_agent_id()
     ws = get_workspace()
     policy_agent_id = ws.sandbox_policy_agent_id if ws else agent_id
+    config = get_sandbox_config(policy_agent_id) or SandboxConfig(enabled=True)
+    from pathlib import Path
+    workspace = Path(cwd).resolve() if cwd else None
 
-    # 检查沙箱是否已创建
-    if not sandbox_manager.has_sandbox(agent_id):
+    handle = sandbox_manager.get_sandbox(agent_id)
+    if not handle or handle.workspace.resolve() != workspace or handle.config != config:
         try:
-            from pathlib import Path
-            workspace = Path(cwd) if cwd else None
-            sandbox_manager.create_sandbox(agent_id, workspace=workspace, config=get_sandbox_config(policy_agent_id) or SandboxConfig(enabled=True))
+            sandbox_manager.create_sandbox(agent_id, workspace=workspace, config=config)
             logger.info(f"已为 Agent {agent_id} 创建沙箱")
         except Exception as e:
             logger.error(f"创建沙箱失败: {e}")

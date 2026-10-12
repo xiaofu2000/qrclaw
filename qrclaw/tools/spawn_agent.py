@@ -85,21 +85,7 @@ def spawn_agent(agent_id: str, task: str) -> str:
     logger.info(f"启动子 agent: {agent_id}, 共享工作空间: {parent_workspace.root}, 沙箱: {sandbox_enabled}")
 
     def _run():
-        sandbox_created = False
-        
         try:
-            # 创建沙箱（如果启用）
-            if sandbox_enabled:
-                from pathlib import Path
-                from qrclaw.sandbox import SandboxConfig, create_sandbox, get_sandbox_config
-                create_sandbox(
-                    agent_id=agent_id,
-                    workspace=Path(parent_workspace.root),
-                    config=get_sandbox_config(policy_agent_id) or SandboxConfig(enabled=True),
-                )
-                sandbox_created = True
-                logger.info(f"已为子 agent {agent_id} 创建沙箱")
-            
             # 执行子 agent（共享父 agent 的工作空间）
             result, _ = run_sub_agent(task, parent_workspace, agent_id, sandbox_policy_agent_id=policy_agent_id)
             
@@ -126,16 +112,6 @@ def spawn_agent(agent_id: str, task: str) -> str:
                 _task_pool[agent_id]["result"] = f"执行出错: {e}"
             if _console:
                 _console.print(f"\n[bold red]子 agent '{agent_id}' 执行出错: {e}[/bold red]\n")
-        finally:
-            # 销毁沙箱
-            if sandbox_created:
-                try:
-                    from qrclaw.sandbox import destroy_sandbox, sandbox_manager
-                    if sandbox_manager.has_sandbox(agent_id):
-                        destroy_sandbox(agent_id)
-                        logger.info(f"已销毁子 agent {agent_id} 的沙箱")
-                except Exception as e:
-                    logger.warning(f"销毁子 agent {agent_id} 的沙箱失败: {e}")
             
     thread = threading.Thread(target=_run, name=f"sub-agent-{agent_id}", daemon=True)
 

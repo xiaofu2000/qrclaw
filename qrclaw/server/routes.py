@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import time
 import uuid
-from threading import Lock
+from threading import Lock, RLock
 from io import StringIO
 from typing import Any
 
@@ -28,6 +28,13 @@ _agent_run_lock = Lock()
 def build_router(workspace: Workspace) -> APIRouter:
     router = APIRouter()
     service = SessionService(workspace)
+    runs: dict[str, str] = {}
+    failures: dict[str, str] = {}
+    status_lock = RLock()
+
+    def with_status(detail: dict[str, Any]) -> dict[str, Any]:
+        with status_lock:
+            return {**detail, "run_status": runs.get(detail["id"], "idle"), "run_error": failures.get(detail["id"])}
 
     @router.get("/health")
     def health() -> dict[str, str]:
@@ -49,21 +56,30 @@ def build_router(workspace: Workspace) -> APIRouter:
 
     @router.get("/v1/sessions", response_model=list[SessionSummary])
     def list_session_api() -> list[dict[str, Any]]:
-        return service.list_sessions()
+        return [with_status(summary) for summary in service.list_sessions()]
 
     @router.post("/v1/sessions", response_model=SessionDetail)
     def create_session_api(request: CreateSessionRequest | None = Body(default=None)) -> dict[str, Any]:
-        session = service.create_session(request.session_id if request else None)
-        return service.describe_session(session)
+        with status_lock:
+            if request and request.session_id in runs:
+                raise HTTPException(status_code=409, detail="会话仍在执行任务")
+            session = service.create_session(request.session_id if request else None)
+        return with_status(service.describe_session(session))
 
     @router.get("/v1/sessions/{session_id}", response_model=SessionDetail)
     def get_session_api(session_id: str) -> dict[str, Any]:
-        session = service.get_session(session_id)
-        return service.describe_session(session)
+        # 避免返回旧内容和刚完成的 idle 状态，让页面误以为结果已完整。
+        with status_lock:
+            session = service.get_session(session_id)
+            return with_status(service.describe_session(session))
 
     @router.delete("/v1/sessions/{session_id}")
     def delete_session_api(session_id: str) -> dict[str, Any]:
-        deleted = service.delete_session(session_id)
+        with status_lock:
+            if session_id in runs:
+                raise HTTPException(status_code=409, detail="会话仍在执行任务，暂时不能删除")
+            deleted = service.delete_session(session_id)
+            failures.pop(session_id, None)
         if not deleted:
             raise HTTPException(status_code=404, detail="session not found")
         return {"deleted": True}
@@ -77,12 +93,19 @@ def build_router(workspace: Workspace) -> APIRouter:
         if not user_input:
             raise HTTPException(status_code=400, detail="messages 中缺少 user 内容")
 
-        session = service.get_session(request.session_id) if request.session_id else service.create_session()
+        with status_lock:
+            if request.session_id in runs:
+                raise HTTPException(status_code=409, detail="会话已有任务正在执行，请等待完成")
+            session = service.get_session(request.session_id) if request.session_id else service.create_session()
+            runs[session.session_id] = "queued"
+            failures.pop(session.session_id, None)
         console = Console(file=StringIO(), highlight=False)
 
         try:
             # MCP 工具注册表和后台 Agent 状态是进程级的。
             with _agent_run_lock:
+                with status_lock:
+                    runs[session.session_id] = "running"
                 content = run_agent(
                     user_input=user_input,
                     session=session,
@@ -91,7 +114,12 @@ def build_router(workspace: Workspace) -> APIRouter:
                     auto_confirm=True,
                 )
         except Exception as exc:
+            with status_lock:
+                failures[session.session_id] = str(exc)
             raise HTTPException(status_code=500, detail=str(exc)) from exc
+        finally:
+            with status_lock:
+                runs.pop(session.session_id, None)
 
         content = content or ""
         created = int(time.time())

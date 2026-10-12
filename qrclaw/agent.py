@@ -234,8 +234,12 @@ def run_sub_agent(
     from io import StringIO
     from rich.console import Console as RichConsole
     import uuid
+    from qrclaw.sandbox import SandboxConfig, create_sandbox, destroy_sandbox, get_sandbox_config, is_sandbox_enabled, sandbox_manager
 
-    sub_workspace = Workspace(agent_id=agent_id, _root=workspace.root, _sandbox_policy_agent_id=sandbox_policy_agent_id)
+    run_id = uuid.uuid4().hex[:12]
+    runtime_id = f"{agent_id}-{run_id}"
+    policy_id = sandbox_policy_agent_id or agent_id
+    sub_workspace = Workspace(agent_id=runtime_id, _root=workspace.root, _sandbox_policy_agent_id=policy_id)
     saved_session = get_session()
     saved_workspace = get_workspace()
 
@@ -253,8 +257,10 @@ def run_sub_agent(
         saved_ctx = None
 
     try:
+        if is_sandbox_enabled(policy_id):
+            create_sandbox(agent_id=runtime_id, workspace=workspace.root, config=get_sandbox_config(policy_id) or SandboxConfig(enabled=True))
         sub_console = console or RichConsole(file=StringIO(), highlight=False)
-        session_id = f"sub-{agent_id}-{uuid.uuid4().hex[:8]}"
+        session_id = f"sub-{agent_id}-{run_id}"
         sub_session = Session(
             sessions_dir=sub_workspace.sessions_dir,
             session_id=session_id,
@@ -264,6 +270,12 @@ def run_sub_agent(
         result = result or "子 agent 未返回结果"
         logger.info(f"子 agent {agent_id} 执行完毕，结果长度: {len(result)} 字符")
     finally:
+        if sandbox_manager.has_sandbox(runtime_id):
+            try:
+                if not destroy_sandbox(runtime_id):
+                    logger.warning("子 agent 沙箱清理失败: %s", runtime_id)
+            except Exception as exc:
+                logger.warning("子 agent 沙箱清理失败: %s: %s", runtime_id, exc)
         set_agent_depth(current_depth)
         set_session(saved_session)
         set_workspace(saved_workspace)

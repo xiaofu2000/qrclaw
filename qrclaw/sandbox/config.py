@@ -23,7 +23,7 @@ class MountConfig(BaseModel):
 
     def to_docker_bind(self) -> str:
         """转换为 Docker 挂载格式"""
-        return f"{self.host}:{self.container}:{self.mode}"
+        return f"{Path(self.host).expanduser().resolve()}:{self.container}:{self.mode}"
 
 
 class SandboxConfig(BaseModel):

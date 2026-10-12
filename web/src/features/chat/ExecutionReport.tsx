@@ -14,6 +14,7 @@ export function ExecutionReport({ content, title = '执行汇报', defaultCollap
       <button
         type="button"
         className="execution-report-toggle"
+        aria-expanded={!collapsed}
         onClick={() => setCollapsed((current) => !current)}
       >
         <span className="execution-report-icon" aria-hidden="true">

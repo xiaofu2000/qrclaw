@@ -90,7 +90,7 @@ class ContainerManager:
         config: ContainerConfig,
     ) -> str:
         """创建容器"""
-        args = ["docker", "create", "--name", name, "--read-only"]
+        args = ["docker", "create", "--init", "--name", name, "--read-only"]
         
         # 安全选项
         for cap in config.cap_drop:
@@ -216,9 +216,17 @@ class ContainerManager:
                 ["docker", "inspect", "--format", "{{.Id}}", container_id],
                 capture_output=True, text=True, timeout=10
             )
-            return result.returncode == 0
-        except Exception:
+            if result.returncode == 0:
+                return True
+            available = subprocess.run(
+                ["docker", "info", "--format", "{{.ServerVersion}}"],
+                capture_output=True, text=True, timeout=10,
+            )
+            if available.returncode != 0:
+                raise ContainerError("Docker 不可用，无法确认容器是否已删除")
             return False
+        except Exception as exc:
+            raise ContainerError(f"无法确认容器状态: {exc}") from exc
     
     def is_running(self, container_id: str) -> bool:
         """检查容器是否运行"""
