@@ -206,7 +206,7 @@ def test_progress_stream_replays_only_status_events(temp_dir):
     assert "read_file" in response.text
     assert "敏感结果" not in response.text
     assert "内部错误详情" not in response.text
-    assert '"meta"' not in response.text
+    assert '"state": "started"' in response.text
     assert "id: 0" not in response.text
 
 

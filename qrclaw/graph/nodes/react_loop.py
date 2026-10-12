@@ -207,25 +207,30 @@ class ReactLoopNode:
         tool_runner = ToolRunner(console=console, auto_confirm=auto_confirm)
 
         def run_tool(name: str, arguments: str) -> str:
-            """记录主 Agent 工具状态，不把参数或结果写入过程事件。"""
-            if not is_sub_agent:
-                session.add_event(SessionEvent(kind="tool_status", title="工具开始", content=name,
-                                               meta={"state": "started", "tool": name}))
+            """记录工具状态，不把参数或结果写入过程事件。"""
+            session.add_event(SessionEvent(kind="tool_status", title="工具开始", content=name,
+                                           meta={"state": "started", "tool": name}))
             try:
                 result = tool_runner.run(name, arguments)
             except Exception:
-                if not is_sub_agent:
-                    session.add_event(SessionEvent(kind="tool_status", title="工具失败", content=name,
-                                                   meta={"state": "failed", "tool": name}))
+                session.add_event(SessionEvent(kind="tool_status", title="工具失败", content=name,
+                                               meta={"state": "failed", "tool": name}))
                 raise
-            if not is_sub_agent:
-                failed = getattr(tool_runner, "last_error", False)
-                session.add_event(SessionEvent(kind="tool_status", title="工具失败" if failed else "工具完成",
-                                               content=name, meta={"state": "failed" if failed else "completed", "tool": name}))
+            failed = getattr(tool_runner, "last_error", False)
+            session.add_event(SessionEvent(kind="tool_status", title="工具失败" if failed else "工具完成",
+                                           content=name, meta={"state": "failed" if failed else "completed", "tool": name}))
             return result
 
         def _on_assistant_message(message: dict) -> None:
             session.add(dict(message))
+            if is_sub_agent:
+                from qrclaw.subagent_progress import clear_sub_agent_text
+                clear_sub_agent_text(session.session_id)
+            session.add_event(SessionEvent(kind="message_saved", title="消息已保存"))
+
+        def _on_tool_result(message: dict) -> None:
+            session.add(dict(message))
+            session.add_event(SessionEvent(kind="message_saved", title="消息已保存"))
 
         # 调用前检查压缩
         ctx.compress_if_needed()
@@ -238,7 +243,7 @@ class ReactLoopNode:
                 max_iterations=MAX_ITERATIONS,
                 on_tool_call=run_tool,
                 on_assistant_message=_on_assistant_message,
-                on_tool_result=lambda message: session.add(dict(message)),
+                on_tool_result=_on_tool_result,
                 on_finish=(lambda _: memory_integration.on_react_loop_end(session, 0)) if memory_integration else None,
                 console=console,
                 silent=False,

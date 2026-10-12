@@ -1,20 +1,21 @@
 import { useLayoutEffect, useRef, useState } from 'react'
-import { ArrowDown, Bot, Check, Copy } from 'lucide-react'
+import { ArrowDown, Bot, Check, Copy, GitBranch } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import type { Message } from '../../lib/types'
+import type { ChatTimelineItem, Message } from '../../lib/types'
 import { ExecutionReport } from './ExecutionReport'
 
 type ChatPanelProps = {
   sessionId: string
-  messages: Message[]
+  timeline: ChatTimelineItem[]
+  onSelectSubAgent: (childSessionId: string) => void
   streaming: string
   running: boolean
   queued: boolean
   loading: boolean
 }
 
-export function ChatPanel({ sessionId, messages, streaming, running, queued, loading }: ChatPanelProps) {
+export function ChatPanel({ sessionId, timeline, onSelectSubAgent, streaming, running, queued, loading }: ChatPanelProps) {
   const historyRef = useRef<HTMLDivElement>(null)
   const followRef = useRef(true)
   const previousSessionRef = useRef(sessionId)
@@ -32,7 +33,7 @@ export function ChatPanel({ sessionId, messages, streaming, running, queued, loa
       history.scrollTop = history.scrollHeight
       setShowJump(false)
     } else if (history) setShowJump(true)
-  }, [sessionId, messages, streaming, running])
+  }, [sessionId, timeline, streaming, running])
 
   async function copy(message: Message) {
     try {
@@ -51,18 +52,27 @@ export function ChatPanel({ sessionId, messages, streaming, running, queued, loa
           setShowJump(!followRef.current)
         }
       }}>
-        {loading && !messages.length ? <div className="chat-empty">正在载入会话…</div>
-          : !messages.length && <div className="chat-empty"><Bot size={30} strokeWidth={1.5} /><h1>有什么需要我帮你做？</h1><p>分析代码、执行任务，或整理长期记忆。</p></div>}
+        {loading && !timeline.length ? <div className="chat-empty">正在载入会话…</div>
+          : !timeline.length && <div className="chat-empty"><Bot size={30} strokeWidth={1.5} /><h1>有什么需要我帮你做？</h1><p>分析代码、执行任务，或整理长期记忆。</p></div>}
         <div className="message-list">
-          {messages.map(message => (
-            <article key={message.id} className={`chat-message ${message.role}`}>
-              {message.kind === 'execution_report' ? <ExecutionReport content={message.content} />
-                : message.role === 'tool' ? <details className="tool-result"><summary>工具结果 · {message.toolName ?? '工具'}</summary><pre>{message.content}</pre></details>
+          {timeline.map(item => 'childSessionId' in item ? (
+            <article key={item.id} className="chat-message subagent">
+              <button className="subagent-card" onClick={() => onSelectSubAgent(item.childSessionId)}
+                aria-label={`查看子 Agent ${item.agentId} 的执行过程：${item.task}`}>
+                <GitBranch size={17} aria-hidden="true" />
+                <span className="subagent-card-body"><strong>启动 {item.agentId} 子 Agent</strong><span>{item.task}</span></span>
+                <span className={`subagent-state ${item.state}`}>{item.state === 'running' ? '运行中' : item.state === 'completed' ? '已完成' : item.state === 'failed' ? '失败' : '已中断'}</span>
+              </button>
+            </article>
+          ) : (
+            <article key={item.id} className={`chat-message ${item.role}`}>
+              {item.kind === 'execution_report' ? <ExecutionReport content={item.content} />
+                : item.role === 'tool' ? <details className="tool-result"><summary>工具结果 · {item.toolName ?? '工具'}</summary><pre>{item.content}</pre></details>
                 : <>
-                  <div className="message-role">{message.role === 'user' ? '你' : 'QRClaw'}</div>
-                  <div className="message-bubble markdown-body"><ReactMarkdown remarkPlugins={[remarkGfm]}>{message.content}</ReactMarkdown></div>
-                  {message.role === 'assistant' && <button className="copy-button" aria-label="复制回复" onClick={() => void copy(message)}>
-                    {copiedId === message.id ? <Check size={14} /> : <Copy size={14} />}{copiedId === message.id ? '已复制' : '复制'}
+                  <div className="message-role">{item.role === 'user' ? '你' : 'QRClaw'}</div>
+                  <div className="message-bubble markdown-body"><ReactMarkdown remarkPlugins={[remarkGfm]}>{item.content}</ReactMarkdown></div>
+                  {item.role === 'assistant' && <button className="copy-button" aria-label="复制回复" onClick={() => void copy(item)}>
+                    {copiedId === item.id ? <Check size={14} /> : <Copy size={14} />}{copiedId === item.id ? '已复制' : '复制'}
                   </button>}
                 </>}
             </article>

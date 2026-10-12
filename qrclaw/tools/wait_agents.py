@@ -32,22 +32,29 @@ def wait_agents(agent_ids: list[str] = None) -> str:
         str: 所有子 agent 的执行结果汇总
     """
     from qrclaw.tools.spawn_agent import get_task_pool, get_task_pool_lock
+    from qrclaw.agent import get_session, get_workspace
+    from qrclaw.workspace import Workspace
 
     task_pool = get_task_pool()
     lock = get_task_pool_lock()
+    session = get_session()
+    parent_id = session.session_id if session else ""
+    workspace_id = str((get_workspace() or Workspace("default")).sessions_dir.resolve())
 
     with lock:
-        if not task_pool:
+        own_tasks = {agent_id: task for (root, owner, agent_id), task in task_pool.items()
+                     if root == workspace_id and owner == parent_id}
+        if not own_tasks:
             return "没有正在运行的子 agent"
 
         # 确定要等待的 agent
         if agent_ids:
-            targets = {aid: task_pool[aid] for aid in agent_ids if aid in task_pool}
-            not_found = [aid for aid in agent_ids if aid not in task_pool]
+            targets = {aid: own_tasks[aid] for aid in agent_ids if aid in own_tasks}
+            not_found = [aid for aid in agent_ids if aid not in own_tasks]
             if not_found:
                 logger.warning(f"未找到子 agent: {not_found}")
         else:
-            targets = dict(task_pool)
+            targets = dict(own_tasks)
 
         # 只等 running 状态的
         to_wait = {aid: t for aid, t in targets.items() if t["status"] == "running"}
@@ -65,7 +72,7 @@ def wait_agents(agent_ids: list[str] = None) -> str:
     lines = ["## 子 agent 执行结果汇总", ""]
 
     with lock:
-        all_targets = {**already_done, **{aid: task_pool[aid] for aid in to_wait}}
+        all_targets = {**already_done, **{aid: task_pool[(workspace_id, parent_id, aid)] for aid in to_wait}}
 
     for agent_id, task in all_targets.items():
         status_label = "✅ 完成" if task["status"] == "done" else "❌ 出错"
@@ -77,8 +84,9 @@ def wait_agents(agent_ids: list[str] = None) -> str:
     # 清空已完成的任务
     with lock:
         for agent_id in all_targets:
-            if task_pool.get(agent_id, {}).get("status") != "running":
-                task_pool.pop(agent_id, None)
+            key = (workspace_id, parent_id, agent_id)
+            if task_pool.get(key, {}).get("status") != "running":
+                task_pool.pop(key, None)
 
     logger.info("所有子 agent 结果已收集，任务池已清理")
     return "\n".join(lines)

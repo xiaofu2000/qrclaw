@@ -55,3 +55,13 @@ test('过程 SSE 读取事件序号与内容', async () => {
   assert.deepEqual(events, [[3, '工具开始']])
   assert.match(requests[0].url, /after=2$/)
 })
+
+test('子任务过程流同时还原卡片元数据与临时文字', async () => {
+  const frames = 'id: 4\nevent: progress\ndata: {"kind":"subagent","meta":{"child_session_id":"sub-worker-1","state":"running"}}\n\n'
+    + 'event: live_text\ndata: {"text":"正在读取文件"}\n\n'
+  const { api } = clientWithFrames(frames)
+  const events = [], texts = []
+  await api.streamEvents('A', 3, (index, event) => events.push([index, event.meta.child_session_id]), undefined, text => texts.push(text))
+  assert.deepEqual(events, [[4, 'sub-worker-1']])
+  assert.deepEqual(texts, ['正在读取文件'])
+})

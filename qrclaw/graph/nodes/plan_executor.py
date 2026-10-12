@@ -11,8 +11,8 @@ PlanExecutor 节点
     4. Replanner 评估：目标已达成 → DONE，否则更新剩余步骤（可能调整方向）
   结束后交主 agent 整合
 
-串行步骤：子 session 继承主 session 全部消息，执行完增量追加回主 session
-并行步骤：子 session 独立，注入前置步骤结果摘要，执行完只追加最终结果到主 session
+串行和并行步骤都使用独立子会话；父会话记录任务卡片和步骤状态。
+前置步骤结果通过任务提示传给子 Agent，最终结果交主 Agent 汇总。
 """
 import threading
 import queue
@@ -28,6 +28,7 @@ from qrclaw.graph.executor import get_next_layer
 from qrclaw.graph.nodes.replanner import ReplannerNode
 from qrclaw.logger import get_logger
 from qrclaw.config import MAX_ITERATIONS
+from qrclaw.subagent_progress import prepare_sub_agent, record_sub_agent_end, sub_agent_snapshot
 
 logger = get_logger("qrclaw.graph.nodes.plan_executor")
 
@@ -72,7 +73,16 @@ class PlanExecutorNode:
                     step = layer[0]
                     session.add_event(SessionEvent(kind="status", title="执行中", content=step.description))
                     console.print(f"[yellow]→ {step.description} (串行)[/yellow]")
-                    result = self._run_serial(step, ps.goal, ps.past_steps, workspace, run_sub_agent_fn, console)
+                    child_id = prepare_sub_agent(session, workspace, f"step-{step.id}", step.description)
+                    try:
+                        result = self._run_serial(step, ps.goal, ps.past_steps, workspace, run_sub_agent_fn,
+                                                  console, child_id, session.session_id)
+                    except Exception:
+                        if sub_agent_snapshot(child_id):
+                            record_sub_agent_end(workspace.sessions_dir, session.session_id, child_id, "failed")
+                        raise
+                    if sub_agent_snapshot(child_id):
+                        record_sub_agent_end(workspace.sessions_dir, session.session_id, child_id, "completed")
                     session.add_event(SessionEvent(kind="status", title="步骤完成", content=step.description))
                     ctx.add_step_result(StepResult(
                         step_id=step.id,
@@ -144,7 +154,9 @@ class PlanExecutorNode:
         ctx.clear_plan()
         return react_loop_fn()
 
-    def _run_serial(self, step, goal: str, past_steps: list[StepResult], workspace, run_sub_agent_fn, console) -> str:
+    def _run_serial(self, step, goal: str, past_steps: list[StepResult], workspace, run_sub_agent_fn,
+                    console, child_id: str, parent_id: str) -> str:
+        """执行一个已登记的计划子任务。"""
         prior_context = ""
         if past_steps:
             prior_context = "\n\n【前置步骤结果】\n" + "\n---\n".join(
@@ -165,11 +177,14 @@ class PlanExecutorNode:
             task, workspace, f"step-{step.id}",
             console=console,
             sandbox_policy_agent_id=workspace.sandbox_policy_agent_id,
+            child_session_id=child_id,
+            parent_session_id=parent_id,
         )
         logger.info(f"Step {step.id} 串行完成")
         return result
 
     def _run_parallel(self, layer, goal: str, past_steps: list[StepResult], workspace, run_sub_agent_fn, console, session: Session) -> dict[int, str]:
+        """先按计划顺序登记卡片，再并行执行子任务。"""
         results: dict[int, str] = {}
         errors: list[str] = []
         lock = threading.Lock()
@@ -184,8 +199,17 @@ class PlanExecutorNode:
 
         ps = get_context_manager().plan_state
         project_path_hint = f"\n【项目根目录】{ps.project_path}" if ps and ps.project_path else ""
+        child_ids: dict[str, str] = {}
+        try:
+            for step in layer:
+                child_ids[step.id] = prepare_sub_agent(session, workspace, f"step-{step.id}", step.description)
+        except Exception:
+            for child_id in child_ids.values():
+                record_sub_agent_end(workspace.sessions_dir, session.session_id, child_id, "failed")
+            raise
 
         def _run(step):
+            child_id = child_ids[step.id]
             task = (
                 f"【计划目标】{goal}\n"
                 f"{project_path_hint}\n\n"
@@ -198,12 +222,18 @@ class PlanExecutorNode:
                     task, workspace, f"step-{step.id}",
                     console=None,
                     sandbox_policy_agent_id=workspace.sandbox_policy_agent_id,
+                    child_session_id=child_id,
+                    parent_session_id=session.session_id,
                 )
+                if sub_agent_snapshot(child_id):
+                    record_sub_agent_end(workspace.sessions_dir, session.session_id, child_id, "completed")
                 with lock:
                     results[step.id] = result
                 session.add_event(SessionEvent(kind="status", title="步骤完成", content=step.description))
                 notify_queue.put(("ok", step.id, step.description, result))
             except Exception as e:
+                if sub_agent_snapshot(child_id):
+                    record_sub_agent_end(workspace.sessions_dir, session.session_id, child_id, "failed")
                 logger.error(f"Step {step.id} 执行失败: {e}", exc_info=True)
                 with lock:
                     errors.append(f"Step {step.id}: {e}")
@@ -214,8 +244,17 @@ class PlanExecutorNode:
             threading.Thread(target=_run, args=(step,), name=f"plan-step-{step.id}", daemon=True)
             for step in layer
         ]
-        for t in threads:
-            t.start()
+        started = []
+        try:
+            for t in threads:
+                t.start()
+                started.append(t)
+        except Exception:
+            for step in layer[len(started):]:
+                record_sub_agent_end(workspace.sessions_dir, session.session_id, child_ids[step.id], "failed")
+            for t in started:
+                t.join()
+            raise
         for t in threads:
             t.join()
 

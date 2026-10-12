@@ -11,7 +11,7 @@ import json
 from typing import Callable
 from rich.console import Console
 from qrclaw.providers.base import LLMResponse
-from qrclaw.memory.context.session import Session
+from qrclaw.memory.context.session import Session, SessionEvent
 from qrclaw.workspace import Workspace
 from qrclaw.logger import get_logger
 
@@ -230,6 +230,8 @@ def run_sub_agent(
     agent_id: str,
     console: Console | None = None,
     sandbox_policy_agent_id: str | None = None,
+    child_session_id: str | None = None,
+    parent_session_id: str | None = None,
 ) -> tuple[str, Session]:
     """
     启动子 agent，返回 (结果字符串, 子session)。
@@ -239,8 +241,9 @@ def run_sub_agent(
     from rich.console import Console as RichConsole
     import uuid
     from qrclaw.sandbox import SandboxConfig, create_sandbox, destroy_sandbox, get_sandbox_config, is_sandbox_enabled, sandbox_manager
+    from qrclaw.subagent_progress import append_sub_agent_text, end_sub_agent, record_sub_agent_end
 
-    run_id = uuid.uuid4().hex[:12]
+    run_id = child_session_id.rsplit("-", 1)[-1] if child_session_id else uuid.uuid4().hex[:12]
     runtime_id = f"{agent_id}-{run_id}"
     policy_id = sandbox_policy_agent_id or agent_id
     sub_workspace = Workspace(agent_id=runtime_id, _root=workspace.root, _sandbox_policy_agent_id=policy_id)
@@ -260,19 +263,34 @@ def run_sub_agent(
     except RuntimeError:
         saved_ctx = None
 
+    state = "failed"
     try:
         if is_sandbox_enabled(policy_id):
             create_sandbox(agent_id=runtime_id, workspace=workspace.root, config=get_sandbox_config(policy_id) or SandboxConfig(enabled=True))
         sub_console = console or RichConsole(file=StringIO(), highlight=False)
-        session_id = f"sub-{agent_id}-{run_id}"
+        session_id = child_session_id or f"sub-{agent_id}-{run_id}"
         sub_session = Session(
             sessions_dir=sub_workspace.sessions_dir,
             session_id=session_id,
             resume=False,
         )
-        result = run(task, sub_session, sub_console, sub_workspace, auto_confirm=True)
+        result = run(
+            task, sub_session, sub_console, sub_workspace, auto_confirm=True,
+            on_delta=(lambda delta: append_sub_agent_text(session_id, delta)) if child_session_id else None,
+        )
         result = result or "子 agent 未返回结果"
+        if result.startswith("错误："):
+            raise RuntimeError(result)
+        state = "completed"
         logger.info(f"子 agent {agent_id} 执行完毕，结果长度: {len(result)} 字符")
+    except Exception as exc:
+        if child_session_id:
+            try:
+                Session(workspace.sessions_dir, child_session_id).add_event(
+                    SessionEvent(kind="status", title="执行失败", content=str(exc)))
+            except Exception as save_exc:
+                logger.warning("子 Agent 失败事件保存失败: %s", save_exc)
+        raise
     finally:
         if sandbox_manager.has_sandbox(runtime_id):
             try:
@@ -284,5 +302,11 @@ def run_sub_agent(
         set_session(saved_session)
         set_workspace(saved_workspace)
         _ctx_thread_local.ctx = saved_ctx
+        if child_session_id:
+            try:
+                if parent_session_id:
+                    record_sub_agent_end(workspace.sessions_dir, parent_session_id, child_session_id, state)
+            finally:
+                end_sub_agent(child_session_id)
 
     return result, sub_session

@@ -14,6 +14,7 @@ from fastapi.responses import StreamingResponse
 from rich.console import Console
 
 from qrclaw.agent import run as run_agent
+from qrclaw.subagent_progress import has_active_sub_agents, sub_agent_snapshot
 from qrclaw.workspace import Workspace
 
 from .schemas import (
@@ -38,7 +39,10 @@ def build_router(workspace: Workspace) -> APIRouter:
 
     def with_status(detail: dict[str, Any]) -> dict[str, Any]:
         with status_lock:
-            return {**detail, "run_status": runs.get(detail["id"], "idle"), "run_error": failures.get(detail["id"])}
+            running_child = sub_agent_snapshot(detail["id"], workspace.sessions_dir) is not None
+            return {**detail, "run_status": runs.get(detail["id"], "running" if running_child else "idle"),
+                    "active_subagents": has_active_sub_agents(detail["id"], workspace.sessions_dir),
+                    "run_error": failures.get(detail["id"])}
 
     @router.get("/health")
     def health() -> dict[str, str]:
@@ -88,18 +92,23 @@ def build_router(workspace: Workspace) -> APIRouter:
         def events():
             """从已保存事件续发状态，任务结束且事件排空后关闭。"""
             cursor = after
+            live_revision = -1
             while True:
                 with status_lock:
                     session = service.get_session(session_id)
                     saved = list(session.events)
-                    running = session_id in runs
+                    child = sub_agent_snapshot(session_id, workspace.sessions_dir)
+                    running = session_id in runs or child is not None or has_active_sub_agents(session_id, workspace.sessions_dir)
                 for index in range(cursor + 1, len(saved)):
                     cursor = index
                     event = saved[index]
-                    is_step = event.get("kind") == "status" and event.get("title") in ("执行中", "步骤完成", "步骤失败")
-                    if is_step or event.get("kind") == "tool_status":
-                        visible = {key: event[key] for key in ("kind", "title", "content", "created_at") if key in event}
+                    is_step = event.get("kind") == "status" and event.get("title") in ("执行中", "步骤完成", "步骤失败", "执行失败")
+                    if is_step or event.get("kind") in ("tool_status", "subagent", "message_saved"):
+                        visible = {key: event[key] for key in ("kind", "title", "content", "created_at", "meta") if key in event}
                         yield f'id: {index}\nevent: progress\ndata: {json.dumps(visible, ensure_ascii=False)}\n\n'
+                if child is not None and child["revision"] != live_revision:
+                    live_revision = child["revision"]
+                    yield f'event: live_text\ndata: {json.dumps({"text": child["text"]}, ensure_ascii=False)}\n\n'
                 if not running:
                     break
                 time.sleep(0.2)
@@ -109,7 +118,7 @@ def build_router(workspace: Workspace) -> APIRouter:
     @router.delete("/v1/sessions/{session_id}")
     def delete_session_api(session_id: str) -> dict[str, Any]:
         with status_lock:
-            if session_id in runs:
+            if session_id in runs or sub_agent_snapshot(session_id, workspace.sessions_dir) or has_active_sub_agents(session_id, workspace.sessions_dir):
                 raise HTTPException(status_code=409, detail="会话仍在执行任务，暂时不能删除")
             deleted = service.delete_session(session_id)
             failures.pop(session_id, None)

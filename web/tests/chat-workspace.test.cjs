@@ -300,3 +300,136 @@ test('后端返回同会话冲突时移除未提交的乐观消息', async () =>
   assert.equal(latest.draft, '重复请求')
   hook.close()
 })
+
+test('子 Agent 卡片按父会话消息排序，点击只切换右侧详情', async () => {
+  const api = client()
+  api.sessions.A.messages = [{ role: 'user', content: '分配任务' }, { role: 'assistant', content: '我来汇总' }]
+  api.sessions.A.events = [
+    { kind: 'subagent', content: '任务一', meta: { child_session_id: 'sub-worker-1', agent_id: 'worker', state: 'running', after_message_index: 0 } },
+    { kind: 'subagent', content: '任务二', meta: { child_session_id: 'sub-worker-2', agent_id: 'worker', state: 'running', after_message_index: 0 } },
+    { kind: 'subagent', meta: { child_session_id: 'sub-worker-1', state: 'completed' } },
+    { kind: 'subagent', meta: { child_session_id: 'sub-worker-2', state: 'failed' } },
+  ]
+  api.sessions['sub-worker-1'] = { ...session('sub-worker-1'), messages: [
+    { role: 'user', content: '任务一' }, { role: 'assistant', content: '已检查' }, { role: 'tool', content: '文件正文' },
+  ] }
+  api.sessions['sub-worker-2'] = session('sub-worker-2')
+  api.listSessions = async () => [api.sessions.A, api.sessions.B]
+  const hook = workspace(api)
+  let view = await hook.flush()
+  assert.deepEqual(Array.from(view.timeline, item => 'childSessionId' in item ? item.task : item.content),
+    ['分配任务', '任务一', '任务二', '我来汇总'])
+  assert.deepEqual(Array.from(view.cards, card => card.state), ['completed', 'failed'])
+  view.selectSubAgent('sub-worker-1')
+  view = await hook.flush()
+  assert.equal(view.activeId, 'A')
+  assert.equal(view.selectedCard.task, '任务一')
+  assert.deepEqual(Array.from(view.childMessages, message => message.content), ['任务一', '已检查', '文件正文'])
+  await view.loadConversation('B')
+  view = hook.render()
+  assert.equal(view.selectedCard, null)
+  await view.loadConversation('A')
+  view = hook.render()
+  assert.equal(view.selectedCard.task, '任务一')
+  hook.close()
+})
+
+test('子任务流式文字和消息保存实时更新详情，不重复提交任务', async () => {
+  const api = client(), childStream = deferred(), parentStream = deferred()
+  let childEvents, liveText, sends = 0
+  api.sessions.A.messages = [{ role: 'user', content: '启动子任务' }]
+  api.sessions.A.events = [{ kind: 'subagent', content: '查文件', meta: {
+    child_session_id: 'sub-worker-1', agent_id: 'worker', state: 'running', after_message_index: 0,
+  } }]
+  api.sessions['sub-worker-1'] = { ...session('sub-worker-1'), run_status: 'running', messages: [{ role: 'user', content: '查文件' }] }
+  api.listSessions = async () => [api.sessions.A, api.sessions.B]
+  api.chatStream = async () => { sends++ }
+  api.streamEvents = async (id, _after, onEvent, _signal, onLiveText) => {
+    if (id === 'sub-worker-1') { childEvents = onEvent; liveText = onLiveText; return childStream.promise }
+    return parentStream.promise
+  }
+  const hook = workspace(api)
+  let view = await hook.flush()
+  view.selectSubAgent('sub-worker-1')
+  view = await hook.flush()
+  liveText('正在读')
+  view = hook.render()
+  assert.equal(view.childStreaming, '正在读')
+  assert.equal(view.activeId, 'A')
+  api.sessions['sub-worker-1'] = { ...api.sessions['sub-worker-1'], messages: [
+    { role: 'user', content: '查文件' }, { role: 'assistant', content: '读完了' },
+  ] }
+  childEvents(0, { kind: 'message_saved', title: '消息已保存' })
+  view = await hook.flush()
+  assert.equal(view.childMessages.at(-1).content, '读完了')
+  assert.equal(sends, 0)
+  childStream.resolve()
+  parentStream.resolve()
+  hook.close()
+})
+
+test('刷新后未完成但服务端已停止的子任务显示中断', async () => {
+  const api = client()
+  api.sessions.A.events = [{ kind: 'subagent', content: '检查', meta: {
+    child_session_id: 'sub-worker-1', agent_id: 'worker', state: 'running', after_message_index: -1,
+  } }]
+  api.sessions['sub-worker-1'] = session('sub-worker-1')
+  api.listSessions = async () => [api.sessions.A, api.sessions.B]
+  const hook = workspace(api)
+  const view = await hook.flush()
+  assert.equal(view.cards[0].state, 'interrupted')
+  hook.close()
+})
+
+test('主 Agent 已保存的中间回复不与后续流式文字重复', async () => {
+  const api = client(), pending = deferred(), events = deferred()
+  let sendDelta, onEvent
+  api.chatStream = (_id, _content, onDelta, onReady) => {
+    sendDelta = onDelta
+    onReady()
+    onDelta('先查')
+    return pending.promise
+  }
+  api.streamEvents = (_id, _after, callback) => { onEvent = callback; return events.promise }
+  const hook = workspace(api)
+  let view = await hook.flush()
+  const sending = view.send('任务')
+  view = hook.render()
+  assert.equal(view.streaming, '先查')
+  api.sessions.A = { ...api.sessions.A, run_status: 'running', messages: [
+    { role: 'user', content: '任务' }, { role: 'assistant', content: '先查' },
+  ] }
+  onEvent(0, { kind: 'message_saved', title: '消息已保存' })
+  view = await hook.flush()
+  assert.equal(view.streaming, '')
+  assert.equal(view.messages.at(-1).content, '先查')
+  sendDelta('最终')
+  view = hook.render()
+  assert.equal(view.streaming, '最终')
+  pending.resolve()
+  events.resolve()
+  await sending
+  hook.close()
+})
+
+test('父会话过程流断线后只重连读取，不重发聊天任务', async () => {
+  const api = client(), second = deferred()
+  api.sessions.A.active_subagents = true
+  api.sessions.A.events = [{ kind: 'subagent', content: '查文件', meta: {
+    child_session_id: 'sub-worker-1', agent_id: 'worker', state: 'running', after_message_index: -1,
+  } }]
+  api.sessions['sub-worker-1'] = { ...session('sub-worker-1'), run_status: 'running' }
+  api.listSessions = async () => [api.sessions.A, api.sessions.B]
+  let reads = 0, sends = 0
+  api.streamEvents = async () => ++reads === 1 ? Promise.reject(new Error('断线')) : second.promise
+  api.chatStream = async () => { sends++ }
+  const hook = workspace(api)
+  await hook.flush()
+  assert.equal(reads, 1)
+  await hook.poll()
+  assert.equal(reads, 2)
+  assert.equal(sends, 0)
+  second.resolve()
+  await hook.flush()
+  hook.close()
+})

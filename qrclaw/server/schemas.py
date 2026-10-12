@@ -24,6 +24,7 @@ class SessionSummary(BaseModel):
     message_count: int
     updated_at: str
     run_status: Literal["idle", "queued", "running"] = "idle"
+    active_subagents: bool = False
 
 
 class SessionDetail(BaseModel):
@@ -31,6 +32,7 @@ class SessionDetail(BaseModel):
     message_count: int
     updated_at: str
     run_status: Literal["idle", "queued", "running"] = "idle"
+    active_subagents: bool = False
     run_error: str | None = None
     prompt_tokens: int = 0
     completion_tokens: int = 0

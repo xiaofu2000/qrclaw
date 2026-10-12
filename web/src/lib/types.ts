@@ -4,10 +4,22 @@ export type Message = {
   id: string
   role: MessageRole
   content: string
+  sourceIndex?: number
   kind?: 'user' | 'assistant' | 'tool' | 'execution_report' | 'message'
   collapsed?: boolean
   toolName?: string
 }
+
+export type SubAgentCard = {
+  id: string
+  childSessionId: string
+  agentId: string
+  task: string
+  state: 'running' | 'completed' | 'failed' | 'interrupted'
+  afterMessageIndex: number
+}
+
+export type ChatTimelineItem = Message | SubAgentCard
 
 export type MessagePayload = {
   role: MessageRole | string
@@ -32,6 +44,7 @@ export type SessionSummary = {
   message_count: number
   updated_at: string
   run_status: 'idle' | 'queued' | 'running'
+  active_subagents?: boolean
 }
 
 export type SessionDetail = {
@@ -39,6 +52,7 @@ export type SessionDetail = {
   message_count: number
   updated_at: string
   run_status: SessionSummary['run_status']
+  active_subagents?: boolean
   run_error: string | null
   prompt_tokens: number
   completion_tokens: number
@@ -50,5 +64,12 @@ export type SessionDetail = {
     content?: string
     collapsed?: boolean
     created_at?: string
+    meta?: {
+      child_session_id?: string
+      agent_id?: string
+      state?: string
+      after_message_index?: number
+      tool?: string
+    }
   }>
 }

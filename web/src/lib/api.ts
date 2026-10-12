@@ -115,11 +115,13 @@ export function createApiClient() {
       if (!finished) throw new Error('聊天连接提前断开，请查看会话执行状态')
     },
     /** 从指定事件序号之后续接会话过程流。 */
-    async streamEvents(sessionId: string, after: number, onEvent: (index: number, event: NonNullable<SessionDetail['events']>[number]) => void, signal?: AbortSignal) {
+    async streamEvents(sessionId: string, after: number, onEvent: (index: number, event: NonNullable<SessionDetail['events']>[number]) => void,
+      signal?: AbortSignal, onLiveText?: (text: string) => void) {
       const response = await fetch(`${baseUrl}/v1/sessions/${encodeURIComponent(sessionId)}/events/stream?after=${after}`, { signal })
       if (!response.ok) throw new Error(await responseError(response))
       await readSse(response, message => {
         if (message.event === 'progress' && message.id) onEvent(Number(message.id), JSON.parse(message.data))
+        if (message.event === 'live_text' && message.data) onLiveText?.(JSON.parse(message.data).text ?? '')
       })
     },
   }

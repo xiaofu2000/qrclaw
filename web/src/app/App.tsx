@@ -60,14 +60,17 @@ export function App() {
           onNewChat={() => { setSidebarOpen(false); void chat.newConversation() }}
           onSelectConversation={id => { setSidebarOpen(false); void chat.loadConversation(id) }} />
         <main className="chat-column" id="conversation">
-          <ChatPanel sessionId={chat.activeId} messages={chat.messages} streaming={chat.streaming} running={chat.running} queued={chat.queued} loading={chat.loading} />
+          <ChatPanel sessionId={chat.activeId} timeline={chat.timeline} streaming={chat.streaming} running={chat.running} queued={chat.queued}
+            loading={chat.loading} onSelectSubAgent={id => { chat.selectSubAgent(id); setInspectorOpen(true) }} />
           <div className="composer-area">
             {chat.error && <div className="chat-error" role="alert"><span>{chat.error}</span><button onClick={() => void chat.refresh()}>刷新会话</button></div>}
             <Composer value={chat.draft} onChange={chat.setDraft} onSend={chat.send}
               disabled={chat.running || chat.loading || chat.creating || !chat.session} loading={chat.loading || !chat.session} running={chat.running} />
           </div>
         </main>
-        {inspectorOpen && <InspectorPanel session={chat.session} status={status} queued={chat.queued} onClose={() => setInspectorOpen(false)} />}
+        {inspectorOpen && <InspectorPanel session={chat.session} status={status} queued={chat.queued}
+          selectedCard={chat.selectedCard} childSession={chat.childSession} childMessages={chat.childMessages}
+          childStreaming={chat.childStreaming} onMainAgent={() => chat.selectSubAgent(null)} onClose={() => setInspectorOpen(false)} />}
       </div>
     </div>
   )

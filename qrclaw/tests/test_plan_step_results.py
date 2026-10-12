@@ -13,13 +13,13 @@ from qrclaw.workspace import Workspace
 
 
 def test_plan_passes_previous_result_to_next_step_and_replanner(temp_dir):
-    session = MagicMock(spec=Session)
     workspace = Workspace(_root=temp_dir)
+    session = Session(workspace.sessions_dir, resume=False)
     ctx = init_context_manager(session, workspace)
     ctx.set_plan("目标", [PlanStep(1, "第一步"), PlanStep(2, "第二步", [1])])
     tasks = []
 
-    def run_sub_agent(task, workspace, agent_id, console=None, sandbox_policy_agent_id=None):
+    def run_sub_agent(task, workspace, agent_id, console=None, sandbox_policy_agent_id=None, **_kwargs):
         assert sandbox_policy_agent_id == workspace.agent_id
         tasks.append(task)
         return f"结果{len(tasks)}", None
@@ -36,9 +36,9 @@ def test_plan_passes_previous_result_to_next_step_and_replanner(temp_dir):
     assert result == "完成"
     assert len(tasks) == 2
     assert "结果1" in tasks[1]
-    assert "结果1" in session.add.call_args.args[0]["content"]
-    assert "结果2" in session.add.call_args.args[0]["content"]
-    assert [call.args[0].title for call in session.add_event.call_args_list].count("步骤完成") == 2
+    assert "结果1" in session.messages[-1]["content"]
+    assert "结果2" in session.messages[-1]["content"]
+    assert [event["title"] for event in session.events].count("步骤完成") == 2
 
 
 def test_graph_runner_keeps_router_wiki_context(temp_dir):
@@ -87,8 +87,8 @@ def test_cyclic_plan_does_not_report_success(temp_dir):
 
 
 def test_replanner_continue_without_steps_does_not_report_success(temp_dir):
-    session = MagicMock(spec=Session)
     workspace = Workspace(_root=temp_dir)
+    session = Session(workspace.sessions_dir, resume=False)
     ctx = init_context_manager(session, workspace)
     ctx.set_plan("目标", [PlanStep(1, "步骤")])
     executor = PlanExecutorNode()
@@ -100,12 +100,12 @@ def test_replanner_continue_without_steps_does_not_report_success(temp_dir):
 
     assert "失败" in result
     react.assert_not_called()
-    assert not any(call.args[0].get("kind") == "execution_report" for call in session.add.call_args_list)
+    assert not any(message.get("kind") == "execution_report" for message in session.messages)
 
 
 def test_parallel_step_error_does_not_report_success(temp_dir):
-    session = MagicMock(spec=Session)
     workspace = Workspace(_root=temp_dir)
+    session = Session(workspace.sessions_dir, resume=False)
     ctx = init_context_manager(session, workspace)
     ctx.set_plan("目标", [PlanStep(1, "步骤一"), PlanStep(2, "步骤二")])
     executor = PlanExecutorNode()
@@ -120,18 +120,17 @@ def test_parallel_step_error_does_not_report_success(temp_dir):
     result = executor.run(session, Console(file=StringIO()), workspace, False, run_sub_agent, react)
 
     assert "子任务故障" in result
-    assert any(call.args[0].title == "步骤失败" and call.args[0].content == "步骤二"
-               for call in session.add_event.call_args_list)
+    assert any(event["title"] == "步骤失败" and event["content"] == "步骤二" for event in session.events)
     react.assert_not_called()
-    assert not any(call.args[0].get("kind") == "execution_report" for call in session.add.call_args_list)
+    assert not any(message.get("kind") == "execution_report" for message in session.messages)
 
 
 def test_replanning_has_iteration_limit(temp_dir, monkeypatch):
     from qrclaw.graph.nodes import plan_executor
 
     monkeypatch.setattr(plan_executor, "MAX_ITERATIONS", 3)
-    session = MagicMock(spec=Session)
     workspace = Workspace(_root=temp_dir)
+    session = Session(workspace.sessions_dir, resume=False)
     ctx = init_context_manager(session, workspace)
     ctx.set_plan("目标", [PlanStep(1, "步骤")])
     executor = PlanExecutorNode()

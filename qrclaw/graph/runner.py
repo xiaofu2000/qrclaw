@@ -41,7 +41,7 @@ class GraphRunner:
         # 子 agent 跳过路由，直接走 ReactLoop
         if is_sub_agent:
             logger.info("子 agent 跳过路由，直接走 ReactLoop")
-            return self.react_loop.run(session, console, workspace, auto_confirm, is_sub_agent=True)
+            return self.react_loop.run(session, console, workspace, auto_confirm, is_sub_agent=True, on_delta=on_delta)
 
         # 条件边：Router 判断路由
         route_result = self.router.run(user_input)

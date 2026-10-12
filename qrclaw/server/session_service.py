@@ -28,7 +28,18 @@ class SessionService:
         return session
 
     def delete_session(self, session_id: str) -> bool:
-        return delete_session(session_id, self.workspace.sessions_dir)
+        """删除父会话时一并清理其隐藏的子任务会话。"""
+        parent = self.get_session(session_id)
+        children = {
+            (event.get("meta") or {}).get("child_session_id")
+            for event in parent.events if event.get("kind") == "subagent"
+        }
+        deleted = delete_session(session_id, self.workspace.sessions_dir)
+        if deleted:
+            for child_id in children:
+                if child_id:
+                    delete_session(child_id, self.workspace.sessions_dir)
+        return deleted
 
     @staticmethod
     def describe_session(session: Session) -> dict[str, Any]:
