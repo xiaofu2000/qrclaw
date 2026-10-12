@@ -6,7 +6,7 @@ global provider directly. Existing modules can migrate gradually.
 """
 from __future__ import annotations
 
-from typing import Any, TypeVar
+from typing import Any, Callable, TypeVar
 
 from qrclaw.providers.base import LLMProvider, LLMResponse
 
@@ -25,13 +25,18 @@ class LLMService:
         tools: list[dict] | None = None,
         json_mode: bool = False,
         temperature: float | None = None,
+        on_delta: Callable[[str], None] | None = None,
     ) -> LLMResponse:
-        return self.provider.chat(
+        """调用当前 Provider；需要逐块正文时传入 on_delta。"""
+        kwargs = dict(
             messages=messages,
             tools=tools,
             json_mode=json_mode,
             temperature=temperature,
         )
+        if on_delta is not None:
+            kwargs["on_delta"] = on_delta
+        return self.provider.chat(**kwargs)
 
     def structured(
         self,

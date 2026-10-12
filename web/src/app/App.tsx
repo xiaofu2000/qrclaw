@@ -60,7 +60,7 @@ export function App() {
           onNewChat={() => { setSidebarOpen(false); void chat.newConversation() }}
           onSelectConversation={id => { setSidebarOpen(false); void chat.loadConversation(id) }} />
         <main className="chat-column" id="conversation">
-          <ChatPanel sessionId={chat.activeId} messages={chat.messages} running={chat.running} queued={chat.queued} loading={chat.loading} />
+          <ChatPanel sessionId={chat.activeId} messages={chat.messages} streaming={chat.streaming} running={chat.running} queued={chat.queued} loading={chat.loading} />
           <div className="composer-area">
             {chat.error && <div className="chat-error" role="alert"><span>{chat.error}</span><button onClick={() => void chat.refresh()}>刷新会话</button></div>}
             <Composer value={chat.draft} onChange={chat.setDraft} onSend={chat.send}

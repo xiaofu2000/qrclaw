@@ -11,6 +11,7 @@ LiteLLMProvider 单元测试
 import pytest
 import os
 from unittest.mock import patch, MagicMock
+from types import SimpleNamespace
 
 # 设置环境变量以避免 provider 加载错误
 os.environ.setdefault("LLM_PROVIDER", "litellm")
@@ -491,3 +492,45 @@ class TestTemperatureParameter:
 
             call_kwargs = mock_completion.call_args[1]
             assert "temperature" not in call_kwargs
+
+
+def test_stream_assembles_text_tools_and_usage_without_exposing_reasoning():
+    """正文实时转发，工具参数和推理只进入完整响应。"""
+    provider = LiteLLMProvider()
+    obj = SimpleNamespace
+    chunks = [
+        obj(choices=[obj(delta=obj(content="先查", reasoning_content="内部思考", tool_calls=[]), finish_reason=None)], usage=None),
+        obj(choices=[obj(delta=obj(content=None, reasoning_content=None, tool_calls=[
+            obj(index=0, id="call-1", function=obj(name="read_", arguments='{"path":"'), thought_signature=None),
+        ]), finish_reason=None)], usage=None),
+        obj(choices=[obj(delta=obj(content=None, reasoning_content=None, tool_calls=[
+            obj(index=0, id=None, function=obj(name="file", arguments='a"}'), thought_signature=None),
+        ]), finish_reason="tool_calls")], usage=None),
+        obj(choices=[], usage=obj(prompt_tokens=8, completion_tokens=4, total_tokens=12)),
+    ]
+    deltas = []
+    with patch("qrclaw.providers.litellm_provider.completion", return_value=iter(chunks)) as call:
+        result = provider.chat([{"role": "user", "content": "查文件"}], on_delta=deltas.append)
+    assert call.call_args.kwargs["stream"] is True
+    assert call.call_args.kwargs["stream_options"] == {"include_usage": True}
+    assert deltas == ["先查"]
+    assert result.content == "先查"
+    assert result.reasoning_content == "内部思考"
+    assert [(tool.id, tool.name, tool.arguments) for tool in result.tool_calls] == [
+        ("call-1", "read_file", '{"path":"a"}')]
+    assert result.finish_reason == "tool_calls"
+    assert result.total_tokens == 12
+
+
+def test_stream_error_after_delta_is_not_retried():
+    """部分正文已送达后禁止重试，以免回复或工具执行重复。"""
+    provider = LiteLLMProvider()
+    def broken():
+        yield SimpleNamespace(choices=[SimpleNamespace(delta=SimpleNamespace(content="前半段", reasoning_content=None, tool_calls=[]), finish_reason=None)], usage=None)
+        raise RuntimeError("连接中断")
+    deltas = []
+    with patch("qrclaw.providers.litellm_provider.completion", return_value=broken()) as call:
+        with pytest.raises(RuntimeError, match="连接中断"):
+            provider.chat([{"role": "user", "content": "你好"}], on_delta=deltas.append)
+    assert deltas == ["前半段"]
+    assert call.call_count == 1

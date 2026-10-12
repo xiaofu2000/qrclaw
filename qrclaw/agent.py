@@ -8,6 +8,7 @@ agent.py —— agent 入口 + 工具函数
 """
 import asyncio
 import json
+from typing import Callable
 from rich.console import Console
 from qrclaw.providers.base import LLMResponse
 from qrclaw.memory.context.session import Session
@@ -187,7 +188,9 @@ def run(
     console: Console,
     workspace: Workspace,
     auto_confirm: bool = False,
+    on_delta: Callable[[str], None] | None = None,
 ):
+    """运行主 Agent；流式回调只转发对用户可见的正文。"""
     logger.info(f"收到用户输入: {user_input[:100]}...")
 
     set_session(session)
@@ -213,6 +216,7 @@ def run(
             auto_confirm=auto_confirm,
             is_sub_agent=is_sub_agent(),
             run_sub_agent_fn=run_sub_agent,
+            on_delta=on_delta,
         )
     finally:
         # 清理：仅当本次 run 初始化了 MCP 时才关闭

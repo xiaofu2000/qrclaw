@@ -21,13 +21,17 @@ class ToolRunner:
 
     def __post_init__(self) -> None:
         self._permission_denied_count = 0
+        self.last_error = False
 
     def run(self, name: str, arguments: str) -> str:
+        """执行工具并记录本次是否失败，供会话过程事件使用。"""
+        self.last_error = False
         if need_confirm(name) and not self.auto_confirm:
             if self.console:
                 self.console.print("[bold red]⚠ 需要确认[/bold red] 是否允许执行？(y/n) ", end="")
             choice = input().strip().lower()
             if choice != "y":
+                self.last_error = True
                 return "用户拒绝执行此操作"
 
         try:
@@ -35,11 +39,13 @@ class ToolRunner:
             self._permission_denied_count = 0
             return result
         except PermissionError as exc:
+            self.last_error = True
             self._permission_denied_count += 1
             if self._permission_denied_count >= self.max_permission_denied:
                 raise RuntimeError(f"连续 {self.max_permission_denied} 次权限拒绝，任务终止") from exc
             return str(exc)
         except Exception as exc:
+            self.last_error = True
             logger.error("工具执行失败: %s, 错误: %s", name, exc, exc_info=True)
             return f"工具执行失败: {str(exc)}"
 

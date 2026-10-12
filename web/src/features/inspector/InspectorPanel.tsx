@@ -9,7 +9,8 @@ type InspectorPanelProps = {
 }
 
 export function InspectorPanel({ session, status, queued, onClose }: InspectorPanelProps) {
-  const events = session?.events ?? []
+  const events = (session?.events ?? []).filter(event =>
+    event.kind === 'tool_status' || (event.kind === 'status' && ['执行中', '步骤完成', '步骤失败'].includes(event.title)))
 
   return (
     <aside className="inspector-panel" id="run-inspector" aria-label="执行过程">

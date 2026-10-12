@@ -9,6 +9,7 @@ LiteLLM Provider
 
 """
 import litellm
+from typing import Callable
 from litellm import completion
 from litellm.exceptions import RateLimitError, ServiceUnavailableError, APIError, APIConnectionError
 from urllib.parse import urlparse
@@ -121,6 +122,7 @@ class LiteLLMProvider(LLMProvider):
         tools: list[dict] | None = None,
         json_mode: bool = False,
         temperature: float | None = None,
+        on_delta: Callable[[str], None] | None = None,
     ) -> LLMResponse:
         """
         发送消息，返回统一格式的响应。
@@ -130,6 +132,7 @@ class LiteLLMProvider(LLMProvider):
             tools:       工具 schema 列表
             json_mode:   为 True 时强制 LLM 输出合法 JSON
             temperature: 温度参数，越低越确定性输出
+            on_delta: 传入时使用 LiteLLM 流式接口并逐块回调正文
         """
         kwargs = {
             "model": self._model,
@@ -154,6 +157,9 @@ class LiteLLMProvider(LLMProvider):
         # 温度参数
         if temperature is not None:
             kwargs["temperature"] = temperature
+
+        if on_delta is not None:
+            return self._chat_stream(kwargs, on_delta)
 
         # 重试逻辑
         max_retries = 3
@@ -200,7 +206,7 @@ class LiteLLMProvider(LLMProvider):
 
         # finish_reason 修正
         finish_reason = choice.finish_reason
-        if tool_calls and finish_reason not in ("tool_calls", "stop"):
+        if tool_calls and finish_reason != "length":
             finish_reason = "tool_calls"
 
         # 提取 usage
@@ -219,6 +225,60 @@ class LiteLLMProvider(LLMProvider):
             completion_tokens=completion_tokens,
             total_tokens=total_tokens,
             raw=response,
+        )
+
+    def _chat_stream(self, kwargs: dict, on_delta: Callable[[str], None]) -> LLMResponse:
+        """逐块转发正文，并拼装工具调用和最终用量供 ReAct 循环使用。"""
+        contents: list[str] = []
+        reasoning: list[str] = []
+        tool_parts: dict[int, dict[str, str]] = {}
+        finish_reason = "stop"
+        usage = None
+        kwargs = {**kwargs, "stream": True, "stream_options": {"include_usage": True}}
+        try:
+            for chunk in completion(**kwargs):
+                usage = getattr(chunk, "usage", None) or usage
+                choices = getattr(chunk, "choices", None) or []
+                if not choices:
+                    continue
+                choice = choices[0]
+                delta = choice.delta
+                content = getattr(delta, "content", None)
+                if content:
+                    contents.append(content)
+                    on_delta(content)
+                reason = self._extract_response_reasoning(delta)
+                if reason:
+                    reasoning.append(reason)
+                for part in getattr(delta, "tool_calls", None) or []:
+                    item = tool_parts.setdefault(part.index, {"id": "", "name": "", "arguments": "", "thought_signature": ""})
+                    item["id"] += getattr(part, "id", None) or ""
+                    function = getattr(part, "function", None)
+                    if function:
+                        item["name"] += getattr(function, "name", None) or ""
+                        item["arguments"] += getattr(function, "arguments", None) or ""
+                    item["thought_signature"] += getattr(part, "thought_signature", None) or ""
+                finish_reason = choice.finish_reason or finish_reason
+        except Exception as exc:
+            raise RuntimeError(f"LiteLLM 流式调用失败: {exc}") from exc
+
+        tool_calls = [
+            ToolCall(id=item["id"], name=item["name"], arguments=item["arguments"],
+                     thought_signature=item["thought_signature"] or None)
+            for _, item in sorted(tool_parts.items())
+        ]
+        if tool_calls and finish_reason != "length":
+            finish_reason = "tool_calls"
+        if usage is None:
+            logger.warning("LiteLLM 流式响应未返回 token 用量")
+        return LLMResponse(
+            content="".join(contents),
+            reasoning_content="".join(reasoning) or None,
+            tool_calls=tool_calls,
+            finish_reason=finish_reason,
+            prompt_tokens=getattr(usage, "prompt_tokens", 0) or 0,
+            completion_tokens=getattr(usage, "completion_tokens", 0) or 0,
+            total_tokens=getattr(usage, "total_tokens", 0) or 0,
         )
 
     def make_instructor_kwargs(self, messages: list[dict], temperature: float = 0.1) -> dict:

@@ -38,6 +38,7 @@ def test_plan_passes_previous_result_to_next_step_and_replanner(temp_dir):
     assert "结果1" in tasks[1]
     assert "结果1" in session.add.call_args.args[0]["content"]
     assert "结果2" in session.add.call_args.args[0]["content"]
+    assert [call.args[0].title for call in session.add_event.call_args_list].count("步骤完成") == 2
 
 
 def test_graph_runner_keeps_router_wiki_context(temp_dir):
@@ -119,6 +120,8 @@ def test_parallel_step_error_does_not_report_success(temp_dir):
     result = executor.run(session, Console(file=StringIO()), workspace, False, run_sub_agent, react)
 
     assert "子任务故障" in result
+    assert any(call.args[0].title == "步骤失败" and call.args[0].content == "步骤二"
+               for call in session.add_event.call_args_list)
     react.assert_not_called()
     assert not any(call.args[0].get("kind") == "execution_report" for call in session.add.call_args_list)
 

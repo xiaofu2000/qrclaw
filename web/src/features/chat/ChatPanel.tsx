@@ -8,12 +8,13 @@ import { ExecutionReport } from './ExecutionReport'
 type ChatPanelProps = {
   sessionId: string
   messages: Message[]
+  streaming: string
   running: boolean
   queued: boolean
   loading: boolean
 }
 
-export function ChatPanel({ sessionId, messages, running, queued, loading }: ChatPanelProps) {
+export function ChatPanel({ sessionId, messages, streaming, running, queued, loading }: ChatPanelProps) {
   const historyRef = useRef<HTMLDivElement>(null)
   const followRef = useRef(true)
   const previousSessionRef = useRef(sessionId)
@@ -31,7 +32,7 @@ export function ChatPanel({ sessionId, messages, running, queued, loading }: Cha
       history.scrollTop = history.scrollHeight
       setShowJump(false)
     } else if (history) setShowJump(true)
-  }, [sessionId, messages, running])
+  }, [sessionId, messages, streaming, running])
 
   async function copy(message: Message) {
     try {
@@ -66,6 +67,10 @@ export function ChatPanel({ sessionId, messages, running, queued, loading }: Cha
                 </>}
             </article>
           ))}
+          {streaming && <article className="chat-message assistant" aria-label="正在生成的回复">
+            <div className="message-role">QRClaw</div>
+            <div className="message-bubble markdown-body"><ReactMarkdown remarkPlugins={[remarkGfm]}>{streaming}</ReactMarkdown></div>
+          </article>}
           {running && <div className="pending-response" role="status"><span className="thinking-dots" aria-hidden="true"><i /><i /><i /></span>{queued ? '任务已排队，等待执行…' : '正在处理任务…'}</div>}
           {copyError && <div className="copy-error" role="alert">{copyError}</div>}
         </div>

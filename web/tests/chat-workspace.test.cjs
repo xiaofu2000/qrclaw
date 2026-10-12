@@ -47,6 +47,7 @@ function workspace(api) {
     exports, require: () => react,
     setTimeout: fn => { timers.set(++timerId, fn); return timerId },
     clearTimeout: id => timers.delete(id),
+    AbortController,
   })
   function render() {
     cursor = 0
@@ -82,13 +83,14 @@ function client() {
     listSessions: async () => Object.values(sessions),
     getSession: async id => sessions[id],
     createSession: async () => sessions.B,
-    chat: async () => '',
+    chatStream: async () => '',
+    streamEvents: async () => {},
   }
 }
 
 test('A completing cannot clear B running state or B draft', async () => {
   const api = client(), a = deferred(), b = deferred()
-  api.chat = id => (id === 'A' ? a : b).promise
+  api.chatStream = id => (id === 'A' ? a : b).promise
   const hook = workspace(api)
   let view = await hook.flush()
   const sendingA = view.send('task A')
@@ -120,7 +122,7 @@ test('A completing cannot clear B running state or B draft', async () => {
 test('rapid sends in one session execute once', async () => {
   const api = client(), pending = deferred()
   let calls = 0
-  api.chat = () => { calls++; return pending.promise }
+  api.chatStream = () => { calls++; return pending.promise }
   const hook = workspace(api), view = await hook.flush()
   const first = view.send('hello')
   await view.send('duplicate')
@@ -132,7 +134,7 @@ test('rapid sends in one session execute once', async () => {
 
 test('failed request preserves a newer draft and allows retry', async () => {
   const api = client(), pending = deferred()
-  api.chat = () => pending.promise
+  api.chatStream = () => pending.promise
   const hook = workspace(api)
   let view = await hook.flush()
   const sending = view.send('old draft')
@@ -152,7 +154,7 @@ test('completed task with failed result read refreshes without resending', async
   let calls = 0
   const hook = workspace(api)
   let view = await hook.flush()
-  api.chat = async () => { calls++; api.getSession = async () => { throw new Error('read failed') } }
+  api.chatStream = async () => { calls++; api.getSession = async () => { throw new Error('read failed') } }
   await view.send('execute once')
   view = hook.render()
   assert.match(view.error, /任务已完成/)
@@ -185,7 +187,7 @@ test('reload restores server running tasks and polling retrieves completion', as
   api.sessions.A.run_status = 'running'
   api.sessions.B.run_status = 'queued'
   let calls = 0
-  api.chat = async () => { calls++ }
+  api.chatStream = async () => { calls++ }
   const hook = workspace(api)
   let view = await hook.flush()
   assert.equal(view.running, true)
@@ -219,5 +221,82 @@ test('bootstrap cannot overwrite completion with an older session response', asy
   const view = await hook.flush()
   assert.equal(view.running, false)
   assert.equal(view.messages[0]?.content, 'final result')
+  hook.close()
+})
+
+test('流式正文按会话隔离，过程事件按序号去重', async () => {
+  const api = client(), a = deferred(), b = deferred()
+  api.chatStream = (id, _content, onDelta, onReady) => {
+    onReady()
+    onDelta(id === 'A' ? '甲' : '乙')
+    return (id === 'A' ? a : b).promise
+  }
+  api.streamEvents = async (_id, _after, onEvent) => {
+    const event = { kind: 'tool_status', title: '工具开始', content: 'read_file' }
+    onEvent(0, event)
+    onEvent(0, event)
+  }
+  const hook = workspace(api)
+  let view = await hook.flush()
+  const sendingA = view.send('任务 A')
+  view = await hook.flush()
+  assert.equal(view.streaming, '甲')
+  assert.equal(view.session.events.length, 1)
+  await view.newConversation()
+  view = hook.render()
+  const sendingB = view.send('任务 B')
+  view = await hook.flush()
+  assert.equal(view.streaming, '乙')
+  await view.loadConversation('A')
+  view = hook.render()
+  assert.equal(view.streaming, '甲')
+  a.resolve()
+  b.resolve()
+  await Promise.all([sendingA, sendingB])
+  hook.close()
+})
+
+test('流式连接断开后不重发，轮询接回后台完成结果', async () => {
+  const api = client()
+  let calls = 0
+  api.chatStream = async (_id, _content, onDelta, onReady) => {
+    calls++
+    api.sessions.A.run_status = 'running'
+    onReady()
+    onDelta('部分')
+    throw new Error('连接中断')
+  }
+  const hook = workspace(api)
+  let view = await hook.flush()
+  await view.send('只执行一次')
+  view = hook.render()
+  assert.equal(calls, 1)
+  assert.equal(view.running, true)
+  assert.equal(view.streaming, '部分')
+  api.sessions.A = { ...api.sessions.A, run_status: 'idle', messages: [
+    { role: 'user', content: '只执行一次' }, { role: 'assistant', content: '最终结果' },
+  ] }
+  view = await hook.poll()
+  if (view.running) view = await hook.poll()
+  assert.equal(view.running, false)
+  assert.equal(view.streaming, '')
+  assert.equal(view.messages.at(-1).content, '最终结果')
+  assert.equal(view.error, '')
+  assert.equal(calls, 1)
+  hook.close()
+})
+
+test('后端返回同会话冲突时移除未提交的乐观消息', async () => {
+  const api = client()
+  api.chatStream = async () => {
+    api.sessions.A.run_status = 'running'
+    throw new Error('会话已有任务正在执行')
+  }
+  const hook = workspace(api)
+  const view = await hook.flush()
+  await view.send('重复请求')
+  const latest = hook.render()
+  assert.equal(latest.messages.length, 0)
+  assert.equal(latest.draft, '重复请求')
   hook.close()
 })

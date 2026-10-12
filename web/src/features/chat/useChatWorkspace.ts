@@ -23,10 +23,12 @@ function normalizeMessages(sessionId: string, messages: SessionDetail['messages'
   })
 }
 
+/** 按会话维护聊天、过程事件和断线恢复状态。 */
 export function useChatWorkspace(api: ApiClient) {
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [activeId, setActiveId] = useState('')
   const [sessions, setSessions] = useState<Record<string, SessionDetail>>({})
+  const [streaming, setStreaming] = useState<Record<string, string>>({})
   const [drafts, setDrafts] = useState<Record<string, string>>({})
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [connectionError, setConnectionError] = useState('')
@@ -38,10 +40,15 @@ export function useChatWorkspace(api: ApiClient) {
   const runningRef = useRef(new Set<string>())
   const requestsRef = useRef(new Set<string>())
   const creatingRef = useRef(false)
+  const eventCursorsRef = useRef(new Map<string, number>())
+  const eventStreamsRef = useRef(new Map<string, AbortController>())
 
   const storeSession = useCallback((session: SessionDetail) => {
+    eventCursorsRef.current.set(session.id, Math.max(eventCursorsRef.current.get(session.id) ?? -1, (session.events?.length ?? 0) - 1))
     setSessions(current => ({ ...current, [session.id]: session }))
   }, [])
+
+  useEffect(() => () => { for (const controller of eventStreamsRef.current.values()) controller.abort() }, [])
 
   const refreshConversations = useCallback(async () => {
     const listed = await api.listSessions()
@@ -125,25 +132,48 @@ export function useChatWorkspace(api: ApiClient) {
       ? { ...item, title: content.replace(/\s+/g, ' ').slice(0, 60), messageCount: 1 } : item))
     setErrors(current => ({ ...current, [id]: '' }))
     setDrafts(current => ({ ...current, [id]: '' }))
+    setStreaming(current => ({ ...current, [id]: '' }))
     setSessions(current => ({ ...current, [id]: {
       ...current[id], run_status: 'queued', run_error: null, messages: [...current[id].messages, { role: 'user', content }],
     } }))
     let completed = false
+    let accepted = false
     try {
-      await api.chat(id, content)
+      await api.chatStream(id, content, delta => {
+        setStreaming(current => ({ ...current, [id]: (current[id] ?? '') + delta }))
+      }, () => {
+        accepted = true
+        const controller = new AbortController()
+        eventStreamsRef.current.set(id, controller)
+        void api.streamEvents(id, eventCursorsRef.current.get(id) ?? -1, (index, event) => {
+          if (index <= (eventCursorsRef.current.get(id) ?? -1)) return
+          eventCursorsRef.current.set(id, index)
+          setSessions(current => current[id] ? ({ ...current, [id]: {
+            ...current[id], events: [...(current[id].events ?? []), event],
+          } }) : current)
+        }, controller.signal).catch(() => { /* 过程流失败时仍可通过会话查询恢复。 */ })
+          .finally(() => eventStreamsRef.current.delete(id))
+      })
       completed = true
       storeSession(await api.getSession(id))
+      setStreaming(current => ({ ...current, [id]: '' }))
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error)
       setErrors(current => ({ ...current, [id]: completed ? `任务已完成，但读取结果失败：${detail}。请刷新会话。` : `请求失败：${detail}` }))
       if (!completed) {
-        setDrafts(current => ({ ...current, [id]: current[id] || content }))
-        try { storeSession(await api.getSession(id)) } catch { /* 保留本地输入供用户检查。 */ }
+        if (!accepted) setDrafts(current => ({ ...current, [id]: current[id] || content }))
+        try {
+          const latest = await api.getSession(id)
+          if (latest.run_status === 'idle') {
+            storeSession(latest)
+            setStreaming(current => ({ ...current, [id]: '' }))
+            if (accepted) setErrors(current => ({ ...current, [id]: '' }))
+          } else if (!accepted) storeSession(latest)
+          else setSessions(current => ({ ...current, [id]: { ...current[id], run_status: latest.run_status, events: latest.events } }))
+        } catch { /* 状态不明时保留运行标记，避免重复提交。 */ }
       }
     } finally {
       requestsRef.current.delete(id)
-      runningRef.current.delete(id)
-      setRunningIds(new Set(runningRef.current))
       try { await refreshConversations() } catch { setConnectionError('会话列表刷新失败，请稍后重试。') }
     }
   }
@@ -160,11 +190,19 @@ export function useChatWorkspace(api: ApiClient) {
           if (cancelled) return
           if (session.run_status === 'idle' && !requestsRef.current.has(id)) {
             storeSession(session)
+            setStreaming(current => ({ ...current, [id]: '' }))
+            setErrors(current => ({ ...current, [id]: '' }))
             runningRef.current.delete(id)
             completed = true
-          } else setSessions(current => current[id] ? ({ ...current, [id]: {
-            ...current[id], events: session.events, total_tokens: session.total_tokens, run_status: session.run_status,
-          } }) : ({ ...current, [id]: session }))
+          } else {
+            const cursor = eventCursorsRef.current.get(id) ?? -1
+            const savedEvents = session.events ?? []
+            if (savedEvents.length - 1 > cursor) eventCursorsRef.current.set(id, savedEvents.length - 1)
+            setSessions(current => current[id] ? ({ ...current, [id]: {
+              ...current[id], events: savedEvents.length - 1 >= cursor ? savedEvents : current[id].events,
+              total_tokens: session.total_tokens, run_status: session.run_status,
+            } }) : ({ ...current, [id]: session }))
+          }
         } catch { /* 保留运行状态，等后续轮询确认结果。 */ }
       }))
       if (!cancelled && completed) {
@@ -186,7 +224,7 @@ export function useChatWorkspace(api: ApiClient) {
   const error = errors[activeId] || (session?.run_error ? `任务失败：${session.run_error}` : '') || connectionError
 
   return {
-    conversations, activeId, session, messages, runningIds, running, queued, loading, creating, error,
+    conversations, activeId, session, messages, streaming: streaming[activeId] ?? '', runningIds, running, queued, loading, creating, error,
     draft: drafts[activeId] ?? '',
     setDraft: (value: string) => setDrafts(current => ({ ...current, [activeId]: value })),
     loadConversation, newConversation, send,

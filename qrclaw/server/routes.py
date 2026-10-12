@@ -2,11 +2,15 @@ from __future__ import annotations
 
 import time
 import uuid
+import json
+from queue import Empty, Full, Queue
+from threading import Event, Thread
 from threading import Lock, RLock
 from io import StringIO
 from typing import Any
 
 from fastapi import APIRouter, Body, HTTPException
+from fastapi.responses import StreamingResponse
 from rich.console import Console
 
 from qrclaw.agent import run as run_agent
@@ -73,6 +77,35 @@ def build_router(workspace: Workspace) -> APIRouter:
             session = service.get_session(session_id)
             return with_status(service.describe_session(session))
 
+    @router.get("/v1/sessions/{session_id}/events/stream")
+    def stream_session_events(session_id: str, after: int = -1) -> StreamingResponse:
+        """按会话事件序号推送过程状态，断线后可从 after 继续。"""
+        if after < -1:
+            raise HTTPException(status_code=400, detail="after 必须大于或等于 -1")
+        if not service.get_session(session_id)._path.exists():
+            raise HTTPException(status_code=404, detail="会话不存在")
+
+        def events():
+            """从已保存事件续发状态，任务结束且事件排空后关闭。"""
+            cursor = after
+            while True:
+                with status_lock:
+                    session = service.get_session(session_id)
+                    saved = list(session.events)
+                    running = session_id in runs
+                for index in range(cursor + 1, len(saved)):
+                    cursor = index
+                    event = saved[index]
+                    is_step = event.get("kind") == "status" and event.get("title") in ("执行中", "步骤完成", "步骤失败")
+                    if is_step or event.get("kind") == "tool_status":
+                        visible = {key: event[key] for key in ("kind", "title", "content", "created_at") if key in event}
+                        yield f'id: {index}\nevent: progress\ndata: {json.dumps(visible, ensure_ascii=False)}\n\n'
+                if not running:
+                    break
+                time.sleep(0.2)
+
+        return StreamingResponse(events(), media_type="text/event-stream", headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
     @router.delete("/v1/sessions/{session_id}")
     def delete_session_api(session_id: str) -> dict[str, Any]:
         with status_lock:
@@ -85,10 +118,8 @@ def build_router(workspace: Workspace) -> APIRouter:
         return {"deleted": True}
 
     @router.post("/v1/chat/completions")
-    def chat_completions(request: ChatCompletionRequest) -> dict[str, Any]:
-        if request.stream:
-            raise HTTPException(status_code=400, detail="stream=true 暂未支持，当前仅支持非流式调用")
-
+    def chat_completions(request: ChatCompletionRequest):
+        """执行一次 Agent 对话；流式请求持续发送标准聊天片段。"""
         user_input = _latest_user_text(request.messages)
         if not user_input:
             raise HTTPException(status_code=400, detail="messages 中缺少 user 内容")
@@ -101,25 +132,98 @@ def build_router(workspace: Workspace) -> APIRouter:
             failures.pop(session.session_id, None)
         console = Console(file=StringIO(), highlight=False)
 
-        try:
-            # MCP 工具注册表和后台 Agent 状态是进程级的。
-            with _agent_run_lock:
+        def execute(on_delta=None):
+            """统一维护非流式和流式运行状态。"""
+            try:
+                # MCP 工具注册表和后台 Agent 状态是进程级的。
+                with _agent_run_lock:
+                    with status_lock:
+                        runs[session.session_id] = "running"
+                    kwargs = dict(
+                        user_input=user_input,
+                        session=session,
+                        console=console,
+                        workspace=workspace,
+                        auto_confirm=True,
+                    )
+                    if on_delta is not None:
+                        kwargs["on_delta"] = on_delta
+                    return run_agent(**kwargs)
+            except Exception as exc:
                 with status_lock:
-                    runs[session.session_id] = "running"
-                content = run_agent(
-                    user_input=user_input,
-                    session=session,
-                    console=console,
-                    workspace=workspace,
-                    auto_confirm=True,
-                )
+                    failures[session.session_id] = str(exc)
+                raise
+            finally:
+                with status_lock:
+                    runs.pop(session.session_id, None)
+
+        if request.stream:
+            chunks: Queue[tuple[str, str]] = Queue(maxsize=256)
+            connected = Event()
+            connected.set()
+            created = int(time.time())
+            completion_id = f"chatcmpl-{uuid.uuid4().hex}"
+
+            def enqueue(kind: str, value: str) -> None:
+                """有界排队；页面离开时停止送片段，Agent 继续执行。"""
+                while connected.is_set():
+                    try:
+                        chunks.put((kind, value), timeout=0.2)
+                        return
+                    except Full:
+                        continue
+
+            def publish(delta: str) -> None:
+                enqueue("delta", delta)
+
+            def worker() -> None:
+                """客户端离开后仍让 Agent 完成并保存会话。"""
+                try:
+                    execute(publish)
+                    enqueue("done", "")
+                except Exception as exc:
+                    enqueue("error", str(exc))
+
+            Thread(target=worker, name=f"chat-{session.session_id}", daemon=True).start()
+
+            def frame(delta: dict[str, Any], finish_reason=None) -> str:
+                """生成外部客户端可解析的聊天完成片段。"""
+                payload = {"id": completion_id, "object": "chat.completion.chunk", "created": created,
+                           "model": request.model or MODEL_ID,
+                           "choices": [{"index": 0, "delta": delta, "finish_reason": finish_reason}]}
+                return f'data: {json.dumps(payload, ensure_ascii=False)}\n\n'
+
+            def stream():
+                """从后台队列读取正文，结束或断开时停止排队片段。"""
+                try:
+                    yield frame({"role": "assistant", "content": ""})
+                    while True:
+                        try:
+                            kind, value = chunks.get(timeout=0.5)
+                        except Empty:
+                            yield ": ping\n\n"
+                            continue
+                        if kind == "delta":
+                            yield frame({"content": value})
+                        elif kind == "done":
+                            yield frame({}, "stop")
+                            yield "data: [DONE]\n\n"
+                            break
+                        else:
+                            yield f'data: {json.dumps({"error": {"message": value}}, ensure_ascii=False)}\n\n'
+                            yield "data: [DONE]\n\n"
+                            break
+                finally:
+                    connected.clear()
+
+            return StreamingResponse(stream(), media_type="text/event-stream",
+                                     headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no",
+                                              "X-QRClaw-Session-ID": session.session_id})
+
+        try:
+            content = execute()
         except Exception as exc:
-            with status_lock:
-                failures[session.session_id] = str(exc)
             raise HTTPException(status_code=500, detail=str(exc)) from exc
-        finally:
-            with status_lock:
-                runs.pop(session.session_id, None)
 
         content = content or ""
         created = int(time.time())

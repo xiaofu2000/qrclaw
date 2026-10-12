@@ -73,17 +73,18 @@ class PlanExecutorNode:
                     session.add_event(SessionEvent(kind="status", title="执行中", content=step.description))
                     console.print(f"[yellow]→ {step.description} (串行)[/yellow]")
                     result = self._run_serial(step, ps.goal, ps.past_steps, workspace, run_sub_agent_fn, console)
+                    session.add_event(SessionEvent(kind="status", title="步骤完成", content=step.description))
                     ctx.add_step_result(StepResult(
                         step_id=step.id,
                         description=step.description,
                         output=result,
                     ))
                 else:
-                    session.add_event(SessionEvent(kind="status", title="执行中", content=f"并行执行 {len(layer)} 个步骤"))
                     console.print(f"[yellow]→ 并行执行 {len(layer)} 个步骤[/yellow]")
                     for step in layer:
+                        session.add_event(SessionEvent(kind="status", title="执行中", content=step.description))
                         console.print(f"  [dim]Step {step.id}:[/dim] {step.description}")
-                    results = self._run_parallel(layer, ps.goal, ps.past_steps, workspace, run_sub_agent_fn, console)
+                    results = self._run_parallel(layer, ps.goal, ps.past_steps, workspace, run_sub_agent_fn, console, session)
                     for step in layer:
                         ctx.add_step_result(StepResult(
                             step_id=step.id,
@@ -91,6 +92,8 @@ class PlanExecutorNode:
                             output=results.get(step.id, ""),
                         ))
             except Exception as e:
+                if is_serial:
+                    session.add_event(SessionEvent(kind="status", title="步骤失败", content=step.description))
                 return fail(f"子任务执行失败：{e}")
 
             # 从剩余步骤中移除已完成的这一层
@@ -166,7 +169,7 @@ class PlanExecutorNode:
         logger.info(f"Step {step.id} 串行完成")
         return result
 
-    def _run_parallel(self, layer, goal: str, past_steps: list[StepResult], workspace, run_sub_agent_fn, console) -> dict[int, str]:
+    def _run_parallel(self, layer, goal: str, past_steps: list[StepResult], workspace, run_sub_agent_fn, console, session: Session) -> dict[int, str]:
         results: dict[int, str] = {}
         errors: list[str] = []
         lock = threading.Lock()
@@ -198,11 +201,13 @@ class PlanExecutorNode:
                 )
                 with lock:
                     results[step.id] = result
+                session.add_event(SessionEvent(kind="status", title="步骤完成", content=step.description))
                 notify_queue.put(("ok", step.id, step.description, result))
             except Exception as e:
                 logger.error(f"Step {step.id} 执行失败: {e}", exc_info=True)
                 with lock:
                     errors.append(f"Step {step.id}: {e}")
+                session.add_event(SessionEvent(kind="status", title="步骤失败", content=step.description))
                 notify_queue.put(("err", step.id, step.description, str(e)))
 
         threads = [

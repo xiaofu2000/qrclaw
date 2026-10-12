@@ -14,6 +14,7 @@ from rich.markdown import Markdown
 from qrclaw.config import MAX_ITERATIONS
 from qrclaw.tools.registry import get_schemas, get_schemas_for_sub_agent
 from qrclaw.memory.context.session import Session
+from qrclaw.memory.context.session import SessionEvent
 from qrclaw.memory.context.context_manager import get_context_manager
 from qrclaw.llm_service import LLMService, get_llm_service
 from qrclaw.workspace import Workspace
@@ -36,6 +37,7 @@ def run_react_loop(
     silent: bool = False,
     session: Optional[Session] = None,
     llm_service: Optional[LLMService] = None,
+    on_delta: Optional[Callable[[str], None]] = None,
 ) -> str:
     """
     通用 ReAct 循环核心，供 ReactLoopNode 和 MemoryExtractionNode 等复用。
@@ -52,6 +54,7 @@ def run_react_loop(
         console: Rich Console，silent=True 时不输出
         silent: 静默模式，不打印任何内容
         session: Session 对象，用于更新 token 使用量
+        on_delta: 主 Agent 可见正文的逐块回调
 
     Returns:
         最终 LLM 输出内容
@@ -64,7 +67,10 @@ def run_react_loop(
 
         with _console.status("[bold yellow]思考中...[/bold yellow]", spinner="dots") if not silent else _noop_ctx():
             try:
-                response = llm.chat(messages, tools=tools)
+                chat_kwargs = {"tools": tools}
+                if on_delta is not None:
+                    chat_kwargs["on_delta"] = on_delta
+                response = llm.chat(messages, **chat_kwargs)
             except Exception as e:
                 logger.error(f"LLM 调用失败: {e}", exc_info=True)
                 raise
@@ -186,7 +192,9 @@ class ReactLoopNode:
         workspace: Workspace,
         auto_confirm: bool = False,
         is_sub_agent: bool = False,
+        on_delta: Optional[Callable[[str], None]] = None,
     ) -> str:
+        """执行当前会话的 ReAct 循环，可选地转发正文片段。"""
         ctx = get_context_manager()
 
         # 仅主 agent 启用记忆提取
@@ -197,6 +205,24 @@ class ReactLoopNode:
 
         tools = get_schemas_for_sub_agent() if is_sub_agent else get_schemas()
         tool_runner = ToolRunner(console=console, auto_confirm=auto_confirm)
+
+        def run_tool(name: str, arguments: str) -> str:
+            """记录主 Agent 工具状态，不把参数或结果写入过程事件。"""
+            if not is_sub_agent:
+                session.add_event(SessionEvent(kind="tool_status", title="工具开始", content=name,
+                                               meta={"state": "started", "tool": name}))
+            try:
+                result = tool_runner.run(name, arguments)
+            except Exception:
+                if not is_sub_agent:
+                    session.add_event(SessionEvent(kind="tool_status", title="工具失败", content=name,
+                                                   meta={"state": "failed", "tool": name}))
+                raise
+            if not is_sub_agent:
+                failed = getattr(tool_runner, "last_error", False)
+                session.add_event(SessionEvent(kind="tool_status", title="工具失败" if failed else "工具完成",
+                                               content=name, meta={"state": "failed" if failed else "completed", "tool": name}))
+            return result
 
         def _on_assistant_message(message: dict) -> None:
             session.add(dict(message))
@@ -210,7 +236,7 @@ class ReactLoopNode:
                 messages=messages,
                 tools=tools,
                 max_iterations=MAX_ITERATIONS,
-                on_tool_call=tool_runner.run,
+                on_tool_call=run_tool,
                 on_assistant_message=_on_assistant_message,
                 on_tool_result=lambda message: session.add(dict(message)),
                 on_finish=(lambda _: memory_integration.on_react_loop_end(session, 0)) if memory_integration else None,
@@ -218,6 +244,7 @@ class ReactLoopNode:
                 silent=False,
                 session=session,
                 llm_service=get_llm_service(),
+                on_delta=on_delta,
             )
         except RuntimeError as e:
             console.print(Panel(

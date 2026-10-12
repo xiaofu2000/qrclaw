@@ -7,6 +7,7 @@ GraphRunner —图的入口
            └─→ PlanExecutor    （route=plan，复杂任务）
                    └─→ ReactLoop （并行计划完成后整合，由策略决定）
 """
+from typing import Callable
 from rich.console import Console
 from qrclaw.memory.context.session import Session
 from qrclaw.workspace import Workspace
@@ -34,7 +35,9 @@ class GraphRunner:
         auto_confirm: bool = False,
         is_sub_agent: bool = False,
         run_sub_agent_fn=None,
+        on_delta: Callable[[str], None] | None = None,
     ) -> str:
+        """按路由执行 Direct 或 Plan，并把主 Agent 回复片段向上传递。"""
         # 子 agent 跳过路由，直接走 ReactLoop
         if is_sub_agent:
             logger.info("子 agent 跳过路由，直接走 ReactLoop")
@@ -47,7 +50,7 @@ class GraphRunner:
             logger.info(f"路由 → PlanExecutor: {route_result.plan.goal}")
 
             def react_loop_fn():
-                return self.react_loop.run(session, console, workspace, auto_confirm, is_sub_agent=False)
+                return self.react_loop.run(session, console, workspace, auto_confirm, is_sub_agent=False, on_delta=on_delta)
 
             return self.plan_executor.run(
                 session=session,
@@ -60,4 +63,4 @@ class GraphRunner:
 
         # 条件边：route=direct
         logger.info("路由 → ReactLoop（直接执行）")
-        return self.react_loop.run(session, console, workspace, auto_confirm, is_sub_agent=False)
+        return self.react_loop.run(session, console, workspace, auto_confirm, is_sub_agent=False, on_delta=on_delta)
