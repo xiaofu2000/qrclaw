@@ -40,7 +40,7 @@ API 默认只监听 `127.0.0.1:8765`，提供 `/health`、`/v1/models`、`/v1/se
 
 输入框上方提供 Plan 模式开关，默认关闭，选择保存在当前浏览器并用于下一次发送及编辑重跑。关闭时跳过路由判断、自动计划与重规划调用。CLI 和未指定开关的 API 使用 `~/.qrclaw/config.yaml` 的 `agent.plan_enabled`（默认 `false`），也可设置环境变量 `PLAN_ENABLED=true`；聊天请求可用 `plan_enabled` 覆盖该默认值。
 
-会话详情返回 `context_tokens`、`context_limit` 和 `compression_threshold`。界面显示当前上下文估算及窗口占比，首次执行后计入系统提示词和工具定义；这与累计消耗的 `total_tokens` 不同。超过配置窗口的 60% 时尝试自动压缩，压缩中、完成、失败或跳过状态由 `compression` 事件实时推送，顶部、输入区和执行面板都能看到；完成提示包含压缩前后用量，刷新后保留。用量依据本地分词器估算，窗口上限来自 `llm.max_tokens` 配置。
+会话详情返回 `context_tokens`、`context_limit` 和 `compression_threshold`。界面显示当前上下文估算及窗口占比，首次执行后计入系统提示词和工具定义；这与累计消耗的 `total_tokens` 不同。默认窗口为 485,000 tokens，超过窗口的 90%（436,500 tokens）时尝试自动压缩，预留 10% 给后续消息和回复。压缩中、完成、失败或跳过状态由 `compression` 事件实时推送，顶部、输入区和执行面板都能看到；完成提示包含压缩前后用量，刷新后保留。用量依据本地分词器估算，窗口上限来自 `llm.max_tokens` 配置，触发比例来自 `compress.threshold_ratio`（可用环境变量 `MODEL_MAX_TOKENS`、`COMPRESS_THRESHOLD_RATIO` 覆盖）。配置窗口应与实际使用的模型容量一致。
 
 主聊天会话的 `events` 会记录每次子 Agent 启动及完成状态，事件 `meta.child_session_id` 指向独立保存的子会话。Web UI 在主聊天中显示可点击的子任务卡片，右侧执行面板读取该子会话的完整消息与工具结果；切换面板不会切换主聊天。会话详情的 `active_subagents` 标记后台是否仍有子任务；子会话也可通过现有会话详情与事件流接口读取，运行中的可见文字由事件流的 `live_text` 帧推送。删除父会话时会清理它关联的子会话。
 

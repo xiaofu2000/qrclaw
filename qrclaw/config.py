@@ -22,11 +22,14 @@ LITELLM_API_BASE = os.getenv("LITELLM_API_BASE", "")
 LITELLM_PROXY_URL = os.getenv("LITELLM_PROXY_URL", "")
 
 # 模型最大上下文窗口（token数）
-_MODEL_MAX_TOKENS = int(os.getenv("MODEL_MAX_TOKENS", "128000"))
+_MODEL_MAX_TOKENS = int(os.getenv("MODEL_MAX_TOKENS", "485000"))
 
 # 压缩配置
-# 超过 60% 触发压缩
-COMPRESS_THRESHOLD = int(_MODEL_MAX_TOKENS * 0.6)
+# 默认超过 90% 触发压缩，预留 10% 给后续消息和回复。
+COMPRESS_THRESHOLD_RATIO = float(os.getenv("COMPRESS_THRESHOLD_RATIO", "0.9"))
+if not 0 < COMPRESS_THRESHOLD_RATIO < 1:
+    raise ValueError("压缩触发比例必须大于 0 且小于 1")
+COMPRESS_THRESHOLD = int(_MODEL_MAX_TOKENS * COMPRESS_THRESHOLD_RATIO)
 
 # 压缩后目标范围：摘要 + 短期记忆 = 20%~25% 上下文窗口
 COMPRESS_TARGET_MIN_RATIO = 0.20  # 最小 20%，避免压缩太短

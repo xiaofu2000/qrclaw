@@ -35,7 +35,7 @@ DEFAULT_CONFIG = {
         "base_url": "",
         "api_base": "",
         "proxy_url": "",
-        "max_tokens": 128000,
+        "max_tokens": 485000,
     },
     "search": {
         "tavily_api_key": "",
@@ -52,7 +52,7 @@ DEFAULT_CONFIG = {
         "interval": 3600,
     },
     "compress": {
-        "threshold_ratio": 0.6,
+        "threshold_ratio": 0.9,
         "target_min_ratio": 0.20,
         "target_max_ratio": 0.25,
         "summary_max_tokens": 2560,
@@ -144,7 +144,7 @@ def _inject_to_env(config: dict):
     os.environ.setdefault("LITELLM_BASE_URL", llm_config.get("base_url", ""))
     os.environ.setdefault("LITELLM_API_BASE", llm_config.get("api_base", ""))
     os.environ.setdefault("LITELLM_PROXY_URL", llm_config.get("proxy_url", ""))
-    os.environ.setdefault("MODEL_MAX_TOKENS", str(llm_config.get("max_tokens", 128000)))
+    os.environ.setdefault("MODEL_MAX_TOKENS", str(llm_config.get("max_tokens", 485000)))
 
     # 搜索配置
     search_config = config.get("search", {})
@@ -165,6 +165,7 @@ def _inject_to_env(config: dict):
 
     # 压缩配置
     compress_config = config.get("compress", {})
+    os.environ.setdefault("COMPRESS_THRESHOLD_RATIO", str(compress_config.get("threshold_ratio", 0.9)))
     os.environ.setdefault("COMPRESS_SUMMARY_MAX_TOKENS", str(compress_config.get("summary_max_tokens", 2560)))
     os.environ.setdefault("COMPRESS_RECENT_MAX_TOKENS", str(compress_config.get("recent_max_tokens", 1536)))
 

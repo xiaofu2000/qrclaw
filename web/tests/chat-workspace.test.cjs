@@ -98,6 +98,18 @@ test('Plan 默认关闭，选择保留并用于发送和编辑重跑', async () 
   hook.close()
 })
 
+test('上下文显示使用后端的 485k 窗口和 90% 压缩阈值', async () => {
+  const api = client()
+  api.sessions.A = { ...api.sessions.A, context_tokens: 350000, context_limit: 485000, compression_threshold: 436500 }
+  const hook = workspace(api)
+  const view = await hook.flush()
+  assert.equal(view.contextUsage.label, '350,000 / 485,000')
+  assert.equal(view.contextUsage.percent, 72.2)
+  assert.match(view.contextUsage.description, /超过 436,500 tokens 时尝试压缩/)
+  assert.equal(view.compressing, false)
+  hook.close()
+})
+
 test('压缩进度实时显示，较短的新历史不会被旧查询覆盖', async () => {
   const api = client(), pending = deferred(), process = deferred()
   api.sessions.A = { ...api.sessions.A, context_tokens: 8000, context_limit: 10000, compression_threshold: 6000,

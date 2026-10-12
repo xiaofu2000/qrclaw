@@ -1,6 +1,8 @@
 """上下文用量、压缩进度及历史替换的回归验证。"""
 
-from unittest.mock import patch
+import json
+import runpy
+from unittest.mock import PropertyMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -10,6 +12,51 @@ from qrclaw.memory.context.session import Session
 from qrclaw.providers.base import LLMResponse
 from qrclaw.server.app import create_app
 from qrclaw.workspace import Workspace
+
+
+@pytest.mark.parametrize("overrides, env, expected", [
+    ({}, {}, (485000, 436500)),
+    ({"llm": {"max_tokens": 10000}, "compress": {"threshold_ratio": 0.8}}, {}, (10000, 8000)),
+    ({"llm": {"max_tokens": 10000}, "compress": {"threshold_ratio": 0.8}},
+     {"MODEL_MAX_TOKENS": "20000", "COMPRESS_THRESHOLD_RATIO": "0.9"}, (20000, 18000)),
+    ({"compress": {"threshold_ratio": 0}}, {}, None),
+    ({"compress": {"threshold_ratio": 1}}, {}, None),
+    ({}, {"COMPRESS_THRESHOLD_RATIO": "nan"}, None),
+    ({}, {"COMPRESS_THRESHOLD_RATIO": "inf"}, None),
+])
+def test_context_config_defaults_overrides_and_validation(temp_dir, monkeypatch, overrides, env, expected):
+    """默认窗口和阈值生效，文件可配置、环境优先，并拒绝无效比例。"""
+    from qrclaw import config, config_manager
+    config_file = temp_dir / "config.yaml"
+    config_file.write_text(json.dumps(overrides), encoding="utf-8")
+    monkeypatch.setattr(config_manager, "CONFIG_DIR", temp_dir)
+    monkeypatch.setattr(config_manager, "CONFIG_FILE", config_file)
+    for key in ("MODEL_MAX_TOKENS", "COMPRESS_THRESHOLD_RATIO"):
+        monkeypatch.delenv(key, raising=False)
+    for key, value in env.items():
+        monkeypatch.setenv(key, value)
+    if expected is None:
+        with pytest.raises(ValueError, match="压缩触发比例"):
+            runpy.run_path(config.__file__)
+    else:
+        loaded = runpy.run_path(config.__file__)
+        assert (loaded["_MODEL_MAX_TOKENS"], loaded["COMPRESS_THRESHOLD"]) == expected
+
+
+@pytest.mark.parametrize("tokens, should_compress", [(291001, False), (436500, False), (436501, True)])
+def test_compression_only_above_ninety_percent(temp_dir, tokens, should_compress):
+    """超过旧的 60% 不压缩，只有超过新阈值才调用摘要。"""
+    workspace = Workspace(_root=temp_dir)
+    session = Session(workspace.sessions_dir, session_id="threshold", resume=False)
+    session.add({"role": "user", "content": "继续处理任务"})
+    ctx = init_context_manager(session, workspace)
+    with patch("qrclaw.memory.context.runtime.manager.build_system_prompt", return_value="系统提示"), \
+         patch("qrclaw.memory.context.runtime.manager.COMPRESS_THRESHOLD", 436500), \
+         patch.object(Session, "context_tokens", new_callable=PropertyMock, return_value=tokens), \
+         patch("qrclaw.memory.context.runtime.manager.summarize", return_value=False) as summary:
+        ctx.compress_if_needed()
+    assert summary.called == should_compress
+    assert len(session.events) == (2 if should_compress else 0)
 
 
 def test_context_usage_includes_prompt_and_tools_without_cumulative_usage(temp_dir):
