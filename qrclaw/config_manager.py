@@ -27,6 +27,7 @@ DEFAULT_CONFIG = {
     "agent": {
         "name": "QRClaw",
         "max_iterations": 100,
+        "plan_enabled": False,
     },
     "llm": {
         "api_key": "",
@@ -134,6 +135,7 @@ def _inject_to_env(config: dict):
     agent_config = config.get("agent", {})
     os.environ.setdefault("AGENT_NAME", agent_config.get("name", "QRClaw"))
     os.environ.setdefault("MAX_ITERATIONS", str(agent_config.get("max_iterations", 100)))
+    os.environ.setdefault("PLAN_ENABLED", str(agent_config.get("plan_enabled", False)).lower())
 
     # LLM 配置
     llm_config = config.get("llm", {})

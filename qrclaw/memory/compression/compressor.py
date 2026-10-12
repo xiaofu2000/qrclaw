@@ -9,6 +9,7 @@
 Token 计算：使用 tiktoken 精确计算，支持 GPT-4o 等模型
 """
 from collections import deque
+from filelock import FileLock
 from qrclaw.memory.token_utils import count_text_tokens
 from qrclaw.config import (
     COMPRESS_SUMMARY_MAX_TOKENS, COMPRESS_SUMMARY_TARGET_TOKENS,
@@ -84,13 +85,14 @@ def _pick_recent(messages: list[dict], max_tokens: int = None) -> tuple[list[dic
     return recent_list, old
 
 
-def summarize(session) -> None:
+def summarize(session) -> bool:
     """
     递归摘要压缩：
     1. 从最新消息往前选，只限制 tokens
     2. 检测是否有旧摘要，有则合并进待压缩内容（递归摘要）
     3. 调用 LLM 生成新摘要
     4. 检查总长度是否在 20%~25% 范围内，必要时调整
+    返回是否实际替换了历史消息。
     """
     logger.info("开始压缩历史消息")
 
@@ -99,11 +101,12 @@ def summarize(session) -> None:
     target_max = int(_MODEL_MAX_TOKENS * COMPRESS_TARGET_MAX_RATIO)
     logger.debug(f"目标范围: {target_min} ~ {target_max} tokens ({COMPRESS_TARGET_MIN_RATIO*100:.0f}% ~ {COMPRESS_TARGET_MAX_RATIO*100:.0f}%)")
 
-    recent, old = _pick_recent(session.messages)
+    original_messages = list(session.messages)
+    recent, old = _pick_recent(original_messages)
 
     if not old:
         logger.warning("没有旧消息可压缩，跳过")
-        return
+        return False
 
     # 检测 old 里是否有旧摘要（递归摘要：旧摘要一起参与本次压缩）
     has_old_summary = any(
@@ -146,7 +149,7 @@ def summarize(session) -> None:
             # 减少短期记忆的 token 预算
             available_for_recent = target_max - summary_tokens
             if available_for_recent > 0:
-                recent, old = _pick_recent(session.messages, max_tokens=available_for_recent)
+                recent, old = _pick_recent(original_messages, max_tokens=available_for_recent)
                 recent_tokens = count_tokens(recent)
                 total_tokens = summary_tokens + recent_tokens
                 logger.info(f"调整后: {total_tokens} tokens (摘要 {summary_tokens} + 短期记忆 {recent_tokens})")
@@ -157,15 +160,22 @@ def summarize(session) -> None:
             logger.info(f"压缩后 {total_tokens} tokens 低于下限 {target_min}，但这是好事，保持现状")
 
         # 重建 session.messages
-        session.messages = [
-            {"role": "assistant", "content": f"[SUMMARY] 以下是之前对话的结构化摘要：\n{summary}"},
-            *recent,
-        ]
-        session._save()
+        with FileLock(f"{session._path}.lock"):
+            session._load(strict=True)
+            if session.messages != original_messages:
+                raise RuntimeError("压缩期间会话内容发生变化，请稍后重试")
+            session.messages = [
+                {"role": "assistant", "kind": "assistant", "content": f"[SUMMARY] 以下是之前对话的结构化摘要：\n{summary}"},
+                *recent,
+            ]
+            session.history_version += 1
+            session.prompt_tokens = count_tokens(session.messages)
+            session._save()
 
         ratio = total_tokens / _MODEL_MAX_TOKENS * 100
         logger.info(f"压缩完成，消息数: {len(session.messages)}，占比: {ratio:.1f}%")
         print(f"  [系统] 上下文压缩完成，占比 {ratio:.1f}%")
+        return True
 
     except Exception as e:
         logger.error(f"压缩失败: {e}", exc_info=True)

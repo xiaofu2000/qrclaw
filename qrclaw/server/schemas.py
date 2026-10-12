@@ -17,6 +17,7 @@ class ChatCompletionRequest(BaseModel):
     stream: bool = False
     temperature: float | None = None
     edit_message_id: str | None = Field(default=None, min_length=1)
+    plan_enabled: bool | None = Field(default=None, description="是否允许自动规划，省略时使用项目配置")
 
 
 class SessionSummary(BaseModel):
@@ -40,6 +41,9 @@ class SessionDetail(BaseModel):
     prompt_tokens: int = 0
     completion_tokens: int = 0
     total_tokens: int = 0
+    context_tokens: int = 0
+    context_limit: int = 0
+    compression_threshold: int = 0
     messages: list[dict[str, Any]] = Field(default_factory=list)
     events: list[dict[str, Any]] = Field(default_factory=list)
 

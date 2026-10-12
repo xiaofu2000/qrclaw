@@ -6,6 +6,7 @@ from typing import Any
 
 from qrclaw.memory.context.session import Session, delete_session, list_sessions
 from qrclaw.workspace import Workspace
+from qrclaw.config import _MODEL_MAX_TOKENS, COMPRESS_THRESHOLD
 
 
 class SessionService:
@@ -62,6 +63,9 @@ class SessionService:
             "prompt_tokens": session.usage["prompt_tokens"],
             "completion_tokens": session.usage["completion_tokens"],
             "total_tokens": session.usage["total_tokens"],
+            "context_tokens": session.context_tokens,
+            "context_limit": _MODEL_MAX_TOKENS,
+            "compression_threshold": COMPRESS_THRESHOLD,
             "messages": session.messages,
             "events": session.events,
         }

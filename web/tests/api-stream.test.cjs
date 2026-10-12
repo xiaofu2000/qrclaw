@@ -40,6 +40,7 @@ test('聊天 SSE 按字节切分后仍按顺序还原中文片段', async () => 
   assert.deepEqual(deltas, ['你', '好'])
   assert.equal(requests.length, 1)
   assert.equal(JSON.parse(requests[0].options.body).stream, true)
+  assert.equal(JSON.parse(requests[0].options.body).plan_enabled, false)
 })
 
 test('没有结束标记时报告断线且不重发任务', async () => {
@@ -68,8 +69,9 @@ test('子任务过程流同时还原卡片元数据与临时文字', async () =>
 
 test('编辑请求只发送一次并携带原消息 ID', async () => {
   const { api, requests } = clientWithFrames('data: [DONE]\n\n')
-  await api.chatStream('会话 A', '新问题', () => {}, undefined, 'message-1')
+  await api.chatStream('会话 A', '新问题', () => {}, undefined, 'message-1', true)
   assert.equal(requests.length, 1)
   assert.equal(JSON.parse(requests[0].options.body).edit_message_id, 'message-1')
+  assert.equal(JSON.parse(requests[0].options.body).plan_enabled, true)
   assert.equal(JSON.parse(requests[0].options.body).messages[0].content, '新问题')
 })

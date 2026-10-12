@@ -23,13 +23,14 @@ def count_text_tokens(text: str) -> int:
     return litellm.token_counter(model=LITELLM_MODEL, text=text)
 
 
-def count_messages_tokens(messages: list[dict]) -> int:
+def count_messages_tokens(messages: list[dict], tools: list[dict] | None = None) -> int:
     """
     计算消息列表的 token 数。
 
     Args:
         messages: OpenAI 格式的消息列表
+        tools: 本次调用使用的工具定义，可选
     Returns:
         int: token 总数
     """
-    return litellm.token_counter(model=LITELLM_MODEL, messages=messages)
+    return litellm.token_counter(model=LITELLM_MODEL, messages=messages, tools=tools)

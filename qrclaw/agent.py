@@ -190,6 +190,7 @@ def run(
     auto_confirm: bool = False,
     on_delta: Callable[[str], None] | None = None,
     record_user_message: bool = True,
+    plan_enabled: bool | None = None,
 ):
     """运行主 Agent；流式回调只转发对用户可见的正文。"""
     logger.info(f"收到用户输入: {user_input[:100]}...")
@@ -219,6 +220,7 @@ def run(
             is_sub_agent=is_sub_agent(),
             run_sub_agent_fn=run_sub_agent,
             on_delta=on_delta,
+            plan_enabled=plan_enabled,
         )
     finally:
         # 清理：仅当本次 run 初始化了 MCP 时才关闭

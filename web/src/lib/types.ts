@@ -62,6 +62,9 @@ export type SessionDetail = {
   prompt_tokens: number
   completion_tokens: number
   total_tokens: number
+  context_tokens?: number
+  context_limit?: number
+  compression_threshold?: number
   messages: MessagePayload[]
   events?: Array<{
     kind: string
@@ -75,6 +78,13 @@ export type SessionDetail = {
       state?: string
       after_message_index?: number
       tool?: string
+      tokens?: number
+      limit?: number
+      compression_threshold?: number
+      before_tokens?: number
+      after_tokens?: number
+      after_message_count?: number
+      history_version?: number
     }
   }>
 }

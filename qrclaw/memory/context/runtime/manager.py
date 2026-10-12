@@ -9,6 +9,9 @@ from qrclaw.memory.context.prompt.builder import build_react_messages, build_rou
 from qrclaw.memory.context.plan.controller import PlanController
 from qrclaw.memory.context.session.store import SessionStore
 from qrclaw.memory.context.session.session import Session
+from qrclaw.memory.context.session.events import SessionEvent
+from qrclaw.memory.token_utils import count_messages_tokens
+from qrclaw.tools.registry import get_schemas, AgentType
 from qrclaw.memory.context.prompt.cache import SystemPromptCache
 from qrclaw.prompt_builder import build_system_prompt
 from qrclaw.workspace import Workspace
@@ -100,6 +103,9 @@ class ContextManager:
             wiki_context=wiki_context,
         )
         self._prompt_cache.set(prompt)
+        tools = get_schemas(AgentType.SUB if self.is_sub_agent else AgentType.MAIN)
+        overhead = count_messages_tokens([{"role": "system", "content": prompt}], tools=tools) - count_messages_tokens([])
+        self.sessions.session.set_context_overhead(overhead)
         return prompt
 
     def build_messages(self, role: str, **kwargs) -> list[dict]:
@@ -112,10 +118,24 @@ class ContextManager:
         raise ValueError(f"未知 role: {role}")
 
     def compress_if_needed(self):
-        from qrclaw.memory.token_utils import count_text_tokens
-
-        system_prompt_tokens = count_text_tokens(self._get_system_prompt())
-        total_tokens = self.sessions.prompt_tokens + system_prompt_tokens
-        if total_tokens > COMPRESS_THRESHOLD:
-            summarize(self.sessions.session)
+        """超过上下文阈值时压缩历史，并保存可续接的进度事件。"""
+        self._get_system_prompt()
+        session = self.sessions.session
+        before = session.context_tokens
+        if before <= COMPRESS_THRESHOLD:
+            return
+        session.add_event(SessionEvent(kind="compression", title="上下文压缩中",
+            content="正在整理较早的对话，保留近期消息。",
+            meta={"state": "started", "before_tokens": before}))
+        try:
+            changed = summarize(session)
             self.invalidate_cache()
+            session.add_event(SessionEvent(kind="compression", title="上下文压缩完成" if changed else "上下文未压缩",
+                content="较早的对话已整理为摘要。" if changed else "没有可压缩的旧消息。",
+                meta={"state": "completed" if changed else "skipped", "before_tokens": before,
+                      "after_tokens": session.context_tokens, "after_message_count": len(session.messages),
+                      "history_version": session.history_version}))
+        except Exception:
+            session.add_event(SessionEvent(kind="compression", title="上下文压缩失败",
+                content="历史消息已保留，请稍后重试。", meta={"state": "failed", "before_tokens": before}))
+            raise

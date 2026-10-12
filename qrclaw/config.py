@@ -9,6 +9,7 @@ load_config()
 # Agent 配置
 AGENT_NAME = os.getenv("AGENT_NAME", "QRClaw")
 MAX_ITERATIONS = int(os.getenv("MAX_ITERATIONS", "100"))
+PLAN_ENABLED = os.getenv("PLAN_ENABLED", "false").lower() == "true"
 
 # LLM Provider（litellm 统一渠道）
 LLM_PROVIDER = os.getenv("LLM_PROVIDER", "litellm")

@@ -140,7 +140,7 @@ def build_router(workspace: Workspace) -> APIRouter:
                     cursor = index
                     event = saved[index]
                     is_step = event.get("kind") == "status" and event.get("title") in ("执行中", "步骤完成", "步骤失败", "执行失败")
-                    if is_step or event.get("kind") in ("tool_status", "subagent", "message_saved"):
+                    if is_step or event.get("kind") in ("tool_status", "subagent", "message_saved", "context_usage", "compression"):
                         visible = {key: event[key] for key in ("kind", "title", "content", "created_at", "meta") if key in event}
                         yield f'id: {index}\nevent: progress\ndata: {json.dumps(visible, ensure_ascii=False)}\n\n'
                 if child is not None and child["revision"] != live_revision:
@@ -203,6 +203,7 @@ def build_router(workspace: Workspace) -> APIRouter:
                         console=console,
                         workspace=workspace,
                         auto_confirm=True,
+                        plan_enabled=request.plan_enabled,
                     )
                     if request.edit_message_id is not None:
                         kwargs["record_user_message"] = False

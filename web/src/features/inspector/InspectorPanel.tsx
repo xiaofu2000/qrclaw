@@ -19,8 +19,8 @@ type InspectorPanelProps = {
 export function InspectorPanel({ session, status, queued, selectedCard, childSession, childMessages,
   childStreaming, onMainAgent, onClose }: InspectorPanelProps) {
   const events = (session?.events ?? []).filter(event =>
-    event.kind === 'tool_status' || (event.kind === 'status' && ['执行中', '步骤完成', '步骤失败'].includes(event.title)))
-  const childEvents = (childSession?.events ?? []).filter(event => event?.kind === 'tool_status' || event?.title === '执行失败')
+    event?.kind === 'tool_status' || event?.kind === 'compression' || (event?.kind === 'status' && ['执行中', '步骤完成', '步骤失败'].includes(event.title)))
+  const childEvents = (childSession?.events ?? []).filter(event => event?.kind === 'tool_status' || event?.kind === 'compression' || event?.title === '执行失败')
 
   return (
     <aside className="inspector-panel" id="run-inspector" aria-label="执行过程">

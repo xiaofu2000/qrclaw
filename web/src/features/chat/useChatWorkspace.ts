@@ -77,6 +77,10 @@ function buildTimeline(session: SessionDetail | null, messages: Message[], cards
 
 /** 按会话维护聊天、过程事件和断线恢复状态。 */
 export function useChatWorkspace(api: ApiClient) {
+  const [planEnabled, setPlanEnabled] = useState(() => {
+    try { return localStorage.getItem('qrclaw.planEnabled') === 'true' }
+    catch { return false }
+  })
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [activeId, setActiveId] = useState('')
   const [sessions, setSessions] = useState<Record<string, SessionDetail>>({})
@@ -111,6 +115,13 @@ export function useChatWorkspace(api: ApiClient) {
     const version = session.history_version ?? 0
     const previous = historyVersionsRef.current.get(session.id) ?? 0
     if (version < previous) return
+    if (version > previous && requestsRef.current.has(session.id)) {
+      const compression = session.events?.findLast(event => event?.kind === 'compression'
+        && event.meta?.state === 'completed' && event.meta.history_version === version)
+      if (compression?.meta?.after_message_count !== undefined) {
+        streamBaselinesRef.current.set(session.id, compression.meta.after_message_count)
+      }
+    }
     historyVersionsRef.current.set(session.id, version)
     eventCursorsRef.current.set(session.id, version > previous ? (session.events?.length ?? 0) - 1
       : Math.max(eventCursorsRef.current.get(session.id) ?? -1, (session.events?.length ?? 0) - 1))
@@ -131,7 +142,17 @@ export function useChatWorkspace(api: ApiClient) {
       if (!current[id]) return current
       const events = [...(current[id].events ?? [])]
       events[index] = event
-      return { ...current, [id]: { ...current[id], events } }
+      const detail = { ...current[id], events }
+      if (event.kind === 'context_usage') {
+        detail.context_tokens = event.meta?.tokens
+        detail.context_limit = event.meta?.limit
+        detail.compression_threshold = event.meta?.compression_threshold
+      }
+      if (event.kind === 'compression') {
+        detail.context_tokens = event.meta?.after_tokens ?? event.meta?.before_tokens ?? detail.context_tokens
+        if (event.meta?.state === 'started') detail.run_status = 'running'
+      }
+      return { ...current, [id]: detail }
     })
   }, [])
 
@@ -143,7 +164,7 @@ export function useChatWorkspace(api: ApiClient) {
     void api.streamEvents(id, eventCursorsRef.current.get(id) ?? -1, (index, event) => {
       if (controller.signal.aborted) return
       mergeEvent(id, index, event)
-      if (event.kind === 'message_saved') {
+      if (event.kind === 'message_saved' || (event.kind === 'compression' && event.meta?.state === 'completed')) {
         void api.getSession(id).then(storeSession).catch(() => { /* 下一次读取会话时恢复。 */ })
       }
       if (!child && event.kind === 'subagent' && event.meta?.state === 'running' && event.meta.child_session_id) {
@@ -293,7 +314,7 @@ export function useChatWorkspace(api: ApiClient) {
       }, () => {
         accepted = true
         if (!editMessageId) startEventStream(id)
-      }, editMessageId)
+      }, editMessageId, planEnabled)
       completed = true
       storeSession(await api.getSession(id))
       setStreaming(current => ({ ...current, [id]: '' }))
@@ -473,6 +494,8 @@ export function useChatWorkspace(api: ApiClient) {
             setSessions(current => current[id] ? ({ ...current, [id]: {
               ...current[id], events: savedEvents.length - 1 >= cursor ? savedEvents : current[id].events,
               total_tokens: session.total_tokens, run_status: session.run_status, active_subagents: session.active_subagents,
+              context_tokens: savedEvents.length - 1 >= cursor ? session.context_tokens : current[id].context_tokens,
+              context_limit: session.context_limit, compression_threshold: session.compression_threshold,
             } }) : ({ ...current, [id]: session }))
           }
         } catch { /* 保留运行状态，等后续轮询确认结果。 */ }
@@ -498,8 +521,30 @@ export function useChatWorkspace(api: ApiClient) {
   const running = runningIds.has(activeId)
   const queued = running && session?.run_status === 'queued'
   const error = errors[activeId] || (session?.run_error ? `任务失败：${session.run_error}` : '') || connectionError
+  const lastCompression = session?.events?.findLast(event => event?.kind === 'compression')
+  const compressing = running && lastCompression?.meta?.state === 'started'
+  const contextUsage = session?.context_limit ? {
+    label: `${(session.context_tokens ?? 0).toLocaleString('zh-CN')} / ${session.context_limit.toLocaleString('zh-CN')}`,
+    percent: Math.round((session.context_tokens ?? 0) / session.context_limit * 1000) / 10,
+    description: `上下文用量估算，包含历史消息和已加载的提示词、工具定义。超过 ${(session.compression_threshold ?? 0).toLocaleString('zh-CN')} tokens 时尝试压缩。`,
+  } : null
+  const compressionNotice = lastCompression ? {
+    state: compressing ? 'started' : lastCompression.meta?.state === 'started' ? 'interrupted' : lastCompression.meta?.state,
+    message: compressing ? '正在压缩上下文，整理完成后继续回复…'
+      : lastCompression.meta?.state === 'completed'
+        ? `上下文已压缩：${(lastCompression.meta.before_tokens ?? 0).toLocaleString('zh-CN')} → ${(lastCompression.meta.after_tokens ?? 0).toLocaleString('zh-CN')} tokens`
+        : lastCompression.meta?.state === 'started' ? '上次上下文压缩未完成，请检查会话状态。'
+          : `${lastCompression.title}：${lastCompression.content ?? ''}`,
+  } : null
 
   return {
+    planEnabled, compressing, contextUsage, compressionNotice,
+    /** 保存浏览器的执行偏好，下次发送或编辑重跑时使用。 */
+    togglePlan: () => setPlanEnabled(current => {
+      try { localStorage.setItem('qrclaw.planEnabled', String(!current)) }
+      catch { console.warn('无法保存 Plan 模式偏好，本次页面仍可使用。') }
+      return !current
+    }),
     conversations, activeId, session, messages, timeline, cards, selectedCard, childSession, childMessages,
     childStreaming: childStreaming[selectedChildId] ?? '', selectSubAgent: (id: string | null) =>
       setSelectedChildren(current => ({ ...current, [activeId]: id ?? '' })),

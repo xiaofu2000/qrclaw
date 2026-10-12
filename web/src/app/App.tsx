@@ -44,7 +44,7 @@ export function App() {
     }
   }, [sidebarOpen, inspectorOpen])
   const status = chat.running || chat.loading || chat.creating || chat.mutating ? 'busy' : chat.error ? 'error' : 'ready'
-  const statusText = chat.loading ? '载入会话中' : chat.mutating ? '更新会话中' : chat.queued ? '等待执行' : chat.running ? '正在处理任务' : chat.creating ? '新建会话中'
+  const statusText = chat.loading ? '载入会话中' : chat.mutating ? '更新会话中' : chat.compressing ? '上下文压缩中' : chat.queued ? '等待执行' : chat.running ? '正在处理任务' : chat.creating ? '新建会话中'
     : chat.error ? '需要检查' : chat.runningIds.size ? `${chat.runningIds.size} 个后台任务处理中` : '可以开始'
   const title = chat.conversations.find(item => item.id === chat.activeId)?.title ?? '新对话'
 
@@ -70,6 +70,7 @@ export function App() {
           <div className="composer-area">
             {chat.error && <div className="chat-error" role="alert"><span>{chat.error}</span><button onClick={() => void chat.refresh()}>刷新会话</button></div>}
             <Composer value={chat.draft} onChange={chat.setDraft} onSend={chat.send}
+              planEnabled={chat.planEnabled} onTogglePlan={chat.togglePlan} contextUsage={chat.contextUsage} compressionNotice={chat.compressionNotice}
               disabled={chat.running || chat.loading || chat.creating || chat.mutating || !chat.session} loading={chat.loading || !chat.session} running={chat.running} />
           </div>
         </main>

@@ -15,7 +15,7 @@ function deferred() {
 }
 
 // Run the real hook with deterministic effects and manually controlled network completion.
-function workspace(api) {
+function workspace(api, preferences = new Map()) {
   const slots = []
   const timers = new Map()
   let timerId = 0
@@ -48,6 +48,7 @@ function workspace(api) {
     setTimeout: fn => { timers.set(++timerId, fn); return timerId },
     clearTimeout: id => timers.delete(id),
     AbortController,
+    localStorage: { getItem: key => preferences.get(key) ?? null, setItem: (key, value) => preferences.set(key, value) },
   })
   function render() {
     cursor = 0
@@ -75,6 +76,110 @@ function workspace(api) {
     close() { slots.forEach(slot => slot?.cleanup?.()) },
   }
 }
+
+test('Plan 默认关闭，选择保留并用于发送和编辑重跑', async () => {
+  const api = client(), preferences = new Map(), modes = []
+  api.sessions.A.messages = [{ role: 'user', uuid: 'last', content: '原问题' }]
+  api.chatStream = async (_id, _content, _delta, _ready, editId, enabled) => modes.push([editId, enabled])
+  let hook = workspace(api, preferences), view = await hook.flush()
+  assert.equal(view.planEnabled, false)
+  view.togglePlan()
+  view = hook.render()
+  await view.editLatestMessage('last', '修改问题')
+  assert.deepEqual(modes[0], ['last', true])
+  hook.close()
+  hook = workspace(api, preferences)
+  view = await hook.flush()
+  assert.equal(view.planEnabled, true)
+  view.togglePlan()
+  view = hook.render()
+  await view.send('直接执行')
+  assert.deepEqual(modes[1], [undefined, false])
+  hook.close()
+})
+
+test('压缩进度实时显示，较短的新历史不会被旧查询覆盖', async () => {
+  const api = client(), pending = deferred(), process = deferred()
+  api.sessions.A = { ...api.sessions.A, context_tokens: 8000, context_limit: 10000, compression_threshold: 6000,
+    messages: [{ role: 'user', content: '旧消息' }, { role: 'assistant', content: '旧回复' }, { role: 'user', content: '上轮任务' }] }
+  const stale = structuredClone(api.sessions.A)
+  let pushEvent, pushText
+  api.chatStream = (_id, _content, onDelta, onReady) => { pushText = onDelta; onReady(); return pending.promise }
+  api.streamEvents = (_id, _after, onEvent) => { pushEvent = onEvent; return process.promise }
+  const hook = workspace(api)
+  let view = await hook.flush()
+  const sending = view.send('新任务')
+  pushEvent(0, { kind: 'compression', title: '上下文压缩中', meta: { state: 'started', before_tokens: 8000 } })
+  view = hook.render()
+  assert.equal(view.compressing, true)
+  assert.match(view.compressionNotice.message, /正在压缩/)
+  const complete = { kind: 'compression', title: '上下文压缩完成', meta: {
+    state: 'completed', before_tokens: 8000, after_tokens: 2000, after_message_count: 2, history_version: 1 } }
+  api.sessions.A = { ...api.sessions.A, history_version: 1, context_tokens: 2000, run_status: 'running',
+    messages: [{ role: 'assistant', content: '[SUMMARY] 历史摘要' }, { role: 'user', content: '新任务' }],
+    events: [{ kind: 'compression', title: '上下文压缩中', meta: { state: 'started' } }, complete] }
+  pushEvent(1, complete)
+  view = await hook.flush()
+  assert.equal(view.compressing, false)
+  assert.equal(view.messages.length, 2)
+  assert.equal(view.contextUsage.percent, 20)
+  assert.match(view.compressionNotice.message, /8,000 → 2,000/)
+  pushText('新回复')
+  api.sessions.A = { ...api.sessions.A, messages: [...api.sessions.A.messages, { role: 'assistant', content: '新回复' }] }
+  pushEvent(2, { kind: 'message_saved', title: '消息已保存' })
+  view = await hook.flush()
+  assert.equal(view.streaming, '')
+  assert.equal(view.messages.at(-1).content, '新回复')
+  api.sessions.A = stale
+  view = await hook.poll()
+  assert.equal(view.session.history_version, 1)
+  assert.equal(view.messages.at(-1).content, '新回复')
+  api.sessions.A = { ...view.session, run_status: 'idle' }
+  pending.resolve()
+  process.resolve()
+  await sending
+  hook.close()
+})
+
+test('上下文用量按会话切换，刷新后还原压缩提示', async () => {
+  const api = client()
+  api.sessions.A = { ...api.sessions.A, context_tokens: 2000, context_limit: 10000, compression_threshold: 6000,
+    events: [{ kind: 'compression', title: '上下文压缩完成', meta: { state: 'completed', before_tokens: 8000, after_tokens: 2000 } }] }
+  api.sessions.B = { ...api.sessions.B, context_tokens: 500, context_limit: 10000, compression_threshold: 6000 }
+  let hook = workspace(api), view = await hook.flush()
+  assert.equal(view.contextUsage.percent, 20)
+  assert.match(view.compressionNotice.message, /上下文已压缩/)
+  await view.loadConversation('B')
+  view = hook.render()
+  assert.equal(view.contextUsage.percent, 5)
+  assert.equal(view.compressionNotice, null)
+  hook.close()
+  hook = workspace(api)
+  view = await hook.flush()
+  assert.match(view.compressionNotice.message, /上下文已压缩/)
+  hook.close()
+})
+
+test('过程流跳过内部事件时，状态读取允许不连续的事件序号', async () => {
+  const api = client(), pending = deferred(), events = deferred()
+  let push
+  api.chatStream = (_id, _content, _delta, onReady) => { onReady(); return pending.promise }
+  api.streamEvents = (_id, _after, onEvent) => { push = onEvent; return events.promise }
+  const hook = workspace(api)
+  let view = await hook.flush()
+  const sending = view.send('执行计划')
+  push(3, { kind: 'context_usage', title: '上下文用量', meta: { tokens: 100, limit: 10000, compression_threshold: 6000 } })
+  view = hook.render()
+  assert.equal(view.contextUsage.percent, 1)
+  push(5, { kind: 'tool_status', title: '工具开始', content: 'read_file' })
+  view = hook.render()
+  assert.equal(view.compressionNotice, null)
+  assert.equal(view.session.events[5].title, '工具开始')
+  pending.resolve()
+  events.resolve()
+  await sending
+  hook.close()
+})
 function client() {
   const sessions = { A: session('A'), B: session('B') }
   return {

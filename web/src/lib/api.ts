@@ -92,7 +92,7 @@ export function createApiClient() {
       if (!response.ok) throw new Error(await responseError(response))
       return (await response.json()) as SessionDetail
     },
-    async chat(sessionId: string, content: string) {
+    async chat(sessionId: string, content: string, planEnabled = false) {
       const response = await fetch(`${baseUrl}/v1/chat/completions`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -100,6 +100,7 @@ export function createApiClient() {
           model: 'qrclaw-agent',
           session_id: sessionId,
           messages: [{ role: 'user', content }],
+          plan_enabled: planEnabled,
         }),
       })
 
@@ -110,12 +111,13 @@ export function createApiClient() {
       return body.choices?.[0]?.message?.content ?? ''
     },
     /** 提交一次流式聊天；连接中断只报错，不重发可能已经执行的任务。 */
-    async chatStream(sessionId: string, content: string, onDelta: (delta: string) => void, onReady?: () => void, editMessageId?: string) {
+    async chatStream(sessionId: string, content: string, onDelta: (delta: string) => void, onReady?: () => void, editMessageId?: string, planEnabled = false) {
       const response = await fetch(`${baseUrl}/v1/chat/completions`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ model: 'qrclaw-agent', session_id: sessionId,
-          messages: [{ role: 'user', content }], stream: true, ...(editMessageId ? { edit_message_id: editMessageId } : {}) }),
+          messages: [{ role: 'user', content }], stream: true, plan_enabled: planEnabled,
+          ...(editMessageId ? { edit_message_id: editMessageId } : {}) }),
       })
       if (!response.ok) throw new Error(await responseError(response))
       onReady?.()

@@ -110,6 +110,7 @@ class Session:
         self.title: str | None = None
         self.history_version = 0
         self.prompt_tokens = 0
+        self.context_overhead_tokens = 0
         self.completion_tokens = 0
         self.total_tokens = 0
         self.usage = dict.fromkeys(USAGE_KEYS, 0)
@@ -192,6 +193,18 @@ class Session:
     def start_run_usage(self):
         self.run_usage = dict.fromkeys(USAGE_KEYS, 0)
 
+    @property
+    def context_tokens(self) -> int:
+        """返回当前历史和已加载提示词、工具定义的上下文用量估算。"""
+        return self.prompt_tokens + self.context_overhead_tokens
+
+    def set_context_overhead(self, tokens: int) -> None:
+        """保存本次执行的提示词和工具开销，供会话查询复用。"""
+        with FileLock(f"{self._path}.lock"):
+            self._load(strict=True)
+            self.context_overhead_tokens = max(0, tokens)
+            self._save()
+
     def update_tokens(self, prompt_tokens: int, completion_tokens: int, total_tokens: int):
         values = (prompt_tokens, completion_tokens, total_tokens)
         with FileLock(f"{self._path}.lock"):
@@ -207,6 +220,7 @@ class Session:
         with FileLock(f"{self._path}.lock"):
             self.messages = []
             self.prompt_tokens = 0
+            self.context_overhead_tokens = 0
             self.completion_tokens = 0
             self.total_tokens = 0
             self.usage = dict.fromkeys(USAGE_KEYS, 0)
@@ -222,7 +236,8 @@ class Session:
         try:
             temp_path.write_text(
                 json.dumps({"messages": self.messages, "events": self.events, "usage": self.usage,
-                            "title": self.title, "history_version": self.history_version}, ensure_ascii=False, indent=2),
+                            "title": self.title, "history_version": self.history_version,
+                            "context_overhead_tokens": self.context_overhead_tokens}, ensure_ascii=False, indent=2),
                 encoding="utf-8"
             )
             temp_path.replace(self._path)
@@ -239,6 +254,7 @@ class Session:
             self.title = None
             self.history_version = 0
             self.prompt_tokens = 0
+            self.context_overhead_tokens = 0
             self.completion_tokens = 0
             self.total_tokens = 0
             self.usage = dict.fromkeys(USAGE_KEYS, 0)
@@ -251,17 +267,20 @@ class Session:
                 usage = data.get("usage", {})
                 title = data.get("title")
                 history_version = data.get("history_version", 0)
+                context_overhead_tokens = data.get("context_overhead_tokens", 0)
             else:
                 messages = data
                 events = []
                 usage = {}
                 title = None
                 history_version = 0
+                context_overhead_tokens = 0
             self.messages = [_normalize_message(m) for m in messages if m.get("role") != "system"]
             self.events = [dict(event) for event in events]
             self.title = title if isinstance(title, str) and title else None
             self.history_version = int(history_version)
             self.prompt_tokens = count_messages_tokens(self.messages)
+            self.context_overhead_tokens = max(0, int(context_overhead_tokens))
             self.usage = {key: int(usage.get(key, 0)) for key in USAGE_KEYS}
             self.completion_tokens = self.usage["completion_tokens"]
             self.total_tokens = self.usage["total_tokens"]
@@ -273,5 +292,6 @@ class Session:
             self.events = []
             self.title = None
             self.history_version = 0
+            self.context_overhead_tokens = 0
             self.usage = dict.fromkeys(USAGE_KEYS, 0)
             self.prompt_tokens = self.completion_tokens = self.total_tokens = 0

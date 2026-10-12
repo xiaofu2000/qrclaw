@@ -11,6 +11,7 @@ from typing import Callable
 from rich.console import Console
 from qrclaw.memory.context.session import Session
 from qrclaw.workspace import Workspace
+from qrclaw.config import PLAN_ENABLED
 from qrclaw.graph.nodes.router import RouterNode
 from qrclaw.graph.nodes.react_loop import ReactLoopNode
 from qrclaw.graph.nodes.plan_executor import PlanExecutorNode
@@ -36,12 +37,18 @@ class GraphRunner:
         is_sub_agent: bool = False,
         run_sub_agent_fn=None,
         on_delta: Callable[[str], None] | None = None,
+        plan_enabled: bool | None = None,
     ) -> str:
         """按路由执行 Direct 或 Plan，并把主 Agent 回复片段向上传递。"""
         # 子 agent 跳过路由，直接走 ReactLoop
         if is_sub_agent:
             logger.info("子 agent 跳过路由，直接走 ReactLoop")
             return self.react_loop.run(session, console, workspace, auto_confirm, is_sub_agent=True, on_delta=on_delta)
+
+        # 关闭计划时省去路由判断的模型调用，直接执行任务。
+        if not (PLAN_ENABLED if plan_enabled is None else plan_enabled):
+            logger.info("Plan 模式已关闭，直接执行任务")
+            return self.react_loop.run(session, console, workspace, auto_confirm, is_sub_agent=False, on_delta=on_delta)
 
         # 条件边：Router 判断路由
         route_result = self.router.run(user_input)

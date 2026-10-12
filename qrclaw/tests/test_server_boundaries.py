@@ -245,6 +245,24 @@ def test_chat_usage_reports_this_run(temp_dir, monkeypatch):
     assert detail["total_tokens"] == 30
 
 
+def test_chat_passes_plan_switch_for_stream_and_json(temp_dir):
+    """流式与非流式请求均把 Plan 开关交给同一个 Agent 入口。"""
+    calls = []
+
+    def fake_run(*, plan_enabled, **_kwargs):
+        """记录请求的开关值，避免调用真实模型。"""
+        calls.append(plan_enabled)
+        return "完成"
+
+    with patch("qrclaw.server.routes.run_agent", side_effect=fake_run), \
+         TestClient(create_app(Workspace(_root=temp_dir)), client=("127.0.0.1", 50000)) as client:
+        for stream, enabled in [(False, False), (True, True)]:
+            response = client.post("/v1/chat/completions", json={"stream": stream, "plan_enabled": enabled,
+                "messages": [{"role": "user", "content": "执行任务"}]})
+            assert response.status_code == 200
+    assert calls == [False, True]
+
+
 def test_stream_chat_sends_chunks_and_keeps_saved_session(temp_dir):
     """流式正文与最终会话内容都来自同一次 Agent 执行。"""
     workspace = Workspace(_root=temp_dir)

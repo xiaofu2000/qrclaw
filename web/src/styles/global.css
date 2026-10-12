@@ -699,6 +699,18 @@ button:active:not(:disabled) {
   text-align: center;
 }
 
+.composer-toolbar { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; padding: 10px 2px; }
+.plan-switch { display: inline-flex; align-items: center; gap: 8px; border: 0; padding: 4px 0; background: transparent; color: var(--muted); font-size: 12px; }
+.plan-switch[aria-checked='true'] { color: var(--accent); }
+.switch-track { width: 28px; height: 16px; padding: 2px; border-radius: 12px; background: #d8ddd4; }
+.switch-track > span { display: block; width: 12px; height: 12px; border-radius: 50%; background: #fff; transition: transform .15s; }
+.plan-switch[aria-checked='true'] .switch-track { background: var(--accent); }
+.plan-switch[aria-checked='true'] .switch-track > span { transform: translateX(12px); }
+.context-usage { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+.context-usage meter { width: 52px; height: 6px; }
+.compression-notice { display: flex; align-items: center; gap: 8px; padding: 9px 12px; border: 1px solid #dce5d8; border-radius: 8px; color: var(--accent); background: #f7faf5; font-size: 12px; line-height: 1.5; }
+.compression-notice.failed, .compression-notice.interrupted { color: #a53c2f; border-color: #ecd5ce; background: #fff4f1; }
+
 .chat-error {
   display: flex;
   gap: 12px;

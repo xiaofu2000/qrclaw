@@ -8,9 +8,15 @@ type ComposerProps = {
   disabled: boolean
   loading: boolean
   running: boolean
+  planEnabled: boolean
+  onTogglePlan: () => void
+  contextUsage: { label: string; percent: number; description: string } | null
+  compressionNotice: { state?: string; message: string } | null
 }
 
-export function Composer({ value, onChange, onSend, disabled, loading, running }: ComposerProps) {
+/** 展示输入框、执行模式和上下文状态，业务状态由工作区提供。 */
+export function Composer({ value, onChange, onSend, disabled, loading, running, planEnabled, onTogglePlan,
+  contextUsage, compressionNotice }: ComposerProps) {
   const inputRef = useRef<HTMLTextAreaElement>(null)
   useLayoutEffect(() => {
     const input = inputRef.current
@@ -26,6 +32,22 @@ export function Composer({ value, onChange, onSend, disabled, loading, running }
 
   return (
     <form className="composer" onSubmit={event => { event.preventDefault(); submit() }}>
+      {compressionNotice && <div className={`compression-notice ${compressionNotice.state}`} role="status">
+        {compressionNotice.state === 'started' && <LoaderCircle size={14} className="spin" />}
+        <span>{compressionNotice.message}</span>
+      </div>}
+      <div className="composer-toolbar">
+        <button type="button" className="plan-switch" role="switch" aria-label="启用 Plan 模式"
+          aria-checked={planEnabled} disabled={disabled} onClick={onTogglePlan}
+          title="开启后允许自动拆分计划；关闭后直接执行。下次发送生效。">
+          <span className="switch-track" aria-hidden="true"><span /></span>
+          Plan 模式
+        </button>
+        {contextUsage && <div className="context-usage" title={contextUsage.description} aria-label={`上下文用量估算 ${contextUsage.label} tokens，${contextUsage.percent}%`}>
+          <span>上下文 ≈ {contextUsage.label} <span className="context-percent">· {contextUsage.percent}%</span></span>
+          <meter min={0} max={100} value={contextUsage.percent} aria-label="上下文占用比例" />
+        </div>}
+      </div>
       <label className="sr-only" htmlFor="message-input">消息</label>
       <div className="composer-input">
         <textarea id="message-input" ref={inputRef} value={value} onChange={event => onChange(event.target.value)}

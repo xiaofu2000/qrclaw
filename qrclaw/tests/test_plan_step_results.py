@@ -55,7 +55,24 @@ def test_graph_runner_keeps_router_wiki_context(temp_dir):
 
     runner.router.run = route
     runner.plan_executor.run = lambda **_: ctx.plan_state.wiki_context
-    assert runner.run("任务", session, Console(file=StringIO()), workspace) == "已选中的 Wiki 正文"
+    assert runner.run("任务", session, Console(file=StringIO()), workspace, plan_enabled=True) == "已选中的 Wiki 正文"
+
+
+def test_disabling_plan_skips_router_and_planner(temp_dir):
+    """关闭 Plan 必须省去路由模型调用，而非只忽略已生成的计划。"""
+    workspace = Workspace(_root=temp_dir)
+    session = Session(workspace.sessions_dir, resume=False)
+    runner = GraphRunner()
+    runner.router.run = MagicMock(side_effect=AssertionError("不应判断路由"))
+    runner.plan_executor.run = MagicMock(side_effect=AssertionError("不应执行计划"))
+    runner.react_loop.run = MagicMock(return_value="直接完成")
+    on_delta = MagicMock()
+
+    assert runner.run("复杂任务", session, Console(file=StringIO()), workspace,
+                      plan_enabled=False, on_delta=on_delta) == "直接完成"
+    runner.router.run.assert_not_called()
+    runner.plan_executor.run.assert_not_called()
+    assert runner.react_loop.run.call_args.kwargs["on_delta"] is on_delta
 
 
 def test_internal_execution_report_is_context_not_assistant_reply():
