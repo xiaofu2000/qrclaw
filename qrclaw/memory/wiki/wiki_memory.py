@@ -86,8 +86,21 @@ class WikiMemory:
         description: str = "",
         tags: list[str] = None,
         related: list[str] = None,
+        *,
+        expected_page: WikiPage | None = None,
     ) -> WikiPage:
+        """保存页面；模型整理结果须基于未被其他任务修改的旧页面。"""
         with self._lock:
+            if expected_page is not None:
+                if not content.strip():
+                    raise ValueError("整理后的页面正文为空，保留原页面")
+                current = self.get_page(name)
+                # 旧格式页面可能没有时间戳，按正文和元数据检查并发变化。
+                if current is None or any(
+                    getattr(current, field) != getattr(expected_page, field)
+                    for field in ("name", "content", "description", "tags", "related")
+                ):
+                    raise RuntimeError(f"页面「{name}」在整理期间发生变化，请重新读取后更新")
             return self._save_page(name, content, description, tags, related)
 
     def _save_page(

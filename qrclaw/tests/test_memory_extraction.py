@@ -12,6 +12,7 @@ from qrclaw.graph.nodes.react_loop import ReactLoopNode
 from qrclaw.llm_service import LLMService
 from qrclaw.memory.context.session import Session
 from qrclaw.memory.wiki.extraction.config import ExtractionConfig
+from qrclaw.memory.wiki.extraction.schemas import ConsolidatePageSchema
 from qrclaw.memory.wiki.extraction.llm import WikiLLMAnalyzer
 from qrclaw.memory.wiki.extraction.schemas import ExtractionSchema, WikiPageSchema
 from qrclaw.memory.wiki.wiki_memory import WikiMemory
@@ -21,7 +22,8 @@ from qrclaw.workspace import Workspace
 
 
 def _config(**overrides):
-    values = dict(minimum_message_tokens_to_init=10, minimum_tokens_between_update=5)
+    values = dict(minimum_message_tokens_to_init=1, minimum_tokens_between_update=1,
+                  idle_seconds=0, cooldown_seconds=0)
     values.update(overrides)
     return ExtractionConfig(**values)
 
@@ -33,36 +35,30 @@ def _result(action="create", name="用户偏好", content="喜欢简洁回复"):
     )
 
 
-def test_thresholds_and_optional_tool_gate(temp_dir):
-    node = MemoryExtractionNode(WikiMemory(temp_dir), _config())
-    assert not node.should_extract([], 9)
-    assert node.should_extract([], 10)
-
-    node._tokens_at_last_extraction = 10
-    assert not node.should_extract([], 14)
-    assert node.should_extract([], 15)
-
-    gated = MemoryExtractionNode(WikiMemory(temp_dir), _config(tool_calls_between_updates=2))
-    messages = [{"role": "assistant", "tool_calls": [{"id": "1"}]}]
-    assert not gated.should_extract(messages, 10)
-    messages[0]["tool_calls"].append({"id": "2"})
-    assert gated.should_extract(messages, 10)
+def test_threshold_counts_only_unprocessed_body(temp_dir):
+    """触发阈值采用实际待提取正文，忽略外部传入的历史 token 总数。"""
+    node = MemoryExtractionNode(WikiMemory(temp_dir), _config(minimum_message_tokens_to_init=10))
+    messages = [{"role": "user", "content": "字" * 27, "uuid": "u1"}]
+    assert not node.check_and_extract(messages, 100000)
+    messages[0]["content"] += "字" * 3
+    assert node.check_and_extract(messages, 0)
 
 
-def test_queued_messages_use_previous_cutoff(temp_dir):
+def test_pending_messages_are_merged_without_duplicates(temp_dir):
     node = MemoryExtractionNode(WikiMemory(temp_dir), _config())
     messages = [
         {"role": "user", "content": "第一条偏好", "uuid": "u1"},
         {"role": "assistant", "content": "已记录", "uuid": "a1"},
     ]
     assert node.check_and_extract(messages, 10)
-    assert "第一条偏好" in node._pending_extractions[0]["messages_text"]
+    assert node.get_pending_count() == 1
 
     messages.append({"role": "user", "content": "第二条偏好", "uuid": "u2"})
     assert node.check_and_extract(messages, 15)
-    second = node._pending_extractions[1]["messages_text"]
-    assert "第二条偏好" in second
-    assert "第一条偏好" not in second
+    node.check_and_extract(messages, 100)
+    pending = node.indexer.get_state().pending_messages
+    assert [m["uuid"] for m in pending] == ["u1", "a1", "u2"]
+    assert node.get_pending_count() == 1
 
 
 def test_flush_persists_page_and_index(temp_dir):
@@ -81,6 +77,7 @@ def test_flush_persists_page_and_index(temp_dir):
     assert reopened.get_page("用户偏好").content == "喜欢简洁回复"
     assert reopened.index.all_entries()[0]["name"] == "用户偏好"
     assert reopened.search_pages("简洁")[0].name == "用户偏好"
+    analyzer.consolidate.assert_not_called()
 
 
 def test_concurrent_wiki_appends_keep_every_update(temp_dir):
@@ -111,19 +108,123 @@ def test_corrupt_wiki_index_does_not_overwrite_page(temp_dir):
     assert wiki.index.all_entries()[0]["name"] == "偏好"
 
 
-def test_existing_page_is_appended_even_when_llm_says_create(temp_dir):
+@pytest.mark.parametrize("queued", [False, True])
+def test_existing_page_is_merged_even_when_llm_says_create(temp_dir, queued):
+    """自动和主动写入都读取旧正文，替换过期事实并保留有效信息。"""
     wiki = WikiMemory(temp_dir)
-    wiki.save_page("用户偏好", "原有偏好")
+    original = wiki.save_page("用户偏好", "旧记录“当前端口为9000”已过期；当前端口为8765。\n用户喜欢中文回复。",
+                              description="用户配置", tags=["配置"], related=["项目架构"])
     analyzer = MagicMock()
-    analyzer.analyze.return_value = _result(content="新增偏好")
+    extraction = _result(name="用户 偏好", content="当前端口为9000")
+    extraction.pages[0].related = ["运行环境", "项目架构"]
+    analyzer.analyze.return_value = extraction
+    analyzer.consolidate.return_value = ConsolidatePageSchema(
+        content="当前端口为9000。\n用户喜欢中文回复。", description="用户当前配置", tags=["配置"])
     node = MemoryExtractionNode(wiki, _config(), analyzer)
 
-    assert node.write_now("新增偏好") == 1
-    assert "原有偏好" in wiki.get_page("用户偏好").content
-    assert "新增偏好" in wiki.get_page("用户偏好").content
-    assert node.write_now("新增偏好") == 0
-    assert wiki.get_page("用户偏好").content.count("新增偏好") == 1
-    analyzer.consolidate.assert_not_called()
+    if queued:
+        assert node.check_and_extract([{"role": "user", "content": "端口改回9000", "uuid": "u1"}], 10)
+        assert node.flush_pending() == 1
+        assert node.get_pending_count() == 0
+    else:
+        assert node.write_now("端口改回9000") == 1
+    analyzer.consolidate.assert_called_once_with(
+        existing_content=original.content, new_content=extraction.pages[0].content, page_name="用户偏好")
+    reopened = WikiMemory(temp_dir)
+    saved = reopened.get_page("用户偏好")
+    assert saved.content == analyzer.consolidate.return_value.content
+    assert "8765" not in saved.content
+    assert saved.created_at == original.created_at
+    assert saved.tags == ["配置", "偏好"]
+    assert saved.related == ["项目架构", "运行环境"]
+    assert reopened.index.all_entries()[0]["description"] == "用户当前配置"
+    assert "用户当前配置" in reopened.load_index()
+    assert node.write_now("端口改回9000") == 0
+
+
+@pytest.mark.parametrize("empty", [False, True])
+def test_failed_merge_preserves_page_and_queued_update(temp_dir, empty):
+    """合并异常或空正文不能破坏旧页，后台任务保留并可再次处理。"""
+    wiki = WikiMemory(temp_dir)
+    wiki.save_page("用户偏好", "旧偏好")
+    original_files = {name: (temp_dir / name).read_bytes()
+                      for name in ["pages/用户偏好.md", "index.json", "index.md", "log.md"]}
+    analyzer = MagicMock()
+    analyzer.analyze.return_value = _result(content="新偏好")
+    if empty:
+        analyzer.consolidate.return_value = ConsolidatePageSchema(content=" \n ")
+    else:
+        analyzer.consolidate.side_effect = RuntimeError("合并模型暂不可用")
+    node = MemoryExtractionNode(wiki, _config(), analyzer)
+    assert node.check_and_extract([{"role": "user", "content": "更新偏好", "uuid": "u1"}], 10)
+
+    assert node.flush_pending() == 0
+    assert node.get_pending_count() == 1
+    assert all((temp_dir / name).read_bytes() == value for name, value in original_files.items())
+    with patch("qrclaw.agent.get_extractor", return_value=node):
+        assert "错误" in write_wiki_page("更新偏好")
+    assert wiki.get_page("用户偏好").content == "旧偏好"
+    analyzer.consolidate.side_effect = None
+    analyzer.consolidate.return_value = ConsolidatePageSchema(content="新偏好")
+    assert node.flush_pending() == 1
+    assert node.get_pending_count() == 0
+    assert wiki.get_page("用户偏好").content == "新偏好"
+
+
+@pytest.mark.parametrize("change", ["content", "metadata", "delete"])
+def test_merge_does_not_overwrite_concurrent_page_changes(temp_dir, change):
+    """生成合并结果期间的正文、元数据更新或删除都不能被旧快照覆盖。"""
+    wiki = WikiMemory(temp_dir)
+    wiki.save_page("用户偏好", "原有偏好", tags=["偏好"])
+    analyzer = MagicMock()
+    analyzer.analyze.return_value = _result(content="新增偏好")
+
+    def merge(**_kwargs):
+        """模拟另一个写入者在模型生成期间修改持久化页面。"""
+        other = WikiMemory(temp_dir)
+        if change == "delete":
+            other.delete_page("用户偏好")
+        else:
+            other.save_page("用户偏好", "并发更新" if change == "content" else "原有偏好",
+                            tags=["新标签"])
+        return ConsolidatePageSchema(content="基于旧快照的合并结果")
+
+    analyzer.consolidate.side_effect = merge
+    node = MemoryExtractionNode(wiki, _config(), analyzer)
+    with pytest.raises(RuntimeError, match="Wiki 页面写入失败"):
+        node.write_now("新增偏好")
+    saved = wiki.get_page("用户偏好")
+    if change == "delete":
+        assert saved is None
+        assert not wiki.index.all_entries()
+    else:
+        assert saved.content == ("并发更新" if change == "content" else "原有偏好")
+        assert saved.tags == ["新标签"]
+
+
+def test_merge_reads_legacy_page_without_timestamps(temp_dir):
+    """不带 frontmatter 的旧页面也能安全更新。"""
+    wiki = WikiMemory(temp_dir)
+    (wiki.pages_dir / "用户偏好.md").write_text("原有偏好", encoding="utf-8")
+    analyzer = MagicMock()
+    analyzer.analyze.return_value = _result(content="新偏好")
+    analyzer.consolidate.return_value = ConsolidatePageSchema(content="新偏好")
+    node = MemoryExtractionNode(wiki, _config(), analyzer)
+    assert node.write_now("新偏好") == 1
+    assert wiki.get_page("用户偏好").content == "新偏好"
+
+
+def test_unreadable_old_page_is_not_replaced(temp_dir):
+    """旧页面存在但无法解析时，不按新页面覆盖它。"""
+    wiki = WikiMemory(temp_dir)
+    path = wiki.pages_dir / "用户偏好.md"
+    path.write_text("", encoding="utf-8")
+    analyzer = MagicMock()
+    analyzer.analyze.return_value = _result()
+    node = MemoryExtractionNode(wiki, _config(), analyzer)
+    with pytest.raises(RuntimeError, match="Wiki 页面写入失败"):
+        node.write_now("新偏好")
+    assert path.read_text(encoding="utf-8") == ""
 
 
 def test_failed_analysis_stays_queued_for_retry(temp_dir):
@@ -159,17 +260,21 @@ def test_integration_flushes_first_task(temp_dir):
     node = MemoryExtractionNode(WikiMemory(temp_dir), _config(), analyzer)
     session = SimpleNamespace(messages=[{"role": "assistant", "content": "请记住用户偏好" * 10, "uuid": "a1"}])
 
-    with patch("qrclaw.graph.nodes.memory_extraction.threading.Thread") as thread:
-        thread.return_value.start.side_effect = lambda: thread.call_args.kwargs["target"]()
-        MemoryExtractionIntegration(node).on_react_loop_end(session)
-
-    assert thread.call_args.kwargs["daemon"] is False
+    integration = MemoryExtractionIntegration(node)
+    with patch("qrclaw.graph.nodes.memory_extraction.Timer"):
+        integration.on_react_loop_end(session)
+        with patch("qrclaw.graph.nodes.memory_extraction.Thread") as thread:
+            thread.return_value.start.side_effect = lambda: thread.call_args.kwargs["target"]()
+            integration._start_worker()
+            assert thread.call_args.kwargs["daemon"] is False
+        integration.close()
     assert node.memory.get_page("用户偏好") is not None
 
 
 def test_background_worker_drains_queue_without_duplicate_worker(temp_dir):
     started = threading.Event()
     release = threading.Event()
+    completed = threading.Event()
     calls = []
 
     def analyze(*_):
@@ -181,18 +286,32 @@ def test_background_worker_drains_queue_without_duplicate_worker(temp_dir):
 
     analyzer = MagicMock()
     analyzer.analyze.side_effect = analyze
-    node = MemoryExtractionNode(WikiMemory(temp_dir), _config(max_pending=1), analyzer)
-    assert node.check_and_extract([{"role": "user", "content": "偏好一", "uuid": "u1"}], 10)
-    assert node.check_and_extract([{"role": "user", "content": "偏好一", "uuid": "u1"}, {"role": "user", "content": "偏好二", "uuid": "u2"}], 15)
+    node = MemoryExtractionNode(WikiMemory(temp_dir), _config(), analyzer)
+    messages = [{"role": "user", "content": "偏好一", "uuid": "u1"},
+                {"role": "user", "content": "偏好二", "uuid": "u2"}]
     integration = MemoryExtractionIntegration(node)
-    integration.on_react_loop_end(SimpleNamespace(messages=[]))
+    original_flush = node.flush_pending
+
+    def flush(**kwargs):
+        """第二批实际落盘后通知测试，避免只验证模型调用开始。"""
+        written = original_flush(**kwargs)
+        if node.indexer.get_state().total_extractions == 2:
+            completed.set()
+        return written
+
+    node.flush_pending = flush
+    integration.on_react_loop_end(SimpleNamespace(messages=messages))
     try:
         assert started.wait(5)
         worker = integration._worker
-        integration.on_react_loop_end(SimpleNamespace(messages=[]))
+        messages.append({"role": "user", "content": "偏好三", "uuid": "u3"})
+        integration.on_react_loop_end(SimpleNamespace(messages=messages))
         assert integration._worker is worker
+        release.set()
+        assert completed.wait(5)
     finally:
         release.set()
+        integration.close()
     worker.join(timeout=5)
     assert not worker.is_alive()
     assert calls == [1, 2]
@@ -212,6 +331,33 @@ def test_structured_llm_output_is_parsed_without_network():
 
     assert result.needs_update
     assert result.pages[0].name == "用户偏好"
+
+
+def test_structured_merge_receives_both_old_and_new_content(temp_dir):
+    """真实分析器和结构化解析把旧正文、新事实交给合并调用，无需联网。"""
+    wiki = WikiMemory(temp_dir)
+    original = "端口为8765。用户喜欢中文回复。"
+    wiki.save_page("项目配置", original)
+    prompts = []
+
+    class FakeProvider:
+        """返回确定的模型结果，用于验证两次调用的数据传递。"""
+        _model = "fake"
+
+        def chat(self, messages, **_kwargs):
+            """先定位页面，再模拟生成更新后的完整正文。"""
+            prompts.append("\n".join(message["content"] for message in messages))
+            if len(prompts) == 1:
+                return LLMResponse(content='{"needs_update": true, "pages": [{"action": "append", "name": "项目配置", "content": "端口改为9000"}]}')
+            return LLMResponse(content='{"content": "端口为9000。用户喜欢中文回复。", "description": "项目当前配置", "tags": ["配置"]}')
+
+    analyzer = WikiLLMAnalyzer(LLMService(FakeProvider()), _config())
+    node = MemoryExtractionNode(wiki, _config(), analyzer)
+    assert node.write_now("请记住端口改为9000") == 1
+    assert len(prompts) == 2
+    assert original in prompts[1]
+    assert "端口改为9000" in prompts[1]
+    assert wiki.get_page("项目配置").content == "端口为9000。用户喜欢中文回复。"
 
 
 def test_invalid_page_name_cannot_escape_wiki_directory(temp_dir):
@@ -283,8 +429,11 @@ def test_memory_integration_is_separate_per_session(temp_dir):
 
 def test_default_and_custom_config():
     default = ExtractionConfig()
-    assert default.minimum_message_tokens_to_init < 10000
-    assert default.minimum_tokens_between_update < 5000
+    assert default.minimum_message_tokens_to_init == 5000
+    assert default.minimum_tokens_between_update == 5000
+    assert default.minimum_turns == 3
+    assert default.idle_seconds == 120
+    assert default.cooldown_seconds == 300
     assert default.tool_calls_between_updates == 0
 
     custom = _config(tool_calls_between_updates=5)

@@ -35,7 +35,14 @@ class SessionService:
             (event.get("meta") or {}).get("child_session_id")
             for event in parent.events if event.get("kind") == "subagent"
         }
-        deleted = delete_session(session_id, self.workspace.sessions_dir)
+        from qrclaw.agent import _runner
+        from qrclaw.memory.wiki.extraction import ExtractionIndexer
+        _runner.react_loop.stop_memory_extractions(self.workspace, session_id)
+        indexer = ExtractionIndexer(self.workspace.memory_dir, session_id)
+        with indexer.lock:
+            deleted = delete_session(session_id, self.workspace.sessions_dir)
+            if deleted:
+                indexer.discard()
         if deleted:
             for child_id in children:
                 if child_id:
@@ -44,7 +51,19 @@ class SessionService:
 
     def rewrite_latest_user_turn(self, session: Session, message_id: str, content: str | None) -> None:
         """重写最后一轮消息，并清理被移除的子 Agent 会话。"""
-        children = session.rewrite_latest_user_turn(message_id, content)
+        from qrclaw.agent import _runner
+        integration = _runner.react_loop._get_memory_integration(self.workspace, session)
+        removed_ids = set()
+        removing = False
+        for message in session.messages:
+            removing = removing or message.get("uuid") == message_id
+            if removing and message.get("uuid"):
+                removed_ids.add(message["uuid"])
+        # 与后台页面保存共用短锁，避免来源校验与消息删改之间出现空隙。
+        with integration.extractor.indexer.lock:
+            children = session.rewrite_latest_user_turn(message_id, content)
+            integration.extractor.discard_messages(removed_ids)
+            integration.extractor.collect(session.messages)
         for child_id in children:
             delete_session(child_id, self.workspace.sessions_dir)
 

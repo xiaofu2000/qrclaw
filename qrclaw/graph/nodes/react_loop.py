@@ -176,14 +176,35 @@ class ReactLoopNode:
         """懒加载 MemoryExtractionIntegration（仅主 agent）"""
         key = (workspace.memory_dir.resolve(), session.session_id)
         with self._memory_lock:
-            if key not in self._memory_integrations:
+            if key not in self._memory_integrations or self._memory_integrations[key]._closed:
                 from qrclaw.graph.nodes.memory_extraction import MemoryExtractionNode, MemoryExtractionIntegration
                 from qrclaw.memory.wiki import WikiMemory
                 memory = WikiMemory.for_workspace(workspace.memory_dir)
-                extractor = MemoryExtractionNode(memory)
+                extractor = MemoryExtractionNode(memory, session=session)
                 self._memory_integrations[key] = MemoryExtractionIntegration(extractor)
                 logger.debug("MemoryExtractionIntegration 已初始化")
             return self._memory_integrations[key]
+
+    def resume_memory_extractions(self, workspace: Workspace) -> None:
+        """服务启动时恢复已有主会话的待处理正文和闲置计时。"""
+        from qrclaw.memory.context.session import list_sessions
+        from qrclaw.memory.wiki.extraction import ExtractionIndexer
+        for summary in list_sessions(workspace.sessions_dir):
+            session_id = summary["id"]
+            if not ExtractionIndexer(workspace.memory_dir, session_id).state_file.exists():
+                continue
+            try:
+                session = Session(workspace.sessions_dir, session_id)
+                self._get_memory_integration(workspace, session).resume()
+            except Exception as exc:
+                logger.warning("恢复会话记忆提取失败，会话 %s：%s", session_id, exc, exc_info=True)
+
+    def stop_memory_extractions(self, workspace: Workspace, session_id: str | None = None) -> None:
+        """关闭服务或删除会话时取消其闲置任务，保留正在执行的写入进度。"""
+        with self._memory_lock:
+            for (memory_dir, key), integration in self._memory_integrations.items():
+                if memory_dir == workspace.memory_dir.resolve() and (session_id is None or key == session_id):
+                    integration.close()
 
     def run(
         self,
@@ -247,7 +268,7 @@ class ReactLoopNode:
                 on_tool_call=run_tool,
                 on_assistant_message=_on_assistant_message,
                 on_tool_result=_on_tool_result,
-                on_finish=(lambda _: memory_integration.on_react_loop_end(session, 0)) if memory_integration else None,
+                # 由整次主请求统一收尾，Plan 中间阶段不启动闲置任务。
                 console=console,
                 silent=False,
                 session=session,

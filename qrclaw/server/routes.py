@@ -16,6 +16,7 @@ from rich.console import Console
 from qrclaw.agent import run as run_agent
 from qrclaw.subagent_progress import has_active_sub_agents, sub_agent_snapshot
 from qrclaw.workspace import Workspace
+from qrclaw.logger import get_logger
 
 from .schemas import (
     ChatCompletionRequest,
@@ -28,6 +29,7 @@ from .schemas import (
 from .session_service import SessionService
 
 MODEL_ID = "qrclaw-agent"
+logger = get_logger("qrclaw.server.routes")
 _agent_run_lock = Lock()
 
 
@@ -184,6 +186,10 @@ def build_router(workspace: Workspace) -> APIRouter:
                                     if message.get("role") == "user"), None)
                 if latest_user is None or latest_user.get("uuid") != request.edit_message_id:
                     raise HTTPException(status_code=409, detail="只能编辑最后一条用户消息，请刷新会话")
+            from qrclaw.agent import _runner
+            memory_integration = _runner.react_loop._get_memory_integration(workspace, session)
+            # 请求排队期间也有新活动，不能把等待执行误判成会话闲置。
+            memory_integration.on_run_start()
             runs[session.session_id] = "queued"
             failures.pop(session.session_id, None)
         console = Console(file=StringIO(), highlight=False)
@@ -215,6 +221,12 @@ def build_router(workspace: Workspace) -> APIRouter:
                     failures[session.session_id] = str(exc)
                 raise
             finally:
+                if memory_integration._busy:
+                    try:
+                        memory_integration.on_react_loop_end(session)
+                    except Exception as exc:
+                        # Agent 初始化或替代运行器异常时也解除闲置暂停。
+                        logger.warning("会话记忆提取收尾失败：%s", exc, exc_info=True)
                 with status_lock:
                     runs.pop(session.session_id, None)
 

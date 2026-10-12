@@ -173,6 +173,7 @@ class ExtractionRunner:
                 description=result.description or page.description,
                 tags=result.tags if result.tags else page.tags,
                 related=page.related,
+                expected_page=page,
             )
             logger.info(f"[ExtractionRunner] 页面整理完成: {name}")
             return True
@@ -214,53 +215,9 @@ class ExtractionRunner:
     # ── 消息处理 ──────────────────────────────────────────────────────────────
 
     def format_messages_for_llm(self, messages: list) -> str:
-        """
-        将消息列表格式化为 LLM 可读的文本
-
-        过滤规则：
-        - 跳过 role=tool 的消息
-        - 跳过含 tool_calls 的 assistant 消息
-        - 保留 role=user 和纯文字 role=assistant 消息
-
-        Args:
-            messages: 消息列表
-
-        Returns:
-            str: 格式化后的文本
-        """
-        lines = []
-        for msg in messages:
-            role = msg.get("role", "") if isinstance(msg, dict) else getattr(msg, "role", "")
-
-            # 跳过 tool 返回
-            if role == "tool":
-                continue
-
-            # 跳过含 tool_calls 的 assistant 消息
-            if role == "assistant":
-                tool_calls = msg.get("tool_calls") if isinstance(msg, dict) else getattr(
-                    msg, "tool_calls", None
-                )
-                if tool_calls:
-                    continue
-
-            content = msg.get("content", "") if isinstance(msg, dict) else getattr(
-                msg, "content", ""
-            )
-            if not content:
-                continue
-
-            if isinstance(content, list):
-                content = "\n".join(
-                    b.get("text", "") or b.get("content", "")
-                    for b in content
-                    if b.get("type") == "text"
-                )
-
-            if content.strip():
-                lines.append(f"[{role}] {content}")
-
-        return "\n\n".join(lines)
+        """使用触发统计共用的过滤规则，仅发送用户和助手正文。"""
+        from qrclaw.memory.wiki.extraction.strategies import format_messages_for_llm
+        return format_messages_for_llm(messages)
 
     def messages_since_last_extraction(
         self, messages: list, last_message_uuid: str = None
@@ -300,9 +257,9 @@ class ExtractionRunner:
 
     # ── 批量写入 ──────────────────────────────────────────────────────────────
 
-    def process_extraction_result(self, extraction: "ExtractionSchema") -> int:
+    def process_extraction_result(self, extraction: "ExtractionSchema", is_current=None, save_page=None) -> int:
         """
-        处理 LLM 提取结果，执行写入
+        处理提取结果；自动任务在保存前确认来源消息尚未被编辑或删除。
 
         Args:
             extraction: ExtractionSchema 结果
@@ -315,41 +272,60 @@ class ExtractionRunner:
 
         success_count = 0
         failures = []
+        persist_page = save_page or self.wiki_memory.save_page
 
         for page in extraction.pages:
             try:
+                if is_current is not None and not is_current():
+                    return success_count
                 if page.action == "skip" or not page.content.strip():
                     continue
 
-                real_name = self.wiki_memory.fuzzy_find_name(page.name)
-                if real_name:
-                    page.name = real_name
-                    existing = self.wiki_memory.get_page(real_name)
-                    if existing and page.content.strip() in existing.content:
-                        continue
-                    page.action = "append"
-                elif page.action == "append":
-                    page.action = "create"
-
-                if page.action == "append":
-                    self.wiki_memory.append_page(
-                        name=page.name,
-                        content=page.content,
-                        tags=page.tags or None,
-                        related=page.related or None,
+                page.name = self.wiki_memory.fuzzy_find_name(page.name) or page.name
+                existing = self.wiki_memory.get_page(page.name)
+                if existing:
+                    if self.llm_analyzer is None:
+                        self._init_llm_analyzer()
+                    result = self.llm_analyzer.consolidate(
+                        existing_content=existing.content,
+                        new_content=page.content,
+                        page_name=page.name,
                     )
-                    success_count += 1
-                elif page.action == "create":
-                    self.wiki_memory.save_page(
+                    content = result.content.strip()
+                    description = result.description or existing.description
+                    tags = list(dict.fromkeys(existing.tags + page.tags + result.tags))
+                    related = list(dict.fromkeys(existing.related + page.related))
+                    if is_current is not None and not is_current():
+                        return success_count
+                    if (content, description, tags, related) == (
+                        existing.content, existing.description, existing.tags, existing.related
+                    ):
+                        continue
+                    saved = persist_page(
+                        name=page.name,
+                        content=content,
+                        description=description,
+                        tags=tags,
+                        related=related,
+                        expected_page=existing,
+                    )
+                    action = "更新"
+                else:
+                    if self.wiki_memory.page_exists(page.name):
+                        raise RuntimeError(f"无法读取页面「{page.name}」的旧内容，保留原文件")
+                    saved = persist_page(
                         name=page.name,
                         content=page.content,
                         description=page.description,
                         tags=page.tags,
                         related=page.related,
                     )
-                    success_count += 1
+                    action = "新建"
 
-                logger.info(f"[ExtractionRunner] 写入成功: [{page.action}] {page.name}")
+                if not saved:
+                    continue
+                success_count += 1
+                logger.info(f"[ExtractionRunner] 写入成功: [{action}] {page.name}")
 
             except Exception as e:
                 logger.warning(f"[ExtractionRunner] 写入页面失败: {page.name}, {e}")

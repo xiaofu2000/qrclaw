@@ -4,6 +4,7 @@ from __future__ import annotations
 import hmac
 import ipaddress
 import os
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, Request
@@ -16,7 +17,19 @@ from .routes import build_router
 
 
 def create_app(workspace: Workspace | None = None) -> FastAPI:
-    app = FastAPI(title="QRClaw Local API", version="0.1.0")
+    workspace = workspace or Workspace(agent_id="default")
+
+    @asynccontextmanager
+    async def lifespan(app):
+        """恢复持久化的记忆批次，退出时取消尚未到期的闲置计时。"""
+        from qrclaw.agent import _runner
+        _runner.react_loop.resume_memory_extractions(workspace)
+        try:
+            yield
+        finally:
+            _runner.react_loop.stop_memory_extractions(workspace)
+
+    app = FastAPI(title="QRClaw Local API", version="0.1.0", lifespan=lifespan)
     static_dir = Path(__file__).with_name("static")
 
     @app.middleware("http")
@@ -51,7 +64,6 @@ def create_app(workspace: Workspace | None = None) -> FastAPI:
     def index():
         return FileResponse(static_dir / "index.html")
 
-    workspace = workspace or Workspace(agent_id="default")
     app.include_router(build_router(workspace))
 
     return app

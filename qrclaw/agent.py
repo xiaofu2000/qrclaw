@@ -198,19 +198,21 @@ def run(
     set_session(session)
     set_workspace(workspace)
     session.start_run_usage()
-    if record_user_message:
-        session.add({"role": "user", "content": user_input})
-
-    # 主 agent 初始化 ContextManager 单例
-    from qrclaw.memory.context.context_manager import init_context_manager
-    init_context_manager(session, workspace, is_sub_agent=is_sub_agent())
-
-    # 主 agent（非子 agent）初始化 MCP 连接
-    _mcp_initialized_this_run = False
+    memory_integration = None
     if not is_sub_agent():
-        _mcp_initialized_this_run = _init_mcp()
-
+        memory_integration = _runner.react_loop._get_memory_integration(workspace, session)
+        register_extractor(memory_integration.extractor)
+    _mcp_initialized_this_run = False
     try:
+        if memory_integration:
+            memory_integration.on_run_start()
+        if record_user_message:
+            session.add({"role": "user", "content": user_input})
+
+        from qrclaw.memory.context.context_manager import init_context_manager
+        init_context_manager(session, workspace, is_sub_agent=is_sub_agent())
+        if not is_sub_agent():
+            _mcp_initialized_this_run = _init_mcp()
         return _runner.run(
             user_input=user_input,
             session=session,
@@ -223,6 +225,11 @@ def run(
             plan_enabled=plan_enabled,
         )
     finally:
+        if memory_integration:
+            try:
+                memory_integration.on_react_loop_end(session)
+            except Exception as exc:
+                logger.warning("记忆提取任务保存失败：%s", exc, exc_info=True)
         # 清理：仅当本次 run 初始化了 MCP 时才关闭
         if _mcp_initialized_this_run:
             _cleanup_mcp()

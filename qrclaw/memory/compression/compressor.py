@@ -108,6 +108,13 @@ def summarize(session) -> bool:
         logger.warning("没有旧消息可压缩，跳过")
         return False
 
+    from qrclaw.agent import get_extractor, is_sub_agent
+    extractor = get_extractor()
+    if (not is_sub_agent() and extractor is not None and extractor.session is not None
+            and extractor.session._path == session._path):
+        # 先持久化原文，再允许摘要替换历史；保存失败时保留原始会话。
+        extractor.preserve_before_compression(original_messages)
+
     # 检测 old 里是否有旧摘要（递归摘要：旧摘要一起参与本次压缩）
     has_old_summary = any(
         msg.get("role") == "assistant" and str(msg.get("content", "")).startswith("[SUMMARY]")
