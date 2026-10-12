@@ -2,6 +2,7 @@ export type MessageRole = 'user' | 'assistant' | 'tool'
 
 export type Message = {
   id: string
+  uuid?: string
   role: MessageRole
   content: string
   sourceIndex?: number
@@ -24,6 +25,8 @@ export type ChatTimelineItem = Message | SubAgentCard
 export type MessagePayload = {
   role: MessageRole | string
   content: string
+  uuid?: string
+  turn_event_index?: number
   kind?: Message['kind']
   tool_call_id?: string
   tool_calls?: Array<{ id: string; function?: { name: string } }>
@@ -49,6 +52,8 @@ export type SessionSummary = {
 
 export type SessionDetail = {
   id: string
+  title: string
+  history_version: number
   message_count: number
   updated_at: string
   run_status: SessionSummary['run_status']

@@ -76,6 +76,22 @@ export function createApiClient() {
       })
       if (!response.ok) throw new Error('delete session failed')
     },
+    /** 保存自定义会话标题。 */
+    async renameSession(sessionId: string, title: string) {
+      const response = await fetch(`${baseUrl}/v1/sessions/${encodeURIComponent(sessionId)}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title }),
+      })
+      if (!response.ok) throw new Error(await responseError(response))
+      return (await response.json()) as SessionDetail
+    },
+    /** 删除最后一条用户消息及其所属轮次。 */
+    async deleteLatestUserMessage(sessionId: string, messageId: string) {
+      const response = await fetch(`${baseUrl}/v1/sessions/${encodeURIComponent(sessionId)}/messages/${encodeURIComponent(messageId)}`, {
+        method: 'DELETE',
+      })
+      if (!response.ok) throw new Error(await responseError(response))
+      return (await response.json()) as SessionDetail
+    },
     async chat(sessionId: string, content: string) {
       const response = await fetch(`${baseUrl}/v1/chat/completions`, {
         method: 'POST',
@@ -94,12 +110,12 @@ export function createApiClient() {
       return body.choices?.[0]?.message?.content ?? ''
     },
     /** 提交一次流式聊天；连接中断只报错，不重发可能已经执行的任务。 */
-    async chatStream(sessionId: string, content: string, onDelta: (delta: string) => void, onReady?: () => void) {
+    async chatStream(sessionId: string, content: string, onDelta: (delta: string) => void, onReady?: () => void, editMessageId?: string) {
       const response = await fetch(`${baseUrl}/v1/chat/completions`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ model: 'qrclaw-agent', session_id: sessionId,
-          messages: [{ role: 'user', content }], stream: true }),
+          messages: [{ role: 'user', content }], stream: true, ...(editMessageId ? { edit_message_id: editMessageId } : {}) }),
       })
       if (!response.ok) throw new Error(await responseError(response))
       onReady?.()

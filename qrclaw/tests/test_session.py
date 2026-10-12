@@ -137,6 +137,53 @@ class TestSessionMessages:
         assert session.messages == []
         assert not session._path.exists()
 
+    def test_rewrite_latest_user_turn_keeps_earlier_history(self, temp_dir):
+        """重写末轮时保留先前消息和过程，并返回末轮子会话。"""
+        session = Session(temp_dir, session_id="rewrite")
+        session.add({"role": "user", "content": "第一轮"})
+        session.add_event({"kind": "status", "title": "执行中", "content": "第一轮过程"})
+        session.add({"role": "assistant", "content": "第一轮回复"})
+        session.add({"role": "user", "content": "第二轮"})
+        last_id = session.messages[-1]["uuid"]
+        session.add_event({"kind": "subagent", "meta": {"child_session_id": "sub-test"}})
+        session.add({"role": "assistant", "content": "第二轮回复"})
+
+        assert session.rewrite_latest_user_turn(last_id, "修改后") == {"sub-test"}
+        restored = Session(temp_dir, session_id="rewrite")
+        assert [m["content"] for m in restored.messages] == ["第一轮", "第一轮回复", "修改后"]
+        assert restored.messages[-1]["uuid"] == last_id
+        assert [e["content"] for e in restored.events] == ["第一轮过程"]
+        assert restored.history_version == 1
+        assert restored.rewrite_latest_user_turn(last_id, None) == set()
+        assert [m["content"] for m in Session(temp_dir, session_id="rewrite").messages] == ["第一轮", "第一轮回复"]
+
+    def test_rewrite_rejects_stale_message_id(self, temp_dir):
+        """过期消息 ID 不能覆盖当前轮次。"""
+        session = Session(temp_dir, session_id="rewrite-stale")
+        session.add({"role": "user", "content": "旧"})
+        old_id = session.messages[-1]["uuid"]
+        session.add({"role": "user", "content": "新"})
+        with pytest.raises(ValueError, match="最后一条"):
+            session.rewrite_latest_user_turn(old_id, "覆盖")
+        assert [m["content"] for m in Session(temp_dir, session_id="rewrite-stale").messages] == ["旧", "新"]
+
+    def test_rewrite_legacy_turn_keeps_earlier_process_when_markers_exist(self, temp_dir):
+        """旧会话缺少轮次索引时，尽量按消息保存事件保留先前过程。"""
+        session = Session(temp_dir, session_id="legacy")
+        session.add({"role": "user", "content": "第一轮"})
+        session.add_event({"kind": "status", "title": "执行中", "content": "保留"})
+        session.add({"role": "assistant", "content": "第一轮回复"})
+        session.add_event({"kind": "message_saved", "title": "消息已保存"})
+        session.add({"role": "user", "content": "第二轮"})
+        last_id = session.messages[-1]["uuid"]
+        session.add_event({"kind": "status", "title": "执行中", "content": "删除"})
+        raw = json.loads(session._path.read_text(encoding="utf-8"))
+        raw["messages"][-1].pop("turn_event_index")
+        session._path.write_text(json.dumps(raw, ensure_ascii=False), encoding="utf-8")
+
+        session.rewrite_latest_user_turn(last_id, None)
+        assert [event["kind"] for event in Session(temp_dir, session_id="legacy").events] == ["status", "message_saved"]
+
 
 class TestTokenCounting:
     """测试 Token 计算"""

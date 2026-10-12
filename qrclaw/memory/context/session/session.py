@@ -48,7 +48,7 @@ def list_sessions(sessions_dir: Path) -> list[dict]:
             raw_messages = data.get("messages", []) if isinstance(data, dict) else data
             messages = [m for m in raw_messages if m.get("role") != "system"]
             first_user_text = next((m.get("content") for m in messages if m.get("role") == "user" and isinstance(m.get("content"), str)), "")
-            title = " ".join(first_user_text.split())[:48] or path.stem
+            title = (data.get("title") if isinstance(data, dict) else None) or " ".join(first_user_text.split())[:48] or "新对话"
             mtime = datetime.fromtimestamp(path.stat().st_mtime).strftime("%Y-%m-%d %H:%M")
             sessions.append({
                 "id": path.stem,
@@ -107,6 +107,8 @@ class Session:
 
         self.messages: list[dict] = []
         self.events: list[dict] = []
+        self.title: str | None = None
+        self.history_version = 0
         self.prompt_tokens = 0
         self.completion_tokens = 0
         self.total_tokens = 0
@@ -123,6 +125,8 @@ class Session:
             message = _normalize_message(dict(message))
             if "uuid" not in message:
                 message["uuid"] = uuid.uuid4().hex[:12]
+            if message.get("role") == "user":
+                message.setdefault("turn_event_index", len(self.events))
             self.messages.append(message)
             self.prompt_tokens = count_messages_tokens(self.messages)
             self._save()
@@ -139,6 +143,49 @@ class Session:
         with FileLock(f"{self._path}.lock"):
             if not self._path.exists():
                 self._save()
+
+    def set_title(self, title: str) -> None:
+        """保存用户指定的会话标题。"""
+        with FileLock(f"{self._path}.lock"):
+            if not self._path.exists():
+                raise FileNotFoundError(self.session_id)
+            self._load(strict=True)
+            self.title = title
+            self._save()
+
+    def rewrite_latest_user_turn(self, message_id: str, content: str | None) -> set[str]:
+        """原子替换或删除最后一轮用户消息，并返回需清理的子会话 ID。"""
+        with FileLock(f"{self._path}.lock"):
+            if not self._path.exists():
+                raise FileNotFoundError(self.session_id)
+            self._load(strict=True)
+            index = next((i for i in range(len(self.messages) - 1, -1, -1)
+                          if self.messages[i].get("role") == "user"), -1)
+            if index < 0 or self.messages[index].get("uuid") != message_id:
+                raise ValueError("只能操作最后一条用户消息，请刷新会话")
+            original = self.messages[index]
+            if "turn_event_index" in original:
+                event_start = int(original["turn_event_index"])
+            else:
+                # shortcut: 旧会话按已保存消息定位；若缺少对应事件，则清空过程记录以免留下旧卡片。
+                prior_messages = sum(message.get("role") in ("assistant", "tool") and message.get("kind") != "execution_report"
+                                     for message in self.messages[:index])
+                saved_events = [i for i, event in enumerate(self.events) if event.get("kind") == "message_saved"]
+                event_start = saved_events[prior_messages - 1] + 1 if 0 < prior_messages <= len(saved_events) else 0
+            event_start = max(0, min(event_start, len(self.events)))
+            removed_events = self.events[event_start:]
+            children = {
+                child_id for event in removed_events if event.get("kind") == "subagent"
+                if (child_id := (event.get("meta") or {}).get("child_session_id"))
+            }
+            self.messages = self.messages[:index]
+            self.events = self.events[:event_start]
+            if content is not None:
+                self.messages.append({**original, "content": content, "turn_event_index": len(self.events)})
+            self.history_version += 1
+            self.prompt_tokens = count_messages_tokens(self.messages)
+            self._save()
+            return children
 
     def start_run_usage(self):
         self.run_usage = dict.fromkeys(USAGE_KEYS, 0)
@@ -163,6 +210,8 @@ class Session:
             self.usage = dict.fromkeys(USAGE_KEYS, 0)
             self.run_usage = dict.fromkeys(USAGE_KEYS, 0)
             self.events = []
+            self.title = None
+            self.history_version = 0
             if self._path.exists():
                 self._path.unlink()
 
@@ -170,7 +219,8 @@ class Session:
         temp_path = self._path.with_name(f".{self._path.name}.{uuid.uuid4().hex}.tmp")
         try:
             temp_path.write_text(
-                json.dumps({"messages": self.messages, "events": self.events, "usage": self.usage}, ensure_ascii=False, indent=2),
+                json.dumps({"messages": self.messages, "events": self.events, "usage": self.usage,
+                            "title": self.title, "history_version": self.history_version}, ensure_ascii=False, indent=2),
                 encoding="utf-8"
             )
             temp_path.replace(self._path)
@@ -184,6 +234,8 @@ class Session:
         if not self._path.exists():
             self.messages = []
             self.events = []
+            self.title = None
+            self.history_version = 0
             self.prompt_tokens = 0
             self.completion_tokens = 0
             self.total_tokens = 0
@@ -195,12 +247,18 @@ class Session:
                 messages = data.get("messages", [])
                 events = data.get("events", [])
                 usage = data.get("usage", {})
+                title = data.get("title")
+                history_version = data.get("history_version", 0)
             else:
                 messages = data
                 events = []
                 usage = {}
+                title = None
+                history_version = 0
             self.messages = [_normalize_message(m) for m in messages if m.get("role") != "system"]
             self.events = [dict(event) for event in events]
+            self.title = title if isinstance(title, str) and title else None
+            self.history_version = int(history_version)
             self.prompt_tokens = count_messages_tokens(self.messages)
             self.usage = {key: int(usage.get(key, 0)) for key in USAGE_KEYS}
             self.completion_tokens = self.usage["completion_tokens"]
@@ -211,5 +269,7 @@ class Session:
                 raise
             self.messages = []
             self.events = []
+            self.title = None
+            self.history_version = 0
             self.usage = dict.fromkeys(USAGE_KEYS, 0)
             self.prompt_tokens = self.completion_tokens = self.total_tokens = 0

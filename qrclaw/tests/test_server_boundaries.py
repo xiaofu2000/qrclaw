@@ -60,6 +60,12 @@ def test_new_empty_session_survives_refresh(temp_dir, monkeypatch):
     assert restored["messages"] == []
 
 
+def test_read_missing_session_returns_not_found(temp_dir):
+    """读取不存在的会话不会伪装成空会话。"""
+    with TestClient(create_app(Workspace(_root=temp_dir)), client=("127.0.0.1", 50000)) as client:
+        assert client.get("/v1/sessions/missing").status_code == 404
+
+
 def test_session_list_has_readable_title_and_detail_has_events(temp_dir, monkeypatch):
     monkeypatch.setattr(workspace_module, "AGENTS_ROOT", temp_dir / "agents")
     workspace = Workspace()
@@ -73,6 +79,73 @@ def test_session_list_has_readable_title_and_detail_has_events(temp_dir, monkeyp
 
     assert summary["title"] == "检查项目 架构"
     assert detail["events"][0]["content"] == "检查代码"
+
+
+def test_session_rename_persists_for_empty_and_existing_conversations(temp_dir):
+    """会话标题由持久化字段提供，空会话也可改名。"""
+    workspace = Workspace(_root=temp_dir)
+    with TestClient(create_app(workspace), client=("127.0.0.1", 50000)) as client:
+        session_id = client.post("/v1/sessions").json()["id"]
+        path = f"/v1/sessions/{session_id}"
+        assert client.patch(path, json={"title": "  项目讨论  "}).json()["title"] == "项目讨论"
+        assert next(s for s in client.get("/v1/sessions").json() if s["id"] == session_id)["title"] == "项目讨论"
+        assert client.get(path).json()["title"] == "项目讨论"
+        assert client.patch(path, json={"title": "   "}).status_code == 400
+        assert client.patch("/v1/sessions/missing", json={"title": "新标题"}).status_code == 404
+
+
+def test_delete_latest_turn_removes_replies_events_and_child_session(temp_dir):
+    """删除末轮时同步清理该轮回复、过程和子任务会话。"""
+    workspace = Workspace(_root=temp_dir)
+    parent = Session(workspace.sessions_dir, session_id="parent")
+    parent.add({"role": "user", "content": "第一轮"})
+    parent.add_event({"kind": "status", "title": "执行中", "content": "保留"})
+    parent.add({"role": "assistant", "content": "第一轮回复"})
+    parent.add({"role": "user", "content": "第二轮"})
+    last_id = parent.messages[-1]["uuid"]
+    child = Session(workspace.sessions_dir, session_id="sub-worker-delete")
+    child.ensure_saved()
+    parent.add_event({"kind": "subagent", "title": "子任务", "meta": {"child_session_id": child.session_id}})
+    parent.add({"role": "assistant", "content": "第二轮回复"})
+    with TestClient(create_app(workspace), client=("127.0.0.1", 50000)) as client:
+        assert client.delete("/v1/sessions/parent/messages/stale").status_code == 409
+        result = client.delete(f"/v1/sessions/parent/messages/{last_id}")
+        assert result.status_code == 200
+        assert [m["content"] for m in result.json()["messages"]] == ["第一轮", "第一轮回复"]
+        assert [e["content"] for e in result.json()["events"]] == ["保留"]
+        assert result.json()["history_version"] == 1
+        assert client.delete(f"/v1/sessions/parent/messages/{last_id}").status_code == 409
+    assert not child._path.exists()
+
+
+def test_edit_latest_user_message_reruns_once_without_old_reply(temp_dir):
+    """编辑请求保留原消息 ID，旧回复被替换且 Agent 只执行一次。"""
+    workspace = Workspace(_root=temp_dir)
+    session = Session(workspace.sessions_dir, session_id="edit")
+    session.add({"role": "user", "content": "旧问题"})
+    message_id = session.messages[-1]["uuid"]
+    session.add({"role": "assistant", "content": "旧回复"})
+    calls = []
+
+    def fake_run(*, session, user_input, record_user_message, on_delta, **_kwargs):
+        calls.append((user_input, record_user_message))
+        on_delta("新")
+        session.add({"role": "assistant", "content": "新回复"})
+        return "新回复"
+
+    with patch("qrclaw.server.routes.run_agent", side_effect=fake_run), \
+         TestClient(create_app(workspace), client=("127.0.0.1", 50000)) as client:
+        response = client.post("/v1/chat/completions", json={"session_id": "edit", "edit_message_id": message_id,
+            "stream": True, "messages": [{"role": "user", "content": "新问题"}]})
+        saved = client.get("/v1/sessions/edit").json()
+        assert client.post("/v1/chat/completions", json={"session_id": "edit", "edit_message_id": "wrong",
+            "messages": [{"role": "user", "content": "覆盖"}]}).status_code == 409
+    assert response.status_code == 200
+    assert "data: [DONE]" in response.text
+    assert calls == [("新问题", False)]
+    assert [(m["role"], m["content"]) for m in saved["messages"]] == [("user", "新问题"), ("assistant", "新回复")]
+    assert saved["messages"][0]["uuid"] == message_id
+    assert saved["history_version"] == 1
 
 
 def test_api_serializes_agent_runs(temp_dir, monkeypatch):
@@ -110,10 +183,14 @@ def test_running_session_is_visible_and_cannot_be_submitted_or_deleted(temp_dir)
         assert release.wait(3)
         return "完成"
 
+    workspace = Workspace(_root=temp_dir)
     with patch("qrclaw.server.routes.run_agent", side_effect=fake_run), \
-         TestClient(create_app(Workspace(_root=temp_dir)), client=("127.0.0.1", 50000)) as client, \
+         TestClient(create_app(workspace), client=("127.0.0.1", 50000)) as client, \
          ThreadPoolExecutor(max_workers=1) as pool:
         session_id = client.post("/v1/sessions").json()["id"]
+        existing = Session(workspace.sessions_dir, session_id)
+        existing.add({"role": "user", "content": "已有问题"})
+        message_id = existing.messages[-1]["uuid"]
         request = {"session_id": session_id, "messages": [{"role": "user", "content": "执行一次"}]}
         future = pool.submit(client.post, "/v1/chat/completions", json=request)
         try:
@@ -124,6 +201,8 @@ def test_running_session_is_visible_and_cannot_be_submitted_or_deleted(temp_dir)
             assert client.post("/v1/chat/completions", json=request).status_code == 409
             assert client.post("/v1/chat/completions", json={**request, "stream": True}).status_code == 409
             assert client.delete(f"/v1/sessions/{session_id}").status_code == 409
+            assert client.delete(f"/v1/sessions/{session_id}/messages/{message_id}").status_code == 409
+            assert client.post("/v1/chat/completions", json={**request, "edit_message_id": message_id}).status_code == 409
         finally:
             release.set()
         assert future.result().status_code == 200

@@ -196,12 +196,23 @@ button:active:not(:disabled) {
   gap: 3px;
 }
 
+.conversation-row {
+  display: flex;
+  align-items: center;
+  border-radius: 7px;
+}
+
+.conversation-row:hover { background: #ecefe9; }
+.conversation-row.active { background: #e5ebe1; color: #273d2e; }
+
 .conversation-item {
   display: flex;
   align-items: center;
   gap: 8px;
   text-align: left;
   width: 100%;
+  flex: 1;
+  min-width: 0;
   padding: 11px 10px;
   border: 0;
   border-radius: 7px;
@@ -209,14 +220,25 @@ button:active:not(:disabled) {
   background: transparent;
 }
 
-.conversation-item:hover {
-  background: #ecefe9;
+.conversation-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 29px;
+  height: 32px;
+  margin-right: 3px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
 }
 
-.conversation-item.active {
-  background: #e5ebe1;
-  color: #273d2e;
-}
+.conversation-action:hover:not(:disabled), .conversation-action:focus-visible { background: #dbe5d8; color: var(--accent); }
+.conversation-action.danger:hover:not(:disabled) { color: #a53c2f; }
+.conversation-action:disabled { opacity: .35; cursor: not-allowed; }
+.conversation-rename { min-width: 0; flex: 1; margin: 4px; padding: 7px; border: 1px solid var(--line); border-radius: 5px; }
 
 .conversation-title {
   font-size: 13px;
@@ -347,6 +369,15 @@ button:active:not(:disabled) {
   border-radius: 16px 16px 4px 16px;
   padding: 12px 18px;
 }
+
+.message-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.user-actions { justify-content: flex-end; }
+.message-actions button { display: inline-flex; align-items: center; gap: 4px; border: 0; border-radius: 5px; padding: 5px 7px; background: transparent; color: var(--muted); cursor: pointer; font-size: 11px; }
+.message-actions button:hover:not(:disabled), .message-actions button:focus-visible { background: #e5ebe1; color: var(--accent); }
+.message-actions button:disabled { opacity: .45; cursor: not-allowed; }
+.message-edit { width: min(620px, 75vw); padding: 12px; border-radius: 12px; background: #f0f2ee; }
+.message-edit textarea { width: 100%; resize: vertical; border: 1px solid var(--line); border-radius: 7px; padding: 10px; font: inherit; line-height: 1.5; }
+.message-edit p { margin: 7px 0 0; color: var(--muted); font-size: 11px; }
 
 .chat-empty {
   min-height: calc(100% - 50px);

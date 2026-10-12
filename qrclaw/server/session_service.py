@@ -41,12 +41,22 @@ class SessionService:
                     delete_session(child_id, self.workspace.sessions_dir)
         return deleted
 
+    def rewrite_latest_user_turn(self, session: Session, message_id: str, content: str | None) -> None:
+        """重写最后一轮消息，并清理被移除的子 Agent 会话。"""
+        children = session.rewrite_latest_user_turn(message_id, content)
+        for child_id in children:
+            delete_session(child_id, self.workspace.sessions_dir)
+
     @staticmethod
     def describe_session(session: Session) -> dict[str, Any]:
         path = session._path
         updated_at = datetime.fromtimestamp(path.stat().st_mtime).strftime("%Y-%m-%d %H:%M") if path.exists() else ""
         return {
             "id": session.session_id,
+            "title": session.title or next((" ".join(message["content"].split())[:48]
+                for message in session.messages if message.get("role") == "user"
+                and isinstance(message.get("content"), str)), "新对话"),
+            "history_version": session.history_version,
             "message_count": len(session.messages),
             "updated_at": updated_at,
             "prompt_tokens": session.usage["prompt_tokens"],

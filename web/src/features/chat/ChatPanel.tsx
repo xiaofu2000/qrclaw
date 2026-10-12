@@ -1,5 +1,5 @@
 import { useLayoutEffect, useRef, useState } from 'react'
-import { ArrowDown, Bot, Check, Copy, GitBranch } from 'lucide-react'
+import { ArrowDown, Bot, Check, Copy, GitBranch, Pencil, Trash2 } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import type { ChatTimelineItem, Message } from '../../lib/types'
@@ -13,20 +13,28 @@ type ChatPanelProps = {
   running: boolean
   queued: boolean
   loading: boolean
+  latestUserMessageId?: string
+  onEditLatestMessage: (messageId: string, content: string) => void
+  onDeleteLatestMessage: (messageId: string) => void
 }
 
-export function ChatPanel({ sessionId, timeline, onSelectSubAgent, streaming, running, queued, loading }: ChatPanelProps) {
+/** 展示主 Agent 消息，并提供最后一条用户消息的编辑入口。 */
+export function ChatPanel({ sessionId, timeline, onSelectSubAgent, streaming, running, queued, loading,
+  latestUserMessageId, onEditLatestMessage, onDeleteLatestMessage }: ChatPanelProps) {
   const historyRef = useRef<HTMLDivElement>(null)
   const followRef = useRef(true)
   const previousSessionRef = useRef(sessionId)
   const [showJump, setShowJump] = useState(false)
   const [copiedId, setCopiedId] = useState('')
   const [copyError, setCopyError] = useState('')
+  const [editingId, setEditingId] = useState('')
+  const [editContent, setEditContent] = useState('')
 
   useLayoutEffect(() => {
     if (sessionId !== previousSessionRef.current) {
       followRef.current = true
       previousSessionRef.current = sessionId
+      setEditingId('')
     }
     const history = historyRef.current
     if (history && followRef.current) {
@@ -70,7 +78,24 @@ export function ChatPanel({ sessionId, timeline, onSelectSubAgent, streaming, ru
                 : item.role === 'tool' ? <details className="tool-result"><summary>工具结果 · {item.toolName ?? '工具'}</summary><pre>{item.content}</pre></details>
                 : <>
                   <div className="message-role">{item.role === 'user' ? '你' : 'QRClaw'}</div>
-                  <div className="message-bubble markdown-body"><ReactMarkdown remarkPlugins={[remarkGfm]}>{item.content}</ReactMarkdown></div>
+                  {editingId === item.uuid && item.uuid ? <div className="message-edit">
+                    <textarea aria-label="编辑最后一条用户消息" value={editContent} onChange={event => setEditContent(event.target.value)} rows={Math.max(3, Math.min(10, editContent.split('\n').length + 1))} />
+                    <p>保存后将重新执行 Agent；此前执行的外部操作不会撤销。</p>
+                    <div className="message-actions">
+                      <button type="button" disabled={!editContent.trim()} onClick={() => {
+                        onEditLatestMessage(item.uuid!, editContent)
+                        setEditingId('')
+                      }}>保存并重新执行</button>
+                      <button type="button" onClick={() => setEditingId('')}>取消</button>
+                    </div>
+                  </div> : <div className="message-bubble markdown-body"><ReactMarkdown remarkPlugins={[remarkGfm]}>{item.content}</ReactMarkdown></div>}
+                  {item.role === 'user' && item.uuid && item.uuid === latestUserMessageId && !running && !loading && editingId !== item.uuid &&
+                    <div className="message-actions user-actions">
+                      <button type="button" aria-label="编辑最后一条用户消息" onClick={() => { setEditingId(item.uuid!); setEditContent(item.content) }}><Pencil size={13} />编辑</button>
+                      <button type="button" aria-label="删除最后一条用户消息" onClick={() => {
+                        if (window.confirm('将删除这条消息及之后的 Agent 回复和执行记录。已经执行的外部操作不会撤销。确定删除吗？')) onDeleteLatestMessage(item.uuid!)
+                      }}><Trash2 size={13} />删除</button>
+                    </div>}
                   {item.role === 'assistant' && <button className="copy-button" aria-label="复制回复" onClick={() => void copy(item)}>
                     {copiedId === item.id ? <Check size={14} /> : <Copy size={14} />}{copiedId === item.id ? '已复制' : '复制'}
                   </button>}

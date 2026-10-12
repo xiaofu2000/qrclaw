@@ -189,6 +189,7 @@ def run(
     workspace: Workspace,
     auto_confirm: bool = False,
     on_delta: Callable[[str], None] | None = None,
+    record_user_message: bool = True,
 ):
     """运行主 Agent；流式回调只转发对用户可见的正文。"""
     logger.info(f"收到用户输入: {user_input[:100]}...")
@@ -196,7 +197,8 @@ def run(
     set_session(session)
     set_workspace(workspace)
     session.start_run_usage()
-    session.add({"role": "user", "content": user_input})
+    if record_user_message:
+        session.add({"role": "user", "content": user_input})
 
     # 主 agent 初始化 ContextManager 单例
     from qrclaw.memory.context.context_manager import init_context_manager

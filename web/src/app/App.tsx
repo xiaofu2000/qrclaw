@@ -58,10 +58,15 @@ export function App() {
         <Sidebar conversations={chat.conversations} activeId={chat.activeId} runningIds={chat.runningIds}
           open={sidebarOpen} creating={chat.creating || chat.loading && !chat.activeId}
           onNewChat={() => { setSidebarOpen(false); void chat.newConversation() }}
-          onSelectConversation={id => { setSidebarOpen(false); void chat.loadConversation(id) }} />
+          onSelectConversation={id => { setSidebarOpen(false); void chat.loadConversation(id) }}
+          onRenameConversation={(id, title) => void chat.renameConversation(id, title)}
+          onDeleteConversation={id => void chat.deleteConversation(id)} />
         <main className="chat-column" id="conversation">
           <ChatPanel sessionId={chat.activeId} timeline={chat.timeline} streaming={chat.streaming} running={chat.running} queued={chat.queued}
-            loading={chat.loading} onSelectSubAgent={id => { chat.selectSubAgent(id); setInspectorOpen(true) }} />
+            loading={chat.loading} onSelectSubAgent={id => { chat.selectSubAgent(id); setInspectorOpen(true) }}
+            latestUserMessageId={chat.messages.filter(message => message.role === 'user').at(-1)?.uuid}
+            onEditLatestMessage={(id, content) => void chat.editLatestMessage(id, content)}
+            onDeleteLatestMessage={id => void chat.deleteLatestMessage(id)} />
           <div className="composer-area">
             {chat.error && <div className="chat-error" role="alert"><span>{chat.error}</span><button onClick={() => void chat.refresh()}>刷新会话</button></div>}
             <Composer value={chat.draft} onChange={chat.setDraft} onSend={chat.send}

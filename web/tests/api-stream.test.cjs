@@ -65,3 +65,11 @@ test('子任务过程流同时还原卡片元数据与临时文字', async () =>
   assert.deepEqual(events, [[4, 'sub-worker-1']])
   assert.deepEqual(texts, ['正在读取文件'])
 })
+
+test('编辑请求只发送一次并携带原消息 ID', async () => {
+  const { api, requests } = clientWithFrames('data: [DONE]\n\n')
+  await api.chatStream('会话 A', '新问题', () => {}, undefined, 'message-1')
+  assert.equal(requests.length, 1)
+  assert.equal(JSON.parse(requests[0].options.body).edit_message_id, 'message-1')
+  assert.equal(JSON.parse(requests[0].options.body).messages[0].content, '新问题')
+})

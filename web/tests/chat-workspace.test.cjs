@@ -7,7 +7,7 @@ const ts = require('typescript')
 const compiled = ts.transpileModule(readFileSync('src/features/chat/useChatWorkspace.ts', 'utf8'), {
   compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
 }).outputText
-const session = id => ({ id, title: id, message_count: 0, updated_at: '', messages: [], events: [], total_tokens: 0, run_status: 'idle', run_error: null })
+const session = id => ({ id, title: id, history_version: 0, message_count: 0, updated_at: '', messages: [], events: [], total_tokens: 0, run_status: 'idle', run_error: null })
 function deferred() {
   let resolve, reject
   const promise = new Promise((yes, no) => { resolve = yes; reject = no })
@@ -83,6 +83,14 @@ function client() {
     listSessions: async () => Object.values(sessions),
     getSession: async id => sessions[id],
     createSession: async () => sessions.B,
+    renameSession: async (id, title) => { sessions[id] = { ...sessions[id], title }; return sessions[id] },
+    deleteSession: async id => { delete sessions[id] },
+    deleteLatestUserMessage: async (id, messageId) => {
+      const current = sessions[id]
+      const index = current.messages.findLastIndex(message => message.uuid === messageId)
+      sessions[id] = { ...current, history_version: current.history_version + 1, messages: current.messages.slice(0, index), events: [] }
+      return sessions[id]
+    },
     chatStream: async () => '',
     streamEvents: async () => {},
   }
@@ -431,5 +439,107 @@ test('父会话过程流断线后只重连读取，不重发聊天任务', async
   assert.equal(sends, 0)
   second.resolve()
   await hook.flush()
+  hook.close()
+})
+
+test('空会话改名后列表保留自定义标题，删除当前会话切换到下一条', async () => {
+  const api = client(), hook = workspace(api)
+  let view = await hook.flush()
+  await view.renameConversation('A', '自定义标题')
+  view = hook.render()
+  assert.equal(view.conversations.find(item => item.id === 'A').title, '自定义标题')
+  await view.deleteConversation('A')
+  view = hook.render()
+  assert.equal(view.activeId, 'B')
+  assert.equal(view.conversations.some(item => item.id === 'A'), false)
+  assert.equal(view.session.id, 'B')
+  hook.close()
+})
+
+test('编辑最后一条用户消息清除旧回复，并挡住迟到的旧会话读取', async () => {
+  const api = client(), pending = deferred()
+  api.sessions.A.messages = [
+    { role: 'user', uuid: 'first', content: '第一轮', turn_event_index: 0 },
+    { role: 'assistant', content: '第一轮回复' },
+    { role: 'user', uuid: 'last', content: '旧问题', turn_event_index: 1 },
+    { role: 'assistant', content: '旧回复' },
+  ]
+  api.sessions.A.events = [{ kind: 'status', title: '执行中', content: '第一轮' }, { kind: 'status', title: '执行中', content: '旧过程' }]
+  let calls = 0, editId
+  api.chatStream = (_id, content, onDelta, onReady, id) => {
+    calls++
+    editId = id
+    onReady()
+    onDelta('新片段')
+    return pending.promise
+  }
+  const hook = workspace(api)
+  let view = await hook.flush()
+  const sending = view.editLatestMessage('last', '新问题')
+  view = hook.render()
+  assert.deepEqual(Array.from(view.messages, message => message.content), ['第一轮', '第一轮回复', '新问题'])
+  assert.deepEqual(Array.from(view.session.events, event => event.content), ['第一轮'])
+  assert.equal(view.streaming, '新片段')
+  assert.equal(editId, 'last')
+  api.sessions.A.run_status = 'running'
+  view = await hook.poll()
+  assert.equal(view.messages.at(-1).content, '新问题')
+  assert.equal(view.session.events.length, 1)
+  api.sessions.A = { ...api.sessions.A, history_version: 1, run_status: 'idle', messages: [
+    ...api.sessions.A.messages.slice(0, 2), { role: 'user', uuid: 'last', content: '新问题', turn_event_index: 1 },
+    { role: 'assistant', content: '新回复' },
+  ], events: [{ kind: 'status', title: '执行中', content: '第一轮' }] }
+  pending.resolve()
+  await sending
+  view = hook.render()
+  assert.equal(view.messages.at(-1).content, '新回复')
+  assert.equal(view.streaming, '')
+  assert.equal(calls, 1)
+  hook.close()
+})
+
+test('删除末轮后旧读取不能恢复被删回复，也不会重跑 Agent', async () => {
+  const api = client(), pending = deferred()
+  api.sessions.A.messages = [
+    { role: 'user', uuid: 'first', content: '第一轮', turn_event_index: 0 },
+    { role: 'assistant', content: '保留' },
+    { role: 'user', uuid: 'last', content: '删除我', turn_event_index: 1 },
+    { role: 'assistant', content: '旧回复' },
+  ]
+  const old = { ...api.sessions.A, messages: [...api.sessions.A.messages] }
+  let sends = 0
+  api.chatStream = async () => { sends++ }
+  const hook = workspace(api)
+  let view = await hook.flush()
+  api.getSession = id => id === 'A' ? pending.promise : Promise.resolve(api.sessions[id])
+  const lateRead = view.loadConversation('A')
+  await view.deleteLatestMessage('last')
+  pending.resolve(old)
+  await lateRead
+  view = hook.render()
+  assert.deepEqual(Array.from(view.messages, message => message.content), ['第一轮', '保留'])
+  assert.equal(view.session.history_version, 1)
+  assert.equal(sends, 0)
+  hook.close()
+})
+
+test('编辑旧会话时保留前一轮的过程事件', async () => {
+  const api = client(), pending = deferred()
+  api.sessions.A.messages = [
+    { role: 'user', uuid: 'first', content: '第一轮' },
+    { role: 'assistant', content: '完成' },
+    { role: 'user', uuid: 'last', content: '第二轮' },
+  ]
+  api.sessions.A.events = [
+    { kind: 'status', content: '第一轮过程' }, { kind: 'message_saved', title: '消息已保存' },
+    { kind: 'status', content: '第二轮过程' },
+  ]
+  api.chatStream = () => pending.promise
+  const hook = workspace(api)
+  const view = await hook.flush()
+  const editing = view.editLatestMessage('last', '修改后')
+  assert.deepEqual(Array.from(hook.render().session.events, event => event.kind), ['status', 'message_saved'])
+  pending.resolve()
+  await editing
   hook.close()
 })

@@ -16,6 +16,7 @@ class ChatCompletionRequest(BaseModel):
     messages: list[ChatMessage] = Field(default_factory=list)
     stream: bool = False
     temperature: float | None = None
+    edit_message_id: str | None = Field(default=None, min_length=1)
 
 
 class SessionSummary(BaseModel):
@@ -29,8 +30,10 @@ class SessionSummary(BaseModel):
 
 class SessionDetail(BaseModel):
     id: str
+    title: str = "新对话"
     message_count: int
     updated_at: str
+    history_version: int = 0
     run_status: Literal["idle", "queued", "running"] = "idle"
     active_subagents: bool = False
     run_error: str | None = None
@@ -43,4 +46,8 @@ class SessionDetail(BaseModel):
 
 class CreateSessionRequest(BaseModel):
     session_id: str | None = None
+
+
+class RenameSessionRequest(BaseModel):
+    title: str = Field(min_length=1, max_length=80)
 

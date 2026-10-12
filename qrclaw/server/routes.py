@@ -21,6 +21,7 @@ from .schemas import (
     ChatCompletionRequest,
     ChatMessage,
     CreateSessionRequest,
+    RenameSessionRequest,
     SessionDetail,
     SessionSummary,
 )
@@ -43,6 +44,11 @@ def build_router(workspace: Workspace) -> APIRouter:
             return {**detail, "run_status": runs.get(detail["id"], "running" if running_child else "idle"),
                     "active_subagents": has_active_sub_agents(detail["id"], workspace.sessions_dir),
                     "run_error": failures.get(detail["id"])}
+
+    def ensure_session_idle(session_id: str) -> None:
+        """修改会话历史前确认主任务和子任务都已结束。"""
+        if session_id in runs or sub_agent_snapshot(session_id, workspace.sessions_dir) or has_active_sub_agents(session_id, workspace.sessions_dir):
+            raise HTTPException(status_code=409, detail="会话仍在执行任务，暂时不能修改")
 
     @router.get("/health")
     def health() -> dict[str, str]:
@@ -79,6 +85,37 @@ def build_router(workspace: Workspace) -> APIRouter:
         # 避免返回旧内容和刚完成的 idle 状态，让页面误以为结果已完整。
         with status_lock:
             session = service.get_session(session_id)
+            if not session._path.exists():
+                raise HTTPException(status_code=404, detail="会话不存在")
+            return with_status(service.describe_session(session))
+
+    @router.patch("/v1/sessions/{session_id}", response_model=SessionDetail)
+    def rename_session_api(session_id: str, request: RenameSessionRequest) -> dict[str, Any]:
+        """修改会话标题，不影响消息和执行过程。"""
+        title = request.title.strip()
+        if not title:
+            raise HTTPException(status_code=400, detail="会话标题不能为空")
+        with status_lock:
+            session = service.get_session(session_id)
+            try:
+                session.set_title(title)
+            except FileNotFoundError as exc:
+                raise HTTPException(status_code=404, detail="会话不存在") from exc
+            return with_status(service.describe_session(session))
+
+    @router.delete("/v1/sessions/{session_id}/messages/{message_id}", response_model=SessionDetail)
+    def delete_latest_user_message_api(session_id: str, message_id: str) -> dict[str, Any]:
+        """删除最后一轮用户消息及对应回复、过程事件和子会话。"""
+        with status_lock:
+            ensure_session_idle(session_id)
+            session = service.get_session(session_id)
+            try:
+                service.rewrite_latest_user_turn(session, message_id, None)
+            except FileNotFoundError as exc:
+                raise HTTPException(status_code=404, detail="会话不存在") from exc
+            except ValueError as exc:
+                raise HTTPException(status_code=409, detail=str(exc)) from exc
+            failures.pop(session_id, None)
             return with_status(service.describe_session(session))
 
     @router.get("/v1/sessions/{session_id}/events/stream")
@@ -118,8 +155,7 @@ def build_router(workspace: Workspace) -> APIRouter:
     @router.delete("/v1/sessions/{session_id}")
     def delete_session_api(session_id: str) -> dict[str, Any]:
         with status_lock:
-            if session_id in runs or sub_agent_snapshot(session_id, workspace.sessions_dir) or has_active_sub_agents(session_id, workspace.sessions_dir):
-                raise HTTPException(status_code=409, detail="会话仍在执行任务，暂时不能删除")
+            ensure_session_idle(session_id)
             deleted = service.delete_session(session_id)
             failures.pop(session_id, None)
         if not deleted:
@@ -132,11 +168,22 @@ def build_router(workspace: Workspace) -> APIRouter:
         user_input = _latest_user_text(request.messages)
         if not user_input:
             raise HTTPException(status_code=400, detail="messages 中缺少 user 内容")
+        if request.edit_message_id is not None and not request.session_id:
+            raise HTTPException(status_code=400, detail="编辑消息需要指定会话 ID")
 
         with status_lock:
             if request.session_id in runs:
                 raise HTTPException(status_code=409, detail="会话已有任务正在执行，请等待完成")
+            if request.edit_message_id is not None:
+                ensure_session_idle(request.session_id)
             session = service.get_session(request.session_id) if request.session_id else service.create_session()
+            if request.edit_message_id is not None:
+                if not session._path.exists():
+                    raise HTTPException(status_code=404, detail="会话不存在")
+                latest_user = next((message for message in reversed(session.messages)
+                                    if message.get("role") == "user"), None)
+                if latest_user is None or latest_user.get("uuid") != request.edit_message_id:
+                    raise HTTPException(status_code=409, detail="只能编辑最后一条用户消息，请刷新会话")
             runs[session.session_id] = "queued"
             failures.pop(session.session_id, None)
         console = Console(file=StringIO(), highlight=False)
@@ -148,6 +195,8 @@ def build_router(workspace: Workspace) -> APIRouter:
                 with _agent_run_lock:
                     with status_lock:
                         runs[session.session_id] = "running"
+                    if request.edit_message_id is not None:
+                        service.rewrite_latest_user_turn(session, request.edit_message_id, user_input)
                     kwargs = dict(
                         user_input=user_input,
                         session=session,
@@ -155,6 +204,8 @@ def build_router(workspace: Workspace) -> APIRouter:
                         workspace=workspace,
                         auto_confirm=True,
                     )
+                    if request.edit_message_id is not None:
+                        kwargs["record_user_message"] = False
                     if on_delta is not None:
                         kwargs["on_delta"] = on_delta
                     return run_agent(**kwargs)
