@@ -1,5 +1,6 @@
 import json
 import uuid
+from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
 from filelock import FileLock
@@ -73,10 +74,13 @@ def get_last_session_id(sessions_dir: Path) -> str | None:
     return None
 
 
-def delete_session(session_id: str, sessions_dir: Path) -> bool:
+def delete_session(session_id: str, sessions_dir: Path, *, before_delete: Callable[[], None] | None = None) -> bool:
+    """在会话文件锁内先执行来源撤销，再删除文件。"""
     path = _session_path(sessions_dir, session_id)
     with FileLock(f"{path}.lock"):
         if path.exists():
+            if before_delete is not None:
+                before_delete()
             path.unlink()
             logger.info(f"删除会话: {session_id}")
             return True
@@ -154,7 +158,7 @@ class Session:
             self.title = title
             self._save()
 
-    def rewrite_latest_user_turn(self, message_id: str, content: str | None) -> set[str]:
+    def rewrite_latest_user_turn(self, message_id: str, content: str | None, *, before_save: Callable[[str, set[str], set[str]], None] | None = None) -> set[str]:
         """原子替换或删除最后一轮用户消息，并返回需清理的子会话 ID。"""
         with FileLock(f"{self._path}.lock"):
             if not self._path.exists():
@@ -165,6 +169,7 @@ class Session:
             if index < 0 or self.messages[index].get("uuid") != message_id:
                 raise ValueError("只能操作最后一条用户消息，请刷新会话")
             original = self.messages[index]
+            removed_ids = {m["uuid"] for m in self.messages[index:] if m.get("uuid")}
             if "turn_event_index" in original:
                 event_start = int(original["turn_event_index"])
             else:
@@ -187,7 +192,11 @@ class Session:
                 self.messages.append({**original, "content": content, "turn_event_index": len(self.events)})
             self.history_version += 1
             self.prompt_tokens = count_messages_tokens(self.messages)
-            self._save()
+            try:
+                self._save(before_replace=(lambda text: before_save(text, removed_ids, children)) if before_save is not None else None)
+            except Exception:
+                self._load(strict=True)
+                raise
             return children
 
     def start_run_usage(self):
@@ -231,15 +240,16 @@ class Session:
             if self._path.exists():
                 self._path.unlink()
 
-    def _save(self):
+    def _save(self, *, before_replace: Callable[[str], None] | None = None):
+        """原子保存；可在替换前持久化与聊天删改绑定的来源撤销。"""
         temp_path = self._path.with_name(f".{self._path.name}.{uuid.uuid4().hex}.tmp")
         try:
-            temp_path.write_text(
-                json.dumps({"messages": self.messages, "events": self.events, "usage": self.usage,
+            text = json.dumps({"messages": self.messages, "events": self.events, "usage": self.usage,
                             "title": self.title, "history_version": self.history_version,
-                            "context_overhead_tokens": self.context_overhead_tokens}, ensure_ascii=False, indent=2),
-                encoding="utf-8"
-            )
+                            "context_overhead_tokens": self.context_overhead_tokens}, ensure_ascii=False, indent=2)
+            temp_path.write_text(text, encoding="utf-8")
+            if before_replace is not None:
+                before_replace(text)
             temp_path.replace(self._path)
         except Exception as e:
             logger.error(f"会话保存失败: {e}", exc_info=True)

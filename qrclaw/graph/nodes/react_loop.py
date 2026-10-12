@@ -183,6 +183,8 @@ class ReactLoopNode:
                 extractor = MemoryExtractionNode(memory, session=session)
                 self._memory_integrations[key] = MemoryExtractionIntegration(extractor)
                 logger.debug("MemoryExtractionIntegration 已初始化")
+            # API 每次加载新 Session 对象；主动记忆必须使用当前请求的消息，不能沿用旧快照。
+            self._memory_integrations[key].extractor.session = session
             return self._memory_integrations[key]
 
     def resume_memory_extractions(self, workspace: Workspace) -> None:

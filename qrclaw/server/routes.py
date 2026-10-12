@@ -36,6 +36,8 @@ _agent_run_lock = Lock()
 def build_router(workspace: Workspace) -> APIRouter:
     router = APIRouter()
     service = SessionService(workspace)
+    from .wiki_routes import build_wiki_router
+    router.include_router(build_wiki_router(workspace))
     runs: dict[str, str] = {}
     failures: dict[str, str] = {}
     status_lock = RLock()

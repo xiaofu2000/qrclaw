@@ -18,6 +18,7 @@ import re
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Optional
+from datetime import datetime
 
 from qrclaw.logger import get_logger
 
@@ -140,7 +141,8 @@ class ExtractionRunner:
         """懒加载初始化 LLM analyzer"""
         from qrclaw.llm_service import get_llm_service
         from qrclaw.memory.wiki.extraction import WikiLLMAnalyzer
-        self.llm_analyzer = WikiLLMAnalyzer(get_llm_service(), self.config)
+        self.llm_analyzer = WikiLLMAnalyzer(get_llm_service(), self.config,
+            schema_rules=(self.wiki_memory.memory_dir / "SCHEMA.md").read_text(encoding="utf-8"))
 
     # ── 页面整理 ──────────────────────────────────────────────────────────────
 
@@ -166,13 +168,14 @@ class ExtractionRunner:
                 existing_content=page.content,
                 new_content="",
                 page_name=page.name,
+                existing_metadata=dict(description=page.description, tags=page.tags, related=page.related),
             )
             self.wiki_memory.save_page(
                 name=page.name,
                 content=result.content,
                 description=result.description or page.description,
-                tags=result.tags if result.tags else page.tags,
-                related=page.related,
+                tags=result.tags if "tags" in result.model_fields_set else page.tags,
+                related=result.related if "related" in result.model_fields_set else page.related,
                 expected_page=page,
             )
             logger.info(f"[ExtractionRunner] 页面整理完成: {name}")
@@ -257,7 +260,9 @@ class ExtractionRunner:
 
     # ── 批量写入 ──────────────────────────────────────────────────────────────
 
-    def process_extraction_result(self, extraction: "ExtractionSchema", is_current=None, save_page=None) -> int:
+    def process_extraction_result(self, extraction: "ExtractionSchema", is_current=None, save_page=None,
+                                  *, sources: list[dict] | None = None, batch_id: str | None = None,
+                                  explicit: bool = False) -> int:
         """
         处理提取结果；自动任务在保存前确认来源消息尚未被编辑或删除。
 
@@ -273,8 +278,26 @@ class ExtractionRunner:
         success_count = 0
         failures = []
         persist_page = save_page or self.wiki_memory.save_page
+        import time
+        started_at = getattr(self, "started_at", time.time())
 
-        for page in extraction.pages:
+        grouped = {}
+        for proposed in extraction.pages:
+            if proposed.action == "skip":
+                continue
+            name = self.wiki_memory.fuzzy_find_name(proposed.name) or proposed.name
+            if name not in grouped:
+                grouped[name] = proposed.model_copy(deep=True)
+                grouped[name].name = name
+            else:
+                current = grouped[name]
+                if proposed.content and proposed.content not in current.content:
+                    current.content += "\n\n" + proposed.content
+                current.source_ids = list(dict.fromkeys(current.source_ids + proposed.source_ids))
+                current.tags = list(dict.fromkeys(current.tags + proposed.tags))
+                current.related = list(dict.fromkeys(current.related + proposed.related))
+
+        for page in grouped.values():
             try:
                 if is_current is not None and not is_current():
                     return success_count
@@ -282,24 +305,60 @@ class ExtractionRunner:
                     continue
 
                 page.name = self.wiki_memory.fuzzy_find_name(page.name) or page.name
+                with self.wiki_memory._lock:
+                    deleted_at = self.wiki_memory.provenance.read()["deleted_pages"].get(page.name)
+                if deleted_at and (not explicit or datetime.fromisoformat(deleted_at).timestamp() >= started_at):
+                    continue
                 existing = self.wiki_memory.get_page(page.name)
+                receipt = None
+                source_ids = None
+                new_content = page.content
+                new_metadata = dict(description=page.description, tags=page.tags, related=page.related)
+                if sources is not None:
+                    allowed = {source["id"]: source for source in sources}
+                    if not page.source_ids or any(key not in allowed for key in page.source_ids):
+                        raise ValueError("模型必须引用输入提供的真实来源 ID")
+                    if not any(allowed[key]["role"] == "user" for key in page.source_ids):
+                        raise ValueError("不能仅根据助手推测创建记忆")
+                    if batch_id:
+                        import hashlib
+                        receipt = batch_id + ":" + hashlib.sha256(page.name.encode()).hexdigest()
+                    if existing and receipt in existing.applied_batches:
+                        continue
+                    if existing:
+                        self.wiki_memory.provenance.baseline(existing)
+                        with self.wiki_memory._lock:
+                            state = self.wiki_memory.provenance.read()
+                            manual = [state["sources"].get(key, {}) for key in existing.source_ids]
+                        manual_order = max((s.get("order", 0) for s in manual if s.get("kind") == "manual"), default=0)
+                        if manual_order:
+                            page.source_ids = [key for key in page.source_ids if allowed[key].get("order", 0) > manual_order]
+                            if not page.source_ids or not any(allowed[key]["role"] == "user" for key in page.source_ids):
+                                continue
+                            # 混合批次的模型摘要可能夹带旧事实，只提交用户确认之后的新证据。
+                            from qrclaw.memory.wiki.provenance import source_text
+                            new_content = "尊重现有用户确认正文；仅以下较新的证据可补充或明确纠正，不能补回旧来源被移除的事实。\n" + source_text([allowed[key] for key in page.source_ids])
+                            new_metadata = None
+                    source_ids = list(dict.fromkeys((existing.source_ids if existing else []) + page.source_ids))
                 if existing:
                     if self.llm_analyzer is None:
                         self._init_llm_analyzer()
                     result = self.llm_analyzer.consolidate(
                         existing_content=existing.content,
-                        new_content=page.content,
+                        new_content=new_content,
                         page_name=page.name,
+                        existing_metadata=dict(description=existing.description, tags=existing.tags, related=existing.related),
+                        new_metadata=new_metadata,
                     )
                     content = result.content.strip()
                     description = result.description or existing.description
-                    tags = list(dict.fromkeys(existing.tags + page.tags + result.tags))
-                    related = list(dict.fromkeys(existing.related + page.related))
+                    tags = result.tags if "tags" in result.model_fields_set else existing.tags
+                    related = result.related if "related" in result.model_fields_set else existing.related
                     if is_current is not None and not is_current():
                         return success_count
                     if (content, description, tags, related) == (
                         existing.content, existing.description, existing.tags, existing.related
-                    ):
+                    ) and (source_ids is None or source_ids == existing.source_ids):
                         continue
                     saved = persist_page(
                         name=page.name,
@@ -308,6 +367,7 @@ class ExtractionRunner:
                         tags=tags,
                         related=related,
                         expected_page=existing,
+                        source_ids=source_ids, batch_id=receipt, explicit=explicit, started_at=started_at,
                     )
                     action = "更新"
                 else:
@@ -319,6 +379,7 @@ class ExtractionRunner:
                         description=page.description,
                         tags=page.tags,
                         related=page.related,
+                        source_ids=source_ids, batch_id=receipt, explicit=explicit, expected_missing=True, started_at=started_at,
                     )
                     action = "新建"
 

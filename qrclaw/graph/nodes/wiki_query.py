@@ -60,6 +60,11 @@ def _build_injected_context(pages: list[dict]) -> str:
             sections.append(f"**摘要**: {page['description']}")
         if page.get("tags"):
             sections.append(f"**标签**: {', '.join(page['tags'])}")
+        if page.get("related"):
+            sections.append(f"**关联**: {', '.join(page['related'])}")
+        sections.append(f"**来源状态**: {page.get('source_status', '来源未追溯')}；版本 {page.get('revision', 0)}")
+        if page.get("next_offset") is not None:
+            sections.append(f"正文已分页；需要后文时用 read_wiki_page(name={page['name']!r}, offset={page['next_offset']}) 继续读取。")
         sections.append("")
         sections.append(page["content"])
         sections.append("\n---\n")
@@ -157,12 +162,19 @@ class WikiQueryNode:
         # 第二步：构建页面详情列表（已包含正文）
         pages_detail: list[dict] = []
         for page in selected:
+            from qrclaw.tools.wiki_tools import read_wiki_content
+            readable = read_wiki_content(self.wiki, page.name)
+            if "error" in readable or readable.get("duplicate"):
+                continue
             pages_detail.append({
                 "name": page.name,
-                "content": page.content,
+                "content": readable["content"],
                 "description": page.description,
                 "tags": page.tags,
                 "related": page.related,
+                "next_offset": readable["next_offset"],
+                "source_status": readable["source_status"],
+                "revision": readable["revision"],
             })
 
         # 第三步：构建可注入的上下文字符串

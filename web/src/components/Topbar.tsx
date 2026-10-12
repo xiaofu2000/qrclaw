@@ -7,11 +7,12 @@ type TopbarProps = {
   title: string
   sidebarOpen: boolean
   inspectorOpen: boolean
+  showInspector: boolean
   onToggleSidebar: () => void
   onToggleInspector: () => void
 }
 
-export function Topbar({ status, statusText, title, sidebarOpen, inspectorOpen, onToggleSidebar, onToggleInspector }: TopbarProps) {
+export function Topbar({ status, statusText, title, sidebarOpen, inspectorOpen, showInspector, onToggleSidebar, onToggleInspector }: TopbarProps) {
   return (
     <header className="topbar">
       <div className="topbar-heading">
@@ -21,7 +22,7 @@ export function Topbar({ status, statusText, title, sidebarOpen, inspectorOpen, 
       </div>
       <div className="topbar-actions">
         <span className={`status-label ${status}`} role="status">{statusText}</span>
-        <button className="icon-button" aria-label="切换执行过程" aria-expanded={inspectorOpen} aria-controls="run-inspector" onClick={onToggleInspector}><PanelRight size={19} /></button>
+        {showInspector && <button className="icon-button" aria-label="切换执行过程" aria-expanded={inspectorOpen} aria-controls="run-inspector" onClick={onToggleInspector}><PanelRight size={19} /></button>}
       </div>
     </header>
   )

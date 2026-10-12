@@ -198,6 +198,9 @@ def run(
     set_session(session)
     set_workspace(workspace)
     session.start_run_usage()
+    from qrclaw.tools.wiki_tools import reset_wiki_reads
+    if not is_sub_agent():
+        reset_wiki_reads()
     memory_integration = None
     if not is_sub_agent():
         memory_integration = _runner.react_loop._get_memory_integration(workspace, session)
@@ -208,6 +211,8 @@ def run(
             memory_integration.on_run_start()
         if record_user_message:
             session.add({"role": "user", "content": user_input})
+        if memory_integration:
+            memory_integration.extractor.collect(session.messages)
 
         from qrclaw.memory.context.context_manager import init_context_manager
         init_context_manager(session, workspace, is_sub_agent=is_sub_agent())

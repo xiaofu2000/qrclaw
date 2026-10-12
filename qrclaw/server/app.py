@@ -23,11 +23,19 @@ def create_app(workspace: Workspace | None = None) -> FastAPI:
     async def lifespan(app):
         """恢复持久化的记忆批次，退出时取消尚未到期的闲置计时。"""
         from qrclaw.agent import _runner
+        from qrclaw.server.session_service import SessionService
+        SessionService(workspace).recover_session_changes()
         _runner.react_loop.resume_memory_extractions(workspace)
+        from qrclaw.memory.wiki import WikiMemory
+        wiki = WikiMemory.for_workspace(workspace.memory_dir)
+        wiki.rebuild_index()
+        wiki.repair_worker.closed = False
+        wiki.repair_worker.resume()
         try:
             yield
         finally:
             _runner.react_loop.stop_memory_extractions(workspace)
+            wiki.repair_worker.close()
 
     app = FastAPI(title="QRClaw Local API", version="0.1.0", lifespan=lifespan)
     static_dir = Path(__file__).with_name("static")

@@ -6,12 +6,22 @@ import { Composer } from '../features/composer/Composer'
 import { createApiClient } from '../lib/api'
 import { Sidebar } from '../components/Sidebar'
 import { Topbar } from '../components/Topbar'
+import { MemoryWorkspace } from '../features/memory/MemoryPanel'
 
 export function App() {
   const api = useMemo(() => createApiClient(), [])
   const chat = useChatWorkspace(api)
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [inspectorOpen, setInspectorOpen] = useState(false)
+  const [memoryOpen, setMemoryOpen] = useState(() => window.location.hash.startsWith('#/memory'))
+  useEffect(() => {
+    /** 刷新和浏览器前进、后退均使用同一个记忆入口。 */
+    function navigate() { setMemoryOpen(window.location.hash.startsWith('#/memory')) }
+    window.addEventListener('hashchange', navigate)
+    return () => window.removeEventListener('hashchange', navigate)
+  }, [])
+  /** 切回聊天保留 ViewModel 中的草稿和正在执行的任务。 */
+  function showChat() { window.location.hash = ''; setMemoryOpen(false) }
   useEffect(() => {
     function closePanels(event: KeyboardEvent) {
       if (event.key === 'Escape') { setSidebarOpen(false); setInspectorOpen(false) }
@@ -50,18 +60,21 @@ export function App() {
 
   return (
     <div className="app-shell">
-      <Topbar status={status} statusText={statusText} title={title}
+      <Topbar status={status} statusText={statusText} title={memoryOpen ? '记忆' : title}
         sidebarOpen={sidebarOpen} onToggleSidebar={() => setSidebarOpen(value => !value)}
-        inspectorOpen={inspectorOpen} onToggleInspector={() => setInspectorOpen(value => !value)} />
-      {(sidebarOpen || inspectorOpen) && <button className="panel-backdrop" aria-label="关闭面板" onClick={() => { setSidebarOpen(false); setInspectorOpen(false) }} />}
-      <div className={`workspace ${inspectorOpen ? 'with-inspector' : ''}`}>
+        inspectorOpen={inspectorOpen} showInspector={!memoryOpen} onToggleInspector={() => setInspectorOpen(value => !value)} />
+      {(sidebarOpen || inspectorOpen && !memoryOpen) && <button className="panel-backdrop" aria-label="关闭面板" onClick={() => { setSidebarOpen(false); setInspectorOpen(false) }} />}
+      <div className={`workspace ${inspectorOpen && !memoryOpen ? 'with-inspector' : ''}`}>
         <Sidebar conversations={chat.conversations} activeId={chat.activeId} runningIds={chat.runningIds} mutatingIds={chat.mutatingIds}
           open={sidebarOpen} creating={chat.creating || chat.loading && !chat.activeId}
-          onNewChat={() => { setSidebarOpen(false); void chat.newConversation() }}
-          onSelectConversation={id => { setSidebarOpen(false); void chat.loadConversation(id) }}
+          memoryOpen={memoryOpen} onOpenMemory={() => { window.location.hash = '/memory'; setMemoryOpen(true); setSidebarOpen(false); setInspectorOpen(false) }}
+          onNewChat={() => { showChat(); setSidebarOpen(false); void chat.newConversation() }}
+          onSelectConversation={id => { showChat(); setSidebarOpen(false); void chat.loadConversation(id) }}
           onRenameConversation={(id, title) => void chat.renameConversation(id, title)}
           onDeleteConversation={id => void chat.deleteConversation(id)} />
-        <main className="chat-column" id="conversation">
+        <MemoryWorkspace api={api} visible={memoryOpen} activityKey={chat.runningIds.size}
+          onOpenSession={id => { showChat(); void chat.loadConversation(id) }} />
+        <main className="chat-column" id="conversation" hidden={memoryOpen}>
           <ChatPanel sessionId={chat.activeId} timeline={chat.timeline} streaming={chat.streaming} running={chat.running} queued={chat.queued}
             loading={chat.loading} mutating={chat.mutating} onSelectSubAgent={id => { chat.selectSubAgent(id); setInspectorOpen(true) }}
             latestUserMessageId={chat.messages.filter(message => message.role === 'user').at(-1)?.uuid}
@@ -74,7 +87,7 @@ export function App() {
               disabled={chat.running || chat.loading || chat.creating || chat.mutating || !chat.session} loading={chat.loading || !chat.session} running={chat.running} />
           </div>
         </main>
-        {inspectorOpen && <InspectorPanel session={chat.session} status={status} queued={chat.queued}
+        {inspectorOpen && !memoryOpen && <InspectorPanel session={chat.session} status={status} queued={chat.queued}
           selectedCard={chat.selectedCard} childSession={chat.childSession} childMessages={chat.childMessages}
           childStreaming={chat.childStreaming} onMainAgent={() => chat.selectSubAgent(null)} onClose={() => setInspectorOpen(false)} />}
       </div>

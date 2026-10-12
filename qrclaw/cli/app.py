@@ -59,6 +59,8 @@ def main() -> None:
     from qrclaw.heartbeat import get_default_heartbeat_content, execute_heartbeat_tasks
 
     # 3. 创建 Session（路径由 workspace 决定）
+    from qrclaw.server.session_service import SessionService
+    SessionService(workspace).recover_session_changes()
     # resume=True 且不传 session_id 时，自动恢复最近的会话
     session = Session(
         sessions_dir=workspace.sessions_dir,
@@ -148,6 +150,8 @@ def main() -> None:
             break
 
         if user_input == "clear":
+            from qrclaw.server.session_service import SessionService
+            SessionService(workspace).delete_session(session.session_id)
             session.clear()
             console.print("[dim]会话已清除[/dim]\n")
             continue

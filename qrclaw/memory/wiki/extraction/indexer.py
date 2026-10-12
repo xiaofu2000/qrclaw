@@ -26,6 +26,8 @@ class ExtractionState:
     pending_messages: list[dict] = field(default_factory=list)
     preserved_message_ids: list[str] = field(default_factory=list)
     force_pending: bool = False
+    extraction_status: str = "idle"
+    last_error: str = ""
 
 
 class ExtractionIndexer:
@@ -99,6 +101,8 @@ class ExtractionIndexer:
                     or not isinstance(state.preserved_message_ids, list)
                     or not all(isinstance(i, str) for i in state.preserved_message_ids)
                     or not isinstance(state.force_pending, bool)
+                    or state.extraction_status not in ("idle", "pending", "processing", "completed", "failed")
+                    or not isinstance(state.last_error, str)
                     or not all(isinstance(getattr(state, name), (int, float))
                                and math.isfinite(getattr(state, name)) and getattr(state, name) >= 0
                                for name in ("last_extraction_time", "last_attempt_time", "last_activity_time", "total_extractions",

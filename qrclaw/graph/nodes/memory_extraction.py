@@ -44,6 +44,8 @@ class MemoryExtractionNode:
         self._runner = None
         self._llm_analyzer = llm_analyzer
         self._flush_lock = threading.Lock()
+        self.request_started_at = None
+        self.request_order = None
 
     def _get_runner(self) -> ExtractionRunner:
         """复用现有的页面定位、旧正文合并和保存流程。"""
@@ -70,6 +72,7 @@ class MemoryExtractionNode:
                     changed = True
             if changed:
                 state.last_activity_time = time.time()
+                state.extraction_status = "pending"
             if preserve and state.pending_messages:
                 state.preserved_message_ids = [m["uuid"] for m in state.pending_messages]
                 state.force_pending = True
@@ -77,6 +80,8 @@ class MemoryExtractionNode:
                 pending_ids = {m["uuid"] for m in state.pending_messages}
                 state.preserved_message_ids = [key for key in retained if key in pending_ids]
         self.indexer.update(change)
+        if self.session is not None and self.session._path.exists():
+            self.memory.provenance.capture(current, self.session.session_id, allow_renew=True, request_order=self.request_order)
 
     def note_activity(self) -> None:
         """用户开始新请求时更新闲置起点，延后自动提取。"""
@@ -125,12 +130,18 @@ class MemoryExtractionNode:
         """主动记忆立即调用模型，不受自动提取的轮次、闲置和冷却限制。"""
         with self._flush_lock, self.indexer.worker_lock:
             runner = self._get_runner()
+            runner.started_at = self.request_started_at if self.request_started_at is not None else time.time()
+            from qrclaw.memory.wiki.provenance import source_text
+            if self.session is not None:
+                sources = self.memory.provenance.capture(self.session.messages, self.session.session_id, request_order=self.request_order)
+            else:
+                sources = self.memory.provenance.capture([{"uuid": hashlib.sha256(content.encode()).hexdigest(), "role": "user", "content": content}], "主动记忆")
             extraction = runner.analyze_with_llm({
-                "index_summary": runner.build_index_summary(), "messages_text": content,
+                "index_summary": runner.build_index_summary(), "messages_text": "主动记忆请求：" + content + "\n" + source_text(sources),
             })
             if extraction is None:
                 raise RuntimeError("记忆分析失败")
-            return runner.process_extraction_result(extraction)
+            return runner.process_extraction_result(extraction, sources=sources, explicit=True)
 
     def _batch_is_current(self, batch: list[dict]) -> bool:
         """写入前检查会话和消息版本，阻止已删改消息的旧结果落盘。"""
@@ -151,12 +162,16 @@ class MemoryExtractionNode:
             if not batch:
                 return 0
             self.indexer.update(lambda state: setattr(state, "last_attempt_time", time.time()))
+            self.indexer.update(lambda state: setattr(state, "extraction_status", "processing"))
             runner = self._get_runner()
             try:
+                from qrclaw.memory.wiki.provenance import source_text
+                sources = self.memory.provenance.capture(batch, self.session.session_id) if self.session is not None else None
+                batch_id = hashlib.sha256("\0".join(sorted(s["id"] for s in sources)).encode()).hexdigest() if sources is not None else None
                 extraction = runner.analyze_with_llm({
                     # 执行时再取索引，避免闲置期间索引已变化。
                     "index_summary": runner.build_index_summary(),
-                    "messages_text": format_messages_for_llm(batch),
+                    "messages_text": source_text(sources) if sources is not None else format_messages_for_llm(batch),
                 })
                 if extraction is None:
                     raise RuntimeError("记忆分析失败")
@@ -171,7 +186,7 @@ class MemoryExtractionNode:
                         return self.memory.save_page(**page)
 
                 written = runner.process_extraction_result(extraction,
-                    is_current=lambda: self._batch_is_current(batch), save_page=save_current)
+                    is_current=lambda: self._batch_is_current(batch), save_page=save_current, sources=sources, batch_id=batch_id)
                 if not self._batch_is_current(batch):
                     return written
                 completed = {m["uuid"]: _signature(m) for m in batch}
@@ -190,6 +205,8 @@ class MemoryExtractionNode:
                     state.total_extractions += 1
                     state.last_extraction_tokens += self._estimate_tokens(batch)
                     state.last_extraction_time = time.time()
+                    state.extraction_status = "pending" if state.pending_messages else "completed"
+                    state.last_error = ""
                 self.indexer.update(acknowledge)
                 logger.info("[记忆提取] 批次处理完成，正文消息 %s 条，写入 %s 个页面", len(batch), written)
                 return written
@@ -200,6 +217,8 @@ class MemoryExtractionNode:
                         if self.session is not None and not self.session._path.exists():
                             return
                         state.force_pending = True
+                        state.extraction_status = "failed"
+                        state.last_error = str(exc)
                         # 测试或自定义零冷却也不能形成即时重试循环。
                         state.last_attempt_time = max(state.last_attempt_time, time.time() + max(0, 1 - self.config.cooldown_seconds))
                     self.indexer.update(retry)
@@ -238,17 +257,27 @@ class MemoryExtractionIntegration:
     def on_run_start(self) -> None:
         """整次主 Agent 请求开始时取消闲置计时，包括路由及 Plan 执行阶段。"""
         with self._lock:
-            self._busy = True
             if self._timer:
                 self._timer.cancel()
                 self._timer = None
+            if not self._busy:
+                if self.extractor.session is not None:
+                    self.extractor.collect(self.extractor.session.messages)
+                self.extractor.request_started_at, self.extractor.request_order = self.extractor.memory.provenance.begin_request()
+            self._busy = True
             self.extractor.note_activity()
+            self.extractor.memory.repair_worker.activity(self.extractor.session.session_id if self.extractor.session else "默认", True)
 
     def on_react_loop_end(self, session, current_round: int = 0) -> None:
         """主请求结束后合并正文，并安排长对话兜底或闲置提取。"""
         with self._lock:
-            self._busy = False
-            self.extractor.collect(session.messages)
+            try:
+                self.extractor.collect(session.messages)
+            finally:
+                self._busy = False
+                self.extractor.request_started_at = None
+                self.extractor.request_order = None
+                self.extractor.memory.repair_worker.activity(getattr(session, "session_id", "默认"), False)
             self._schedule()
 
     def resume(self) -> None:

@@ -21,6 +21,23 @@ from qrclaw.tools.wiki_tools import write_wiki_page
 from qrclaw.workspace import Workspace
 
 
+@pytest.fixture(autouse=True)
+def provide_fake_source_references(monkeypatch):
+    """旧假模型迁移到来源协议；未知或显式来源保持原样供独立测试检查。"""
+    import re
+    from qrclaw.memory.wiki.extraction.runner import ExtractionRunner
+    original = ExtractionRunner.analyze_with_llm
+    def analyze(runner, data):
+        result = original(runner, data)
+        sources = re.findall(r"\[来源 ([a-f0-9]+)；user；", data["messages_text"])
+        if result and sources:
+            for page in result.pages:
+                if not page.source_ids:
+                    page.source_ids = sources
+        return result
+    monkeypatch.setattr(ExtractionRunner, "analyze_with_llm", analyze)
+
+
 def _config(**overrides):
     values = dict(minimum_message_tokens_to_init=1, minimum_tokens_between_update=1,
                   idle_seconds=0, cooldown_seconds=0)
@@ -119,7 +136,7 @@ def test_existing_page_is_merged_even_when_llm_says_create(temp_dir, queued):
     extraction.pages[0].related = ["运行环境", "项目架构"]
     analyzer.analyze.return_value = extraction
     analyzer.consolidate.return_value = ConsolidatePageSchema(
-        content="当前端口为9000。\n用户喜欢中文回复。", description="用户当前配置", tags=["配置"])
+        content="当前端口为9000。\n用户喜欢中文回复。", description="用户当前配置", tags=["配置"], related=["运行环境"])
     node = MemoryExtractionNode(wiki, _config(), analyzer)
 
     if queued:
@@ -129,16 +146,19 @@ def test_existing_page_is_merged_even_when_llm_says_create(temp_dir, queued):
     else:
         assert node.write_now("端口改回9000") == 1
     analyzer.consolidate.assert_called_once_with(
-        existing_content=original.content, new_content=extraction.pages[0].content, page_name="用户偏好")
+        existing_content=original.content, new_content=extraction.pages[0].content, page_name="用户偏好",
+        existing_metadata=dict(description=original.description, tags=original.tags, related=original.related),
+        new_metadata=dict(description=extraction.pages[0].description, tags=extraction.pages[0].tags, related=extraction.pages[0].related))
     reopened = WikiMemory(temp_dir)
     saved = reopened.get_page("用户偏好")
     assert saved.content == analyzer.consolidate.return_value.content
     assert "8765" not in saved.content
     assert saved.created_at == original.created_at
-    assert saved.tags == ["配置", "偏好"]
-    assert saved.related == ["项目架构", "运行环境"]
+    assert saved.tags == ["配置"]
+    assert saved.related == ["运行环境"]
     assert reopened.index.all_entries()[0]["description"] == "用户当前配置"
     assert "用户当前配置" in reopened.load_index()
+    assert node.write_now("端口改回9000") == (1 if queued else 0)
     assert node.write_now("端口改回9000") == 0
 
 
@@ -396,7 +416,7 @@ def test_semantic_recall_when_keyword_search_misses(temp_dir, monkeypatch):
     wiki.save_page("回复风格", "尽量简洁")
     monkeypatch.setattr(
         "qrclaw.memory.wiki.selection.WikiPageSelector.select",
-        lambda self, query, messages: SimpleNamespace(selected=[SimpleNamespace(name="回复风格")]),
+        lambda self, query, messages, **kwargs: SimpleNamespace(selected=[SimpleNamespace(name="回复风格")]),
     )
 
     pages = wiki.select_relevant_pages("怎样回答用户", [], top_k=1)

@@ -1,4 +1,5 @@
 import type { SessionDetail, SessionSummary } from './types'
+import type { WikiDetail, WikiDraft, WikiLintReport, WikiPageList, WikiStatus } from '../features/memory/types'
 
 const baseUrl = import.meta.env.VITE_QRCLAW_API_BASE_URL ?? (import.meta.env.DEV ? '/api' : '')
 
@@ -44,8 +45,42 @@ async function responseError(response: Response) {
   catch { return `请求失败（${response.status}）` }
 }
 
+/** 记忆接口保留状态码，ViewModel 可识别 409 并保留用户草稿。 */
+async function wikiRequest<T>(path: string, init?: RequestInit): Promise<T> {
+  const response = await fetch(`${baseUrl}/v1/wiki${path}`, init)
+  if (!response.ok) throw Object.assign(new Error(await responseError(response)), { status: response.status })
+  return response.json() as Promise<T>
+}
+
 export function createApiClient() {
   return {
+    /** 分页读取记忆摘要，网络取消不重复提交写入。 */
+    listWikiPages(query: string, offset = 0, signal?: AbortSignal) {
+      return wikiRequest<WikiPageList>(`/pages?q=${encodeURIComponent(query)}&offset=${offset}&limit=20`, { signal })
+    },
+    /** 读取指定页面及其来源，切换选择时允许取消旧请求。 */
+    getWikiPage(name: string, signal?: AbortSignal) {
+      return wikiRequest<WikiDetail>(`/pages/${encodeURIComponent(name)}`, { signal })
+    },
+    /** 使用用户打开草稿时的版本保存，只发送持久化字段。 */
+    editWikiPage(name: string, draft: WikiDraft) {
+      const { content, description, tags, related, revision } = draft
+      return wikiRequest<WikiDetail>(`/pages/${encodeURIComponent(name)}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ content, description, tags, related, revision }),
+      })
+    },
+    /** 按版本删除页面，后台已更新时返回冲突。 */
+    deleteWikiPage(name: string, revision: number) {
+      return wikiRequest<{ deleted: boolean }>(`/pages/${encodeURIComponent(name)}?revision=${revision}`, { method: 'DELETE' })
+    },
+    /** 查询提取与整理进度。 */
+    getWikiStatus(signal?: AbortSignal) { return wikiRequest<WikiStatus>('/status', { signal }) },
+    /** 执行不调用模型的规则检查。 */
+    lintWiki() { return wikiRequest<WikiLintReport>('/lint', { method: 'POST' }) },
+    /** 排队重新整理，断线不会重发。 */
+    repairWikiPage(name: string) {
+      return wikiRequest<WikiDetail>(`/pages/${encodeURIComponent(name)}/repair`, { method: 'POST' })
+    },
     async health() {
       const response = await fetch(`${baseUrl}/health`)
       if (!response.ok) throw new Error('health check failed')

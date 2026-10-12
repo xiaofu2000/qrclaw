@@ -149,7 +149,7 @@ class WikiLint:
     def _load_pages(self) -> None:
         """从 WikiMemory 加载所有页面，构建 page_names 集合"""
         # 调用 wiki.pages（list_pages()）获取页面列表
-        self._pages = self.wiki.list_pages()
+        self._pages = self.wiki.list_pages(include_unavailable=True)
         # 构建名称集合，支持模糊匹配
         self._page_names = {p.name for p in self._pages}
         logger.debug(f"WikiLint: 加载 {len(self._pages)} 个页面")
@@ -166,13 +166,14 @@ class WikiLint:
 
         for page in self._pages:
             # 从正文提取 [[页面名]]
-            linked_names = WIKI_LINK_PATTERN.findall(page.content)
+            from qrclaw.memory.wiki.page import wiki_links
+            linked_names = wiki_links(page.content)
             for linked_name in linked_names:
                 # 尝试模糊匹配（处理大小写、空格差异）
                 matched = self.wiki.fuzzy_find_name(linked_name)
                 if matched:
                     self._link_graph[page.name].add(matched)
-                    self._backlinks[matched].add(page.name)
+                    self._backlinks.setdefault(matched, set()).add(page.name)
                 else:
                     # 记录为无效链接（待 broken_link_check 处理）
                     pass
@@ -182,7 +183,7 @@ class WikiLint:
                 matched = self.wiki.fuzzy_find_name(related_name)
                 if matched:
                     self._link_graph[page.name].add(matched)
-                    self._backlinks[matched].add(page.name)
+                    self._backlinks.setdefault(matched, set()).add(page.name)
 
     # ═══════════════════════════════════════════════════════════════════════════
     # 检查 1：矛盾页面检测
@@ -344,7 +345,7 @@ class WikiLint:
                 issues.append(LintIssue(
                     issue_type="orphan",
                     page_name=page.name,
-                    detail=f"无任何 inbound/outbound 链接，也无 related 关联",
+                    detail="没有被其他页面引用，也没有正文链接或关联页面",
                     severity="warning",
                 ))
             # 半孤立：只有单向链接（可作为 info 级别）
@@ -352,7 +353,7 @@ class WikiLint:
                 issues.append(LintIssue(
                     issue_type="orphan",
                     page_name=page.name,
-                    detail=f"单向链接（outbound: {len(outbound)}, inbound: {len(inbound)}），缺少反向引用",
+                    detail=f"引用关系只有一个方向（引用 {len(outbound)} 个页面，被 {len(inbound)} 个页面引用）",
                     severity="info",
                 ))
 
@@ -378,10 +379,11 @@ class WikiLint:
 
         for page in self._pages:
             # 提取正文中的 [[页面名]]
-            linked_names = WIKI_LINK_PATTERN.findall(page.content)
+            from qrclaw.memory.wiki.page import wiki_links
+            linked_names = wiki_links(page.content)
             for linked_name in linked_names:
                 # 检查目标页面是否存在
-                if not self.wiki.page_exists(linked_name):
+                if linked_name not in self._page_names:
                     # 尝试模糊匹配
                     matched = self.wiki.fuzzy_find_name(linked_name)
                     if matched:
@@ -403,7 +405,7 @@ class WikiLint:
 
             # 同时检查 related 字段中引用不存在的页面
             for related_name in page.related:
-                if not self.wiki.page_exists(related_name):
+                if related_name not in self._page_names:
                     matched = self.wiki.fuzzy_find_name(related_name)
                     if matched:
                         issues.append(LintIssue(

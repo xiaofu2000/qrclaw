@@ -18,6 +18,23 @@ from qrclaw.server.session_service import SessionService
 from qrclaw.workspace import Workspace
 
 
+@pytest.fixture(autouse=True)
+def provide_fake_source_references(monkeypatch):
+    """旧假模型迁移到来源协议；未知或显式来源保持原样供独立测试检查。"""
+    import re
+    from qrclaw.memory.wiki.extraction.runner import ExtractionRunner
+    original = ExtractionRunner.analyze_with_llm
+    def analyze(runner, data):
+        result = original(runner, data)
+        sources = re.findall(r"\[来源 ([a-f0-9]+)；user；", data["messages_text"])
+        if result and sources:
+            for page in result.pages:
+                if not page.source_ids:
+                    page.source_ids = sources
+        return result
+    monkeypatch.setattr(ExtractionRunner, "analyze_with_llm", analyze)
+
+
 class ManualTimer:
     """用可手动触发的计时器验证时间边界，无需等待真实的几分钟。"""
     timers = []
@@ -306,7 +323,9 @@ def test_server_startup_resumes_idle_pending_batch(tmp_path, virtual_time):
     node = MemoryExtractionNode(WikiMemory(workspace.memory_dir), session=session)
     node.collect(session.messages)
     virtual_time.now = 1100
-    with patch("qrclaw.memory.wiki.extraction.runner.ExtractionRunner.analyze_with_llm", return_value=_analyzer().analyze.return_value) as analyze:
+    result = _analyzer().analyze.return_value
+    result.pages[0].source_ids = [s["id"] for s in node.memory.provenance.capture(session.messages, session.session_id) if s["role"] == "user"]
+    with patch("qrclaw.memory.wiki.extraction.runner.ExtractionRunner.analyze_with_llm", return_value=result) as analyze:
         with TestClient(create_app(workspace), client=("127.0.0.1", 50000)) as client:
             assert client.get("/health").status_code == 200
             timer = ManualTimer.timers[-1]

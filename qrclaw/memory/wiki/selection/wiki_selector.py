@@ -130,6 +130,7 @@ class WikiPageSelector:
         current_message: str,
         messages: list[dict],
         keep_rounds: int = DEFAULT_CONVERSATION_ROUNDS,
+        *, candidates: list | None = None,
     ) -> SelectionResult:
         """
         根据对话上下文选择最相关的 Wiki 页面。
@@ -143,7 +144,8 @@ class WikiPageSelector:
             SelectionResult: 包含选中的页面列表和选择理由
         """
         # 1. 获取 Wiki 索引
-        index_md = self.wiki_memory.load_index()
+        index_md = ("\n".join(f"- {p.name}：{p.description}" for p in candidates[:20])
+                    if candidates is not None else self.wiki_memory.load_index())
 
         # 2. 格式化对话历史（过滤工具调用）
         conversation_history = _format_conversation_history(messages, keep_rounds)
