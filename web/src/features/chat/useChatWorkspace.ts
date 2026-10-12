@@ -25,14 +25,15 @@ function normalizeMessages(sessionId: string, messages: SessionDetail['messages'
   })
 }
 
-/** 旧会话没有轮次索引时，按消息保存事件推断末轮过程的起点。 */
+/** 旧会话没有轮次索引时，仅用完整的消息保存事件推断末轮过程起点。 */
 function turnEventStart(session: SessionDetail, userIndex: number): number {
   const marker = session.messages[userIndex].turn_event_index
   if (marker !== undefined) return marker
   const prior = session.messages.slice(0, userIndex)
     .filter(message => (message.role === 'assistant' || message.role === 'tool') && message.kind !== 'execution_report').length
   const saved = (session.events ?? []).flatMap((event, index) => event.kind === 'message_saved' ? [index] : [])
-  return prior > 0 && saved[prior - 1] !== undefined ? saved[prior - 1] + 1 : 0
+  const total = session.messages.filter(message => (message.role === 'assistant' || message.role === 'tool') && message.kind !== 'execution_report').length
+  return saved.length === total && prior > 0 ? saved[prior - 1] + 1 : 0
 }
 
 /** 从父会话事件还原每次子任务的卡片及最终状态。 */
@@ -89,8 +90,12 @@ export function useChatWorkspace(api: ApiClient) {
   const [creating, setCreating] = useState(false)
   const [loadingIds, setLoadingIds] = useState<Set<string>>(new Set())
   const [runningIds, setRunningIds] = useState<Set<string>>(new Set())
+  const [mutatingIds, setMutatingIds] = useState<Set<string>>(new Set())
+  // 选择会话时立即更新，避免删除响应赶在重渲染前覆盖新的选择。
+  const activeIdRef = useRef('')
   const loadingRef = useRef(new Set<string>())
   const runningRef = useRef(new Set<string>())
+  const mutatingRef = useRef(new Set<string>())
   const requestsRef = useRef(new Set<string>())
   const creatingRef = useRef(false)
   const eventCursorsRef = useRef(new Map<string, number>())
@@ -176,6 +181,7 @@ export function useChatWorkspace(api: ApiClient) {
     runningRef.current = new Set([...requestsRef.current, ...available.filter(item => item.run_status === 'queued' || item.run_status === 'running').map(item => item.id)])
     setRunningIds(new Set(runningRef.current))
     setConnectionError('')
+    return available.map(toConversation)
   }, [api])
 
   useEffect(() => {
@@ -191,6 +197,7 @@ export function useChatWorkspace(api: ApiClient) {
         const session = listed.length ? await api.getSession(listed[0].id) : await api.createSession()
         if (cancelled) return
         storeSession(session)
+        activeIdRef.current = session.id
         setActiveId(session.id)
         if (!listed.length) await refreshConversations()
       } catch (error) {
@@ -204,8 +211,10 @@ export function useChatWorkspace(api: ApiClient) {
   }, [api, storeSession, refreshConversations])
 
   async function loadConversation(id: string) {
+    if (deletedIdsRef.current.has(id)) return
+    activeIdRef.current = id
     setActiveId(id)
-    if ((runningRef.current.has(id) && sessions[id]) || loadingRef.current.has(id)) return
+    if (((runningRef.current.has(id) || mutatingRef.current.has(id)) && sessions[id]) || loadingRef.current.has(id)) return
     loadingRef.current.add(id)
     setLoadingIds(new Set(loadingRef.current))
     setErrors(current => ({ ...current, [id]: '' }))
@@ -231,6 +240,7 @@ export function useChatWorkspace(api: ApiClient) {
     try {
       const session = await api.createSession()
       storeSession(session)
+      activeIdRef.current = session.id
       setActiveId(session.id)
       try { await refreshConversations() } catch { setConnectionError('会话已创建，但列表刷新失败，请稍后重试。') }
     } catch (error) {
@@ -244,7 +254,7 @@ export function useChatWorkspace(api: ApiClient) {
   async function send(content: string, editMessageId?: string) {
     const id = activeId
     content = content.trim()
-    if (!id || !content || runningRef.current.has(id) || loadingRef.current.has(id) || creatingRef.current || connecting || !sessions[id]) return
+    if (!id || !content || runningRef.current.has(id) || mutatingRef.current.has(id) || loadingRef.current.has(id) || creatingRef.current || connecting || !sessions[id]) return
     const previous = sessions[id]
     const editIndex = editMessageId ? previous.messages.findLastIndex(message => message.role === 'user') : -1
     if (editMessageId && (editIndex < 0 || previous.messages[editIndex].uuid !== editMessageId)) return
@@ -292,17 +302,26 @@ export function useChatWorkspace(api: ApiClient) {
       setErrors(current => ({ ...current, [id]: completed ? `任务已完成，但读取结果失败：${detail}。请刷新会话。` : `请求失败：${detail}` }))
       if (!completed) {
         if (!accepted) setDrafts(current => ({ ...current, [id]: current[id] || content }))
+        if (!accepted && editMessageId) {
+          // 未确认接收的编辑不能保留临时版本；后续只读查询继续确认真实执行状态。
+          historyVersionsRef.current.set(id, previous.history_version ?? 0)
+          eventCursorsRef.current.set(id, (previous.events?.length ?? 0) - 1)
+          setSessions(current => ({ ...current, [id]: {
+            ...current[id], history_version: previous.history_version,
+            messages: previous.messages, events: previous.events,
+          } }))
+        }
         try {
           const latest = await api.getSession(id)
           if (latest.run_status === 'idle') {
-            if (!accepted && editMessageId) historyVersionsRef.current.set(id, latest.history_version ?? 0)
             storeSession(latest)
-            if (!accepted && !editMessageId) setSessions(current => ({ ...current, [id]: { ...current[id], messages: latest.messages } }))
+            if (!accepted) setSessions(current => ({ ...current, [id]: { ...current[id], messages: latest.messages } }))
             setStreaming(current => ({ ...current, [id]: '' }))
             if (accepted) setErrors(current => ({ ...current, [id]: '' }))
-          } else if (!accepted && !editMessageId) {
+          } else if (!accepted) {
             storeSession(latest)
             setSessions(current => ({ ...current, [id]: { ...current[id], messages: latest.messages } }))
+            startEventStream(id)
           }
           else if ((latest.history_version ?? 0) >= (historyVersionsRef.current.get(id) ?? 0)) {
             storeSession(latest)
@@ -318,7 +337,7 @@ export function useChatWorkspace(api: ApiClient) {
 
   /** 更新标题并同步会话列表。 */
   async function renameConversation(id: string, title: string) {
-    if (!title.trim()) return
+    if (!title.trim() || mutatingRef.current.has(id)) return
     try {
       const detail = await api.renameSession(id, title.trim())
       storeSession(detail)
@@ -331,7 +350,9 @@ export function useChatWorkspace(api: ApiClient) {
 
   /** 删除会话后清理本地缓存，并切换到仍存在的会话。 */
   async function deleteConversation(id: string) {
-    if (runningRef.current.has(id)) return
+    if (runningRef.current.has(id) || mutatingRef.current.has(id) || deletedIdsRef.current.has(id)) return
+    mutatingRef.current.add(id)
+    setMutatingIds(new Set(mutatingRef.current))
     try {
       await api.deleteSession(id)
       deletedIdsRef.current.add(id)
@@ -349,21 +370,26 @@ export function useChatWorkspace(api: ApiClient) {
       setDrafts(current => { const next = { ...current }; delete next[id]; return next })
       setErrors(current => { const next = { ...current }; delete next[id]; return next })
       setSelectedChildren(current => { const next = { ...current }; delete next[id]; return next })
-      const remaining = conversations.filter(item => item.id !== id)
-      try { await refreshConversations() } catch { setConnectionError('会话已删除，但列表刷新失败，请稍后重试。') }
-      if (activeId === id) {
+      let remaining = conversations.filter(item => !deletedIdsRef.current.has(item.id))
+      try { remaining = await refreshConversations() } catch { setConnectionError('会话已删除，但列表刷新失败，请稍后重试。') }
+      if (activeIdRef.current === id) {
         if (remaining.length) await loadConversation(remaining[0].id)
         else await newConversation()
       }
     } catch (error) {
       setConnectionError(`删除会话失败：${error instanceof Error ? error.message : String(error)}`)
+    } finally {
+      mutatingRef.current.delete(id)
+      setMutatingIds(new Set(mutatingRef.current))
     }
   }
 
   /** 删除最后一轮用户消息，服务端返回的历史版本可覆盖旧缓存。 */
   async function deleteLatestMessage(messageId: string) {
     const id = activeId
-    if (!id || runningRef.current.has(id)) return
+    if (!id || runningRef.current.has(id) || mutatingRef.current.has(id) || deletedIdsRef.current.has(id)) return
+    mutatingRef.current.add(id)
+    setMutatingIds(new Set(mutatingRef.current))
     try {
       const detail = await api.deleteLatestUserMessage(id, messageId)
       eventStreamsRef.current.get(id)?.abort()
@@ -375,6 +401,9 @@ export function useChatWorkspace(api: ApiClient) {
       try { await refreshConversations() } catch { setConnectionError('消息已删除，但列表刷新失败，请稍后重试。') }
     } catch (error) {
       setErrors(current => ({ ...current, [id]: `删除消息失败：${error instanceof Error ? error.message : String(error)}` }))
+    } finally {
+      mutatingRef.current.delete(id)
+      setMutatingIds(new Set(mutatingRef.current))
     }
   }
 
@@ -477,7 +506,7 @@ export function useChatWorkspace(api: ApiClient) {
     streaming: (streaming[activeId] ?? '').slice((session?.messages ?? []).slice(streamBaselinesRef.current.get(activeId) ?? session?.messages.length ?? 0)
       .filter(message => message.role === 'assistant' && message.kind !== 'execution_report')
       .reduce((length, message) => length + (typeof message.content === 'string' ? message.content.length : 0), 0)),
-    runningIds, running, queued, loading, creating, error,
+    runningIds, running, queued, loading, creating, mutatingIds, mutating: mutatingIds.has(activeId), error,
     draft: drafts[activeId] ?? '',
     setDraft: (value: string) => setDrafts(current => ({ ...current, [activeId]: value })),
     loadConversation, newConversation, renameConversation, deleteConversation, deleteLatestMessage,

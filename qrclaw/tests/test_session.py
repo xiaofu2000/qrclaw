@@ -184,6 +184,29 @@ class TestSessionMessages:
         session.rewrite_latest_user_turn(last_id, None)
         assert [event["kind"] for event in Session(temp_dir, session_id="legacy").events] == ["status", "message_saved"]
 
+    @pytest.mark.parametrize("content", [None, "修改后"])
+    def test_rewrite_legacy_turn_with_partial_save_events_clears_process(self, temp_dir, content):
+        """部分旧消息没有保存事件时，不能把末轮事件误认成早期记录。"""
+        session = Session(temp_dir, session_id="legacy-partial")
+        session.add({"role": "user", "content": "第一轮"})
+        session.add({"role": "assistant", "content": "旧回复"})
+        session.add({"role": "user", "content": "第二轮"})
+        last_id = session.messages[-1]["uuid"]
+        session.add_event({"kind": "subagent", "meta": {"child_session_id": "sub-last"}})
+        session.add({"role": "assistant", "content": "末轮回复"})
+        session.add_event({"kind": "message_saved", "title": "消息已保存"})
+        raw = json.loads(session._path.read_text(encoding="utf-8"))
+        for message in raw["messages"]:
+            message.pop("turn_event_index", None)
+        session._path.write_text(json.dumps(raw, ensure_ascii=False), encoding="utf-8")
+
+        assert session.rewrite_latest_user_turn(last_id, content) == {"sub-last"}
+        restored = Session(temp_dir, session_id="legacy-partial")
+        expected = ["第一轮", "旧回复"] + ([content] if content is not None else [])
+        assert [message["content"] for message in restored.messages] == expected
+        assert restored.events == []
+        assert restored.history_version == 1
+
 
 class TestTokenCounting:
     """测试 Token 计算"""

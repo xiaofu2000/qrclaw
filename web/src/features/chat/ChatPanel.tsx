@@ -13,13 +13,14 @@ type ChatPanelProps = {
   running: boolean
   queued: boolean
   loading: boolean
+  mutating: boolean
   latestUserMessageId?: string
   onEditLatestMessage: (messageId: string, content: string) => void
   onDeleteLatestMessage: (messageId: string) => void
 }
 
 /** 展示主 Agent 消息，并提供最后一条用户消息的编辑入口。 */
-export function ChatPanel({ sessionId, timeline, onSelectSubAgent, streaming, running, queued, loading,
+export function ChatPanel({ sessionId, timeline, onSelectSubAgent, streaming, running, queued, loading, mutating,
   latestUserMessageId, onEditLatestMessage, onDeleteLatestMessage }: ChatPanelProps) {
   const historyRef = useRef<HTMLDivElement>(null)
   const followRef = useRef(true)
@@ -82,14 +83,14 @@ export function ChatPanel({ sessionId, timeline, onSelectSubAgent, streaming, ru
                     <textarea aria-label="编辑最后一条用户消息" value={editContent} onChange={event => setEditContent(event.target.value)} rows={Math.max(3, Math.min(10, editContent.split('\n').length + 1))} />
                     <p>保存后将重新执行 Agent；此前执行的外部操作不会撤销。</p>
                     <div className="message-actions">
-                      <button type="button" disabled={!editContent.trim()} onClick={() => {
+                      <button type="button" disabled={!editContent.trim() || running || loading || mutating} onClick={() => {
                         onEditLatestMessage(item.uuid!, editContent)
                         setEditingId('')
                       }}>保存并重新执行</button>
                       <button type="button" onClick={() => setEditingId('')}>取消</button>
                     </div>
                   </div> : <div className="message-bubble markdown-body"><ReactMarkdown remarkPlugins={[remarkGfm]}>{item.content}</ReactMarkdown></div>}
-                  {item.role === 'user' && item.uuid && item.uuid === latestUserMessageId && !running && !loading && editingId !== item.uuid &&
+                  {item.role === 'user' && item.uuid && item.uuid === latestUserMessageId && !running && !loading && !mutating && editingId !== item.uuid &&
                     <div className="message-actions user-actions">
                       <button type="button" aria-label="编辑最后一条用户消息" onClick={() => { setEditingId(item.uuid!); setEditContent(item.content) }}><Pencil size={13} />编辑</button>
                       <button type="button" aria-label="删除最后一条用户消息" onClick={() => {

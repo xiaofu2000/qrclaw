@@ -167,11 +167,13 @@ class Session:
             if "turn_event_index" in original:
                 event_start = int(original["turn_event_index"])
             else:
-                # shortcut: 旧会话按已保存消息定位；若缺少对应事件，则清空过程记录以免留下旧卡片。
+                # shortcut: 旧会话仅用完整保存事件定位，缺失时清空过程；需保留时迁移轮次索引。
                 prior_messages = sum(message.get("role") in ("assistant", "tool") and message.get("kind") != "execution_report"
                                      for message in self.messages[:index])
                 saved_events = [i for i, event in enumerate(self.events) if event.get("kind") == "message_saved"]
-                event_start = saved_events[prior_messages - 1] + 1 if 0 < prior_messages <= len(saved_events) else 0
+                total_messages = sum(message.get("role") in ("assistant", "tool") and message.get("kind") != "execution_report"
+                                     for message in self.messages)
+                event_start = saved_events[prior_messages - 1] + 1 if len(saved_events) == total_messages and prior_messages > 0 else 0
             event_start = max(0, min(event_start, len(self.events)))
             removed_events = self.events[event_start:]
             children = {

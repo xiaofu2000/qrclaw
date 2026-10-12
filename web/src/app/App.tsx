@@ -43,8 +43,8 @@ export function App() {
       previous?.focus()
     }
   }, [sidebarOpen, inspectorOpen])
-  const status = chat.running || chat.loading || chat.creating ? 'busy' : chat.error ? 'error' : 'ready'
-  const statusText = chat.loading ? '载入会话中' : chat.queued ? '等待执行' : chat.running ? '正在处理任务' : chat.creating ? '新建会话中'
+  const status = chat.running || chat.loading || chat.creating || chat.mutating ? 'busy' : chat.error ? 'error' : 'ready'
+  const statusText = chat.loading ? '载入会话中' : chat.mutating ? '更新会话中' : chat.queued ? '等待执行' : chat.running ? '正在处理任务' : chat.creating ? '新建会话中'
     : chat.error ? '需要检查' : chat.runningIds.size ? `${chat.runningIds.size} 个后台任务处理中` : '可以开始'
   const title = chat.conversations.find(item => item.id === chat.activeId)?.title ?? '新对话'
 
@@ -55,7 +55,7 @@ export function App() {
         inspectorOpen={inspectorOpen} onToggleInspector={() => setInspectorOpen(value => !value)} />
       {(sidebarOpen || inspectorOpen) && <button className="panel-backdrop" aria-label="关闭面板" onClick={() => { setSidebarOpen(false); setInspectorOpen(false) }} />}
       <div className={`workspace ${inspectorOpen ? 'with-inspector' : ''}`}>
-        <Sidebar conversations={chat.conversations} activeId={chat.activeId} runningIds={chat.runningIds}
+        <Sidebar conversations={chat.conversations} activeId={chat.activeId} runningIds={chat.runningIds} mutatingIds={chat.mutatingIds}
           open={sidebarOpen} creating={chat.creating || chat.loading && !chat.activeId}
           onNewChat={() => { setSidebarOpen(false); void chat.newConversation() }}
           onSelectConversation={id => { setSidebarOpen(false); void chat.loadConversation(id) }}
@@ -63,14 +63,14 @@ export function App() {
           onDeleteConversation={id => void chat.deleteConversation(id)} />
         <main className="chat-column" id="conversation">
           <ChatPanel sessionId={chat.activeId} timeline={chat.timeline} streaming={chat.streaming} running={chat.running} queued={chat.queued}
-            loading={chat.loading} onSelectSubAgent={id => { chat.selectSubAgent(id); setInspectorOpen(true) }}
+            loading={chat.loading} mutating={chat.mutating} onSelectSubAgent={id => { chat.selectSubAgent(id); setInspectorOpen(true) }}
             latestUserMessageId={chat.messages.filter(message => message.role === 'user').at(-1)?.uuid}
             onEditLatestMessage={(id, content) => void chat.editLatestMessage(id, content)}
             onDeleteLatestMessage={id => void chat.deleteLatestMessage(id)} />
           <div className="composer-area">
             {chat.error && <div className="chat-error" role="alert"><span>{chat.error}</span><button onClick={() => void chat.refresh()}>刷新会话</button></div>}
             <Composer value={chat.draft} onChange={chat.setDraft} onSend={chat.send}
-              disabled={chat.running || chat.loading || chat.creating || !chat.session} loading={chat.loading || !chat.session} running={chat.running} />
+              disabled={chat.running || chat.loading || chat.creating || chat.mutating || !chat.session} loading={chat.loading || !chat.session} running={chat.running} />
           </div>
         </main>
         {inspectorOpen && <InspectorPanel session={chat.session} status={status} queued={chat.queued}

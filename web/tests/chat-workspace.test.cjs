@@ -543,3 +543,142 @@ test('编辑旧会话时保留前一轮的过程事件', async () => {
   await editing
   hook.close()
 })
+
+for (const failedRead of [false, true]) {
+  test(`编辑被 409 拒绝后恢复原消息，并能继续查询到任务完成（状态读取失败：${failedRead}）`, async () => {
+    const api = client()
+    const original = [{ role: 'user', uuid: 'last', content: '原问题', turn_event_index: 0 }, { role: 'assistant', content: '原回复' }]
+    api.sessions.A = { ...api.sessions.A, messages: original, events: [{ kind: 'message_saved', title: '消息已保存' }] }
+    let sends = 0
+    const hook = workspace(api)
+    let view = await hook.flush()
+    api.chatStream = async () => {
+      sends++
+      api.sessions.A = { ...api.sessions.A, run_status: 'running' }
+      if (failedRead) {
+        let first = true
+        api.getSession = async id => {
+          if (first) { first = false; throw new Error('状态读取断线') }
+          return api.sessions[id]
+        }
+      }
+      throw new Error('409：会话正在执行')
+    }
+    await view.editLatestMessage('last', '被拒绝的修改')
+    view = await hook.flush()
+    assert.equal(view.session.history_version, 0)
+    assert.deepEqual(Array.from(view.messages, message => message.content), ['原问题', '原回复'])
+    assert.equal(view.session.events.length, 1)
+    assert.equal(view.draft, '被拒绝的修改')
+    api.sessions.A = { ...api.sessions.A, run_status: 'idle', messages: [...original, { role: 'assistant', content: '其他页面任务完成' }] }
+    view = await hook.poll()
+    assert.equal(view.running, false)
+    assert.equal(view.messages.at(-1).content, '其他页面任务完成')
+    assert.equal(sends, 1)
+    hook.close()
+  })
+}
+
+for (const operation of ['deleteConversation', 'deleteLatestMessage']) {
+  test(`${operation} 等待期间阻止当前会话写入，其他会话仍能发送`, async () => {
+    const api = client(), pending = deferred()
+    api.sessions.A.messages = [{ role: 'user', uuid: 'last', content: '原问题', turn_event_index: 0 }]
+    let deletes = 0, messageDeletes = 0, renames = 0
+    const sends = []
+    api.deleteSession = async id => { deletes++; await pending.promise; delete api.sessions[id] }
+    api.deleteLatestUserMessage = async id => {
+      messageDeletes++
+      await pending.promise
+      api.sessions[id] = { ...api.sessions[id], history_version: 1, messages: [], events: [] }
+      return api.sessions[id]
+    }
+    api.renameSession = async id => { renames++; return api.sessions[id] }
+    api.chatStream = async id => { sends.push(id) }
+    const hook = workspace(api)
+    let view = await hook.flush()
+    const deleting = operation === 'deleteConversation' ? view.deleteConversation('A') : view.deleteLatestMessage('last')
+    assert.equal(hook.render().mutating, true)
+    await view.send('不能发送')
+    await view.editLatestMessage('last', '不能编辑')
+    await view.deleteConversation('A')
+    await view.deleteLatestMessage('last')
+    await view.renameConversation('A', '不能改名')
+    assert.deepEqual(sends, [])
+    assert.equal(deletes + messageDeletes, 1)
+    assert.equal(renames, 0)
+    await view.loadConversation('B')
+    view = hook.render()
+    assert.equal(view.mutating, false)
+    await view.send('其他会话可以发送')
+    assert.deepEqual(sends, ['B'])
+    pending.resolve()
+    await deleting
+    assert.equal(hook.render().mutatingIds.size, 0)
+    hook.close()
+  })
+
+  test(`${operation} 失败后释放操作锁，并保留消息与草稿`, async () => {
+    const api = client(), pending = deferred()
+    api.sessions.A.messages = [{ role: 'user', uuid: 'last', content: '原问题', turn_event_index: 0 }]
+    api.deleteSession = () => pending.promise
+    api.deleteLatestUserMessage = () => pending.promise
+    let sends = 0
+    api.chatStream = async () => { sends++ }
+    const hook = workspace(api)
+    let view = await hook.flush()
+    view.setDraft('保留草稿')
+    view = hook.render()
+    const deleting = operation === 'deleteConversation' ? view.deleteConversation('A') : view.deleteLatestMessage('last')
+    pending.reject(new Error('删除失败'))
+    await deleting
+    view = hook.render()
+    assert.equal(view.mutating, false)
+    assert.equal(view.messages[0].content, '原问题')
+    assert.equal(view.draft, '保留草稿')
+    assert.match(view.error, /删除失败/)
+    await view.send('失败后可以发送')
+    assert.equal(sends, 1)
+    hook.close()
+  })
+}
+
+test('删除响应晚到时保留后来选中的会话', async () => {
+  const api = client(), pending = deferred()
+  api.sessions.C = session('C')
+  api.deleteSession = async id => { await pending.promise; delete api.sessions[id] }
+  const hook = workspace(api)
+  const view = await hook.flush()
+  const deleting = view.deleteConversation('A')
+  await view.loadConversation('C')
+  pending.resolve()
+  await deleting
+  const current = hook.render()
+  assert.equal(current.activeId, 'C')
+  assert.equal(current.session.id, 'C')
+  hook.close()
+})
+
+test('旧会话保存事件不完整时，编辑立即清理旧过程和子任务卡片', async () => {
+  const api = client(), pending = deferred()
+  api.sessions.A.messages = [
+    { role: 'user', uuid: 'first', content: '第一轮' }, { role: 'assistant', content: '没有保存事件的旧回复' },
+    { role: 'user', uuid: 'last', content: '第二轮' }, { role: 'assistant', content: '有保存事件的新回复' },
+  ]
+  api.sessions.A.events = [
+    { kind: 'subagent', content: '第二轮子任务', meta: { child_session_id: 'sub-old', state: 'running', after_message_index: 2 } },
+    { kind: 'subagent', meta: { child_session_id: 'sub-old', state: 'completed' } },
+    { kind: 'message_saved', title: '消息已保存' },
+  ]
+  api.chatStream = () => pending.promise
+  const hook = workspace(api)
+  const view = await hook.flush()
+  const editing = view.editLatestMessage('last', '修改后')
+  const current = hook.render()
+  assert.equal(current.session.events.length, 0)
+  assert.equal(current.cards.length, 0)
+  assert.deepEqual(Array.from(current.messages, message => message.content), ['第一轮', '没有保存事件的旧回复', '修改后'])
+  api.sessions.A = { ...api.sessions.A, history_version: 1, events: [], messages: current.session.messages }
+  pending.resolve()
+  await editing
+  hook.close()
+})
