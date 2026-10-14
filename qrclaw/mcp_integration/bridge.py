@@ -67,7 +67,15 @@ def _build_pydantic_model(
         if not isinstance(field_schema, dict):
             field_schema = {}
 
-        python_type = _json_type_to_python(field_schema.get("type"))
+        json_type = field_schema.get("type")
+        if json_type is None:
+            # FastMCP 的可选 arguments 使用 object/null 联合类型。
+            json_type = next(
+                (item.get("type") for item in field_schema.get("anyOf", [])
+                 if item.get("type") not in (None, "null")),
+                None,
+            )
+        python_type = _json_type_to_python(json_type)
         description = field_schema.get("description", "")
 
         if field_name in required_set:
@@ -102,7 +110,7 @@ def _make_sync_handler(tool_name: str, manager: MCPManager, loop: asyncio.Abstra
 
 
 async def register_mcp_tools(manager: MCPManager) -> list[str]:
-    """Discover MCP tools via *manager* and inject them into QRClaw's tool registry.
+    """仅注册 FastMCP 的搜索和调用入口，复用现有同步执行桥。
 
     Each MCP tool is registered under the name ``mcp__<original_name>`` to
     avoid collisions with built-in tools.
@@ -123,13 +131,17 @@ async def register_mcp_tools(manager: MCPManager) -> list[str]:
         func_info = schema.get("function", {})
         original_name = func_info.get("name", "")
         if not original_name:
-            logger.warning("Skipping MCP tool with empty name")
+            logger.warning("跳过名称为空的 MCP 工具")
             continue
 
         qualified_name = f"mcp__{original_name}"
 
         # Extract parameters from the OpenAI-format schema
         parameters = func_info.get("parameters", {})
+        # 展开 $ref/$defs（REA 等 MCP 服务广泛使用），与内部工具保持一致，
+        # 避免把未展开的引用直接发给模型后端。
+        if isinstance(parameters, dict) and "$defs" in parameters:
+            parameters = reg._resolve_refs(parameters, parameters.get("$defs", {}))
         properties = parameters.get("properties", {})
         required = parameters.get("required")
         description = func_info.get("description", f"MCP tool: {original_name}")
@@ -160,9 +172,9 @@ async def register_mcp_tools(manager: MCPManager) -> list[str]:
         }
 
         registered.append(qualified_name)
-        logger.info("Registered MCP tool into QRClaw registry: %s", qualified_name)
+        logger.info("已注册 MCP 入口：%s", qualified_name)
 
-    logger.info("MCP bridge: registered %d tools total", len(registered))
+    logger.info("MCP 桥已注册 %d 个入口", len(registered))
     return registered
 
 
@@ -175,7 +187,7 @@ async def unregister_mcp_tools() -> None:
         del reg._tools[name]
     global _active_manager
     _active_manager = None
-    logger.info("Unregistered %d MCP tools", len(to_remove))
+    logger.info("已注销 %d 个 MCP 入口", len(to_remove))
 
 
 def get_active_manager() -> MCPManager | None:

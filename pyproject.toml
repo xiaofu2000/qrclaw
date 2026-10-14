@@ -36,6 +36,8 @@ dependencies = [
     "fastapi>=0.115.0",
     "uvicorn>=0.30.0",
     "filelock>=3.13.0",
+    "fastmcp>=3.4.8,<4",
+    "jsonschema>=4.20",
 ]
 
 [project.optional-dependencies]
