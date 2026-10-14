@@ -1,9 +1,10 @@
 import { List, PanelRight } from 'lucide-react'
-import type { RunStatus } from '../lib/types'
+import type { AgentActivity } from '../lib/types'
+import { AgentSprite } from './AgentSprite'
 
 type TopbarProps = {
-  status: RunStatus
-  statusText: string
+  activity: AgentActivity
+  sessionId: string
   title: string
   sidebarOpen: boolean
   inspectorOpen: boolean
@@ -12,7 +13,8 @@ type TopbarProps = {
   onToggleInspector: () => void
 }
 
-export function Topbar({ status, statusText, title, sidebarOpen, inspectorOpen, showInspector, onToggleSidebar, onToggleInspector }: TopbarProps) {
+/** 展示当前会话标题，以及由 ViewModel 提供的精灵和工作状态。 */
+export function Topbar({ activity, sessionId, title, sidebarOpen, inspectorOpen, showInspector, onToggleSidebar, onToggleInspector }: TopbarProps) {
   return (
     <header className="topbar">
       <div className="topbar-heading">
@@ -21,7 +23,10 @@ export function Topbar({ status, statusText, title, sidebarOpen, inspectorOpen, 
         <span className="conversation-heading" title={title}>{title}</span>
       </div>
       <div className="topbar-actions">
-        <span className={`status-label ${status}`} role="status">{statusText}</span>
+        <div className="agent-status" data-phase={activity.phase}>
+          <AgentSprite key={sessionId} phase={activity.phase} />
+          <span className={`status-label ${activity.status}`} role="status">{activity.label}</span>
+        </div>
         {showInspector && <button className="icon-button" aria-label="切换执行过程" aria-expanded={inspectorOpen} aria-controls="run-inspector" onClick={onToggleInspector}><PanelRight size={19} /></button>}
       </div>
     </header>

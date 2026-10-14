@@ -799,3 +799,81 @@ test('旧会话保存事件不完整时，编辑立即清理旧过程和子任�
   await editing
   hook.close()
 })
+
+test('精灵跟随当前轮的等待、思考、工具、子任务、压缩、回复和完成', async () => {
+  const api = client(), task = deferred(), progress = deferred()
+  let push, delta
+  api.sessions.A.events = [{ kind: 'tool_status', title: '旧工具开始', meta: { state: 'started' } }]
+  api.chatStream = (_id, _content, onDelta, onReady) => { delta = onDelta; onReady(); return task.promise }
+  api.streamEvents = (_id, _after, onEvent) => { push = onEvent; return progress.promise }
+  const hook = workspace(api)
+  let view = await hook.flush()
+  assert.equal(view.activity.phase, 'idle')
+  const sending = view.send('检查状态')
+  assert.equal(hook.render().activity.phase, 'queued', '新轮次不能沿用旧工具事件')
+  push(1, { kind: 'context_usage', title: '上下文用量' })
+  assert.equal(hook.render().activity.phase, 'thinking')
+  push(2, { kind: 'tool_status', title: '工具开始', meta: { state: 'started', tool: 'read_file' } })
+  assert.equal(hook.render().activity.phase, 'tool')
+  push(3, { kind: 'tool_status', title: '工具完成', meta: { state: 'completed' } })
+  assert.equal(hook.render().activity.phase, 'thinking')
+  push(4, { kind: 'subagent', title: '子任务', meta: { child_session_id: 'C', state: 'running', after_message_index: 0 } })
+  push(5, { kind: 'subagent', title: '子任务', meta: { child_session_id: 'D', state: 'running', after_message_index: 0 } })
+  push(6, { kind: 'subagent', title: '子任务完成', meta: { child_session_id: 'D', state: 'completed' } })
+  assert.equal(hook.render().activity.phase, 'subagent', '另一个子任务还在执行')
+  push(7, { kind: 'subagent', title: '子任务完成', meta: { child_session_id: 'C', state: 'completed' } })
+  assert.equal(hook.render().activity.phase, 'thinking')
+  push(8, { kind: 'compression', title: '压缩中', meta: { state: 'started' } })
+  assert.equal(hook.render().activity.phase, 'compressing')
+  push(9, { kind: 'compression', title: '压缩未执行', meta: { state: 'skipped' } })
+  delta('完成了')
+  assert.equal(hook.render().activity.phase, 'responding')
+  api.sessions.A = { ...hook.render().session, run_status: 'idle', messages: [
+    ...hook.render().session.messages, { role: 'assistant', content: '完成了' },
+  ] }
+  task.resolve()
+  progress.resolve()
+  await sending
+  view = await hook.flush()
+  assert.equal(view.activity.phase, 'completed')
+  assert.equal(view.activity.status, 'ready')
+  hook.close()
+})
+
+test('精灵按会话隔离，后台运行、刷新恢复和失败均显示真实状态', async () => {
+  const api = client(), progress = deferred()
+  api.sessions.A = { ...session('A'), run_status: 'running', messages: [{ role: 'user', content: '执行中', turn_event_index: 0 }],
+    events: [{ kind: 'tool_status', title: '工具开始', meta: { state: 'started', tool: 'read_file' } }] }
+  api.streamEvents = () => progress.promise
+  const hook = workspace(api)
+  let view = await hook.flush()
+  assert.equal(view.activity.phase, 'tool', '刷新后从保存事件恢复')
+  await view.loadConversation('B')
+  view = hook.render()
+  assert.equal(view.activity.phase, 'background')
+  assert.match(view.activity.label, /1 个后台任务/)
+  assert.equal(view.status, 'ready', '其他会话运行不影响当前会话检查面板')
+  api.sessions.A = { ...api.sessions.A, run_status: 'idle', run_error: '验证失败' }
+  view = await hook.poll()
+  assert.equal(view.activity.phase, 'idle', '后台任务结束不能让空会话显示完成')
+  await view.loadConversation('A')
+  view = hook.render()
+  assert.equal(view.activity.phase, 'error')
+  assert.equal(view.activity.status, 'error')
+  progress.resolve()
+  hook.close()
+})
+
+test('主会话继续运行时，已中断的旧子任务不再驱动精灵', async () => {
+  const api = client(), progress = deferred()
+  api.sessions.A = { ...session('A'), run_status: 'running', messages: [{ role: 'user', content: '继续任务', turn_event_index: 0 }],
+    events: [{ kind: 'subagent', title: '子任务', meta: { child_session_id: 'C', state: 'running', after_message_index: 0 } }] }
+  api.sessions.C = session('C')
+  api.streamEvents = () => progress.promise
+  const hook = workspace(api)
+  const view = await hook.flush()
+  assert.equal(view.cards[0].state, 'interrupted')
+  assert.equal(view.activity.phase, 'thinking')
+  progress.resolve()
+  hook.close()
+})

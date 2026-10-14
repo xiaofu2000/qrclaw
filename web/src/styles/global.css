@@ -104,6 +104,20 @@ button:active:not(:disabled) {
   white-space: nowrap;
 }
 
+.agent-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.agent-sprite {
+  display: block;
+  width: 52px;
+  height: 52px;
+  flex-shrink: 0;
+}
+
 .status-label.busy {
   color: var(--accent);
 }

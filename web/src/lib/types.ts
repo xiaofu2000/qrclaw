@@ -41,6 +41,13 @@ export type Conversation = {
 
 export type RunStatus = 'ready' | 'busy' | 'error'
 
+/** 当前会话的工作阶段，由 ViewModel 推导，视图只负责选择动画。 */
+export type AgentActivity = {
+  phase: 'idle' | 'loading' | 'queued' | 'thinking' | 'tool' | 'subagent' | 'responding' | 'compressing' | 'completed' | 'error' | 'background'
+  label: string
+  status: RunStatus
+}
+
 export type SessionSummary = {
   id: string
   title?: string

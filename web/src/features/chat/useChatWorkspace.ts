@@ -1,8 +1,46 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { createApiClient } from '../../lib/api'
-import type { ChatTimelineItem, Conversation, Message, SessionDetail, SessionSummary, SubAgentCard } from '../../lib/types'
+import type { AgentActivity, ChatTimelineItem, Conversation, Message, SessionDetail, SessionSummary, SubAgentCard } from '../../lib/types'
 
 type ApiClient = ReturnType<typeof createApiClient>
+
+/** 从当前轮次推导真实工作状态，避免旧工具事件和其他会话驱动当前精灵。 */
+function getAgentActivity({ session, cards, running, streaming, error, loading, creating, mutating, backgroundCount }: {
+  session: SessionDetail | null
+  cards: SubAgentCard[]
+  running: boolean
+  streaming: string
+  error: string
+  loading: boolean
+  creating: boolean
+  mutating: boolean
+  backgroundCount: number
+}): AgentActivity {
+  if (error) return { phase: 'error', label: '需要检查', status: 'error' }
+  if (loading || creating || mutating) return {
+    phase: 'loading', label: loading ? '载入会话中' : creating ? '新建会话中' : '更新会话中', status: 'busy',
+  }
+  const userIndex = session?.messages.findLastIndex(message => message.role === 'user') ?? -1
+  const events = (session?.events ?? []).slice(session?.messages[userIndex]?.turn_event_index ?? 0)
+  if (running || session?.active_subagents) {
+    const compression = events.findLast(event => event?.kind === 'compression')
+    if (compression?.meta?.state === 'started') return { phase: 'compressing', label: '整理上下文', status: 'busy' }
+    const tool = events.findLast(event => event?.kind === 'tool_status')
+    if (tool?.meta?.state === 'started') return { phase: 'tool', label: '正在执行工具', status: 'busy' }
+    if (session?.active_subagents || cards.some(card => card.state === 'running' && card.afterMessageIndex >= userIndex)) {
+      return { phase: 'subagent', label: '子任务执行中', status: 'busy' }
+    }
+    if (streaming) return { phase: 'responding', label: '正在回复', status: 'busy' }
+    if (session?.run_status === 'queued' && !events.some(Boolean)) return { phase: 'queued', label: '等待执行', status: 'busy' }
+    const status = events.findLast(event => event?.kind === 'status')
+    return { phase: 'thinking', label: status?.title === '重规划中' ? '正在调整计划' : '正在思考', status: 'busy' }
+  }
+  if (backgroundCount) return { phase: 'background', label: `${backgroundCount} 个后台任务处理中`, status: 'busy' }
+  if (userIndex >= 0 && session?.messages.slice(userIndex + 1).some(message => message.role === 'assistant' && message.kind !== 'execution_report')) {
+    return { phase: 'completed', label: '本轮已完成', status: 'ready' }
+  }
+  return { phase: 'idle', label: '可以开始', status: 'ready' }
+}
 
 function toConversation(session: SessionSummary): Conversation {
   return { id: session.id, title: session.title || '新对话', updatedAt: session.updated_at, messageCount: session.message_count }
@@ -302,8 +340,8 @@ export function useChatWorkspace(api: ApiClient) {
     setSessions(current => ({ ...current, [id]: {
       ...current[id], run_status: 'queued', run_error: null,
       history_version: editMessageId ? (previous.history_version ?? 0) + 1 : previous.history_version,
-      messages: editMessageId ? [...previous.messages.slice(0, editIndex), { ...previous.messages[editIndex], content }]
-        : [...current[id].messages, { role: 'user', content }],
+      messages: editMessageId ? [...previous.messages.slice(0, editIndex), { ...previous.messages[editIndex], content, turn_event_index: editEventStart }]
+        : [...current[id].messages, { role: 'user', content, turn_event_index: current[id].events?.length ?? 0 }],
       events: editMessageId ? (previous.events ?? []).slice(0, editEventStart) : current[id].events,
     } }))
     let completed = false
@@ -537,8 +575,16 @@ export function useChatWorkspace(api: ApiClient) {
           : `${lastCompression.title}：${lastCompression.content ?? ''}`,
   } : null
 
+  const visibleStreaming = (streaming[activeId] ?? '').slice((session?.messages ?? []).slice(streamBaselinesRef.current.get(activeId) ?? session?.messages.length ?? 0)
+    .filter(message => message.role === 'assistant' && message.kind !== 'execution_report')
+    .reduce((length, message) => length + (typeof message.content === 'string' ? message.content.length : 0), 0))
+  const activity = getAgentActivity({ session, cards, running, streaming: visibleStreaming, error, loading, creating,
+    mutating: mutatingIds.has(activeId), backgroundCount: runningIds.size - Number(running) })
+  const status: AgentActivity['status'] = running || loading || creating || mutatingIds.has(activeId) ? 'busy' : error ? 'error' : 'ready'
+
   return {
-    planEnabled, compressing, contextUsage, compressionNotice,
+    planEnabled, compressing, contextUsage, compressionNotice, activity,
+    status,
     /** 保存浏览器的执行偏好，下次发送或编辑重跑时使用。 */
     togglePlan: () => setPlanEnabled(current => {
       try { localStorage.setItem('qrclaw.planEnabled', String(!current)) }
@@ -548,9 +594,7 @@ export function useChatWorkspace(api: ApiClient) {
     conversations, activeId, session, messages, timeline, cards, selectedCard, childSession, childMessages,
     childStreaming: childStreaming[selectedChildId] ?? '', selectSubAgent: (id: string | null) =>
       setSelectedChildren(current => ({ ...current, [activeId]: id ?? '' })),
-    streaming: (streaming[activeId] ?? '').slice((session?.messages ?? []).slice(streamBaselinesRef.current.get(activeId) ?? session?.messages.length ?? 0)
-      .filter(message => message.role === 'assistant' && message.kind !== 'execution_report')
-      .reduce((length, message) => length + (typeof message.content === 'string' ? message.content.length : 0), 0)),
+    streaming: visibleStreaming,
     runningIds, running, queued, loading, creating, mutatingIds, mutating: mutatingIds.has(activeId), error,
     draft: drafts[activeId] ?? '',
     setDraft: (value: string) => setDrafts(current => ({ ...current, [activeId]: value })),
