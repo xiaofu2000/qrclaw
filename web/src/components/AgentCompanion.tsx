@@ -16,13 +16,13 @@ const ACTIVITY_DETAILS: Record<AgentActivity['phase'], string> = {
 }
 
 /** 根据 ViewModel 呈现伙伴；空会话和工作中共用一个动画实例。 */
-export function AgentCompanion({ activity, sessionId, compact }: { activity: AgentActivity; sessionId: string; compact: boolean }) {
+export function AgentCompanion({ activity, sessionId, compact, textOnly = false }: { activity: AgentActivity; sessionId: string; compact: boolean; textOnly?: boolean }) {
   return (
     <section className={`agent-companion ${compact ? 'compact' : 'welcome'}`} aria-label="AI 工作伙伴" data-phase={activity.phase}>
-      <div className="companion-stage"><AgentSprite key={sessionId} phase={activity.phase} /></div>
+      {!textOnly && <div className="companion-stage"><AgentSprite key={sessionId} phase={activity.phase} /></div>}
       <div className="companion-copy">
         {!compact && <h1>想法，从这里开始。</h1>}
-        <div className={`companion-status ${activity.status}`} role="status"><span className="status-dot" aria-hidden="true" />{activity.label}</div>
+        {!textOnly && <div className={`companion-status ${activity.status}`} role="status"><span className="status-dot" aria-hidden="true" />{activity.label}</div>}
         {!compact && <p>{ACTIVITY_DETAILS[activity.phase]}</p>}
       </div>
     </section>

@@ -84,15 +84,18 @@ input, textarea { caret-color: var(--accent); }
 .sidebar-footer strong { font-size: 12px; font-weight: 500; }
 .sidebar-footer span { font-size: 10px; }
 
-/* 伙伴在欢迎页居中，工作时停靠导航或顶栏，把正文高度留给阅读。 */
+/* 桌面伙伴悬浮于顶部，手机继续使用欢迎形象与顶栏伙伴。 */
+.floating-companion { position: fixed; z-index: 80; padding: 0; border-radius: 16px; background: var(--surface); box-shadow: 0 6px 24px #253b6026; touch-action: none; user-select: none; cursor: grab; }
+.floating-companion:active { cursor: grabbing; }
+.floating-companion:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.floating-companion .agent-sprite { pointer-events: none; }
+.topbar-status { flex: none; font-size: 12px; white-space: nowrap; }
 .chat-column { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
 .chat-content { display: flex; flex-direction: column; flex: 1; min-height: 0; min-width: 0; }
 .is-empty .chat-content { flex: none; }
 .agent-companion { display: flex; align-items: center; flex-shrink: 0; min-width: 0; }
 .companion-stage { flex: none; display: flex; align-items: center; justify-content: center; }
 .agent-sprite { display: block; width: 100%; height: 100%; }
-.agent-companion.compact { flex-direction: column; gap: 0; padding: 0 8px 12px; border-top: 1px solid #d7e0ed; }
-.compact .companion-stage { width: 156px; height: 156px; }
 .compact .companion-status { font-size: 12px; line-height: 1.5; text-align: center; }
 .companion-copy { min-width: 0; }
 .companion-copy p { margin: 9px 0 0; font-size: 13px; line-height: 1.7; color: var(--muted); }
@@ -232,6 +235,13 @@ input, textarea { caret-color: var(--accent); }
 @media (min-width: 761px) and (hover: hover) {
   .conversation-row:not(.active):not(:hover):not(:focus-within) .conversation-action { opacity: 0; }
 }
+@media (min-width: 761px) {
+  /* 聊天左侧、记忆右侧留出卡片空间，不增加顶栏和正文的高度。 */
+  .topbar { padding-right: 152px; }
+  .app-shell[data-view='chat'] .topbar { padding-left: 152px; padding-right: 28px; }
+  .memory-workspace .memory-header { padding-right: 152px; }
+  .agent-companion.welcome { text-align: center; }
+}
 @media (max-width: 1100px) {
   .workspace.with-inspector { grid-template-columns: minmax(0, 1fr); }
   .inspector-panel { position: fixed; right: 16px; top: 16px; bottom: 16px; width: 340px; max-width: calc(100vw - 32px); border: 0; border-radius: 16px; z-index: 120; box-shadow: -12px 0 40px #172c4720; }
@@ -291,7 +301,6 @@ input, textarea { caret-color: var(--accent); }
   .chat-column.is-empty { justify-content: flex-start; padding-top: 16px; padding-bottom: 16px; }
   .agent-companion.welcome { margin-bottom: 12px; }
   .welcome .companion-stage { width: 150px; height: 150px; }
-  .sidebar .compact .companion-stage { width: 112px; height: 112px; }
 }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }

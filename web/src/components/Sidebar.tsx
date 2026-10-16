@@ -1,7 +1,6 @@
 import { Plus, Library, MessageSquare, HardDrive, X } from 'lucide-react'
 import { ConversationList } from '../features/conversations/ConversationList'
 import type { Conversation } from '../lib/types'
-import type { ReactNode } from 'react'
 
 type SidebarProps = {
   conversations: Conversation[]
@@ -11,7 +10,6 @@ type SidebarProps = {
   open: boolean
   creating: boolean
   memoryOpen: boolean
-  companion: ReactNode
   onOpenMemory: () => void
   onOpenChat: () => void
   onClose: () => void
@@ -22,7 +20,7 @@ type SidebarProps = {
 }
 
 /** 导航与历史始终在同一位置，数据与会话操作仍由工作区管理。 */
-export function Sidebar({ conversations, activeId, runningIds, mutatingIds, open, creating, memoryOpen, companion, onOpenMemory, onOpenChat, onClose, onNewChat, onSelectConversation, onRenameConversation, onDeleteConversation }: SidebarProps) {
+export function Sidebar({ conversations, activeId, runningIds, mutatingIds, open, creating, memoryOpen, onOpenMemory, onOpenChat, onClose, onNewChat, onSelectConversation, onRenameConversation, onDeleteConversation }: SidebarProps) {
   return (
     <aside id="session-sidebar" className={`sidebar ${open ? 'open' : ''}`} aria-label="历史会话">
       <div className="sidebar-brand"><span className="brand-mark" aria-hidden="true">Q<span>·</span></span><div><strong>QRClaw</strong><span>你的 AI 工作伙伴</span></div><button className="icon-button sidebar-close" aria-label="关闭会话列表" onClick={onClose}><X size={20} /></button></div>
@@ -36,7 +34,7 @@ export function Sidebar({ conversations, activeId, runningIds, mutatingIds, open
         <ConversationList conversations={conversations} activeId={memoryOpen ? '' : activeId} runningIds={runningIds} mutatingIds={mutatingIds} onSelect={onSelectConversation}
           onRename={onRenameConversation} onDelete={onDeleteConversation} />
       </nav>
-      {companion || <div className="sidebar-footer"><HardDrive size={17} /><div><strong>本地工作空间</strong><span>对话与记忆，在这里积累</span></div></div>}
+      <div className="sidebar-footer"><HardDrive size={17} /><div><strong>本地工作空间</strong><span>对话与记忆，在这里积累</span></div></div>
     </aside>
   )
 }

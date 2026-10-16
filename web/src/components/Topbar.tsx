@@ -1,18 +1,20 @@
 import { Menu, PanelRight, MessageSquare, Library } from 'lucide-react'
 import type { ReactNode } from 'react'
+import type { AgentActivity } from '../lib/types'
 
 type TopbarProps = {
   title: string
   memoryOpen: boolean
   companion: ReactNode
+  activity: AgentActivity | null
   sidebarOpen: boolean
   inspectorOpen: boolean
   onToggleSidebar: () => void
   onToggleInspector: () => void
 }
 
-/** 顶栏负责页面定位，窄屏时同时容纳伙伴，不另占正文高度。 */
-export function Topbar({ title, memoryOpen, companion, sidebarOpen, inspectorOpen, onToggleSidebar, onToggleInspector }: TopbarProps) {
+/** 状态文案留在顶部；窄屏继续将伙伴与状态合在顶栏。 */
+export function Topbar({ title, memoryOpen, companion, activity, sidebarOpen, inspectorOpen, onToggleSidebar, onToggleInspector }: TopbarProps) {
   return (
     <header className="topbar">
       <div className="topbar-heading">
@@ -23,6 +25,7 @@ export function Topbar({ title, memoryOpen, companion, sidebarOpen, inspectorOpe
         <span className="conversation-heading" title={title}>{memoryOpen ? '让经验成为下一次的起点' : title}</span>
       </div>
       {companion}
+      {activity && <div className={`companion-status topbar-status ${activity.status}`} role="status"><span className="status-dot" aria-hidden="true" />{activity.label}</div>}
       {!memoryOpen && <button className="inspector-toggle" aria-label="切换执行过程" aria-expanded={inspectorOpen} aria-controls="run-inspector" onClick={onToggleInspector}>
         <PanelRight size={17} /><span>执行过程</span>
       </button>}

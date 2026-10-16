@@ -4,7 +4,7 @@ const { readFileSync } = require('node:fs')
 const vm = require('node:vm')
 const ts = require('typescript')
 
-test('伙伴随窗口停靠且只有一个实例，空会话仍展示欢迎伙伴', () => {
+test('桌面伙伴悬浮且状态在顶部，手机布局保持不变，每种状态只有一个动画', () => {
   const states = [], effects = [], exports = {}
   let cursor = 0, resize
   const media = { matches: false, addEventListener: (_, listener) => { resize = listener }, removeEventListener: () => { resize = null } }
@@ -19,7 +19,7 @@ test('伙伴随窗口停靠且只有一个实例，空会话仍展示欢迎伙�
       if (!(index in states)) states[index] = typeof initial === 'function' ? initial() : initial
       return [states[index], value => { states[index] = value }]
     },
-    useEffect: effect => effects.push(effect), useMemo: factory => factory(),
+    useEffect: effect => effects.push(effect), useMemo: factory => factory(), useRef: () => ({ current: null }),
   }
   vm.runInNewContext(source, { exports, window: { location: { hash: '' }, matchMedia: () => media }, require(name) {
     if (name === 'react') return react
@@ -43,22 +43,36 @@ test('伙伴随窗口停靠且只有一个实例，空会话仍展示欢迎伙�
       visit(node.props.companion)
     }
     visit(exports.App())
-    assert.equal(nodes.filter(node => node.type === 'AgentCompanion').length, 1)
+    assert.equal(nodes.filter(node => node.type === 'FloatingCompanion' || node.type === 'AgentCompanion' && !node.props.textOnly).length, 1)
     return type => nodes.find(node => node.type === type)
   }
   let view = render()
-  assert.equal(view('Sidebar').props.companion.props.activity, chat.activity)
+  assert.equal(view('FloatingCompanion').props.activity, chat.activity)
+  assert.equal(view('FloatingCompanion').props.corner, 'left')
+  assert.equal(view('Topbar').props.activity, chat.activity)
+  assert.equal(view('Sidebar').props.companion, undefined)
   assert.equal(view('Topbar').props.companion, null)
   const cleanup = effects[0]()
   media.matches = true
   resize()
   view = render()
-  assert.equal(view('Sidebar').props.companion, null)
+  assert.equal(view('FloatingCompanion'), undefined)
+  assert.equal(view('Topbar').props.activity, null)
   assert.equal(view('Topbar').props.companion.props.activity, chat.activity)
   chat.timeline = []
   view = render()
   assert.equal(view('AgentCompanion').props.compact, false)
   assert.equal(view('Topbar').props.companion, null)
+  media.matches = false
+  resize()
+  view = render()
+  assert.equal(view('AgentCompanion').props.textOnly, true)
+  assert.equal(view('FloatingCompanion').props.activity, chat.activity)
+  states[2] = true
+  view = render()
+  assert.equal(view('AgentCompanion'), undefined)
+  assert.equal(view('FloatingCompanion').props.corner, 'right')
+  assert.equal(view('Topbar').props.activity, chat.activity)
   cleanup()
   assert.equal(resize, null)
 })
