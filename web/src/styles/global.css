@@ -56,9 +56,13 @@ input, textarea { caret-color: var(--accent); }
 .sidebar-brand { display: flex; align-items: center; gap: 11px; padding: 2px 8px 23px; }
 .brand-mark { font-size: 34px; line-height: 1; font-weight: 800; letter-spacing: -.04em; color: var(--ink); }
 .brand-mark > span { color: var(--accent); }
-.sidebar-brand > div { display: flex; flex-direction: column; gap: 4px; }
+.sidebar-brand-copy { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .sidebar-brand strong { font-size: 18px; letter-spacing: -.02em; }
-.sidebar-brand > div > span { font-size: 11px; color: var(--muted); }
+.sidebar-brand-copy > span { font-size: 11px; color: var(--muted); }
+.sidebar-brand.with-companion { gap: 0; padding: 0; margin: -18px 0 -6px -8px; }
+.sidebar-companion-stage { width: 104px; height: 104px; flex: none; }
+.sidebar-brand .companion-status { min-height: 36px; align-items: baseline; gap: 6px; font-size: 12px; line-height: 18px; font-weight: 500; }
+.sidebar-brand .status-dot { align-self: flex-start; margin-top: 6px; }
 .new-chat { display: flex; align-items: center; justify-content: center; gap: 9px; min-height: 44px; width: 100%; border: 0; border-radius: 10px; background: var(--accent); color: white; font-weight: 600; font-size: 13px; }
 .new-chat:hover:not(:disabled) { background: #254ab9; }
 .workspace-nav { display: grid; gap: 4px; padding: 12px 0 18px; border-bottom: 1px solid #d7e0ed; }
@@ -84,12 +88,7 @@ input, textarea { caret-color: var(--accent); }
 .sidebar-footer strong { font-size: 12px; font-weight: 500; }
 .sidebar-footer span { font-size: 10px; }
 
-/* 桌面伙伴悬浮于顶部，手机继续使用欢迎形象与顶栏伙伴。 */
-.floating-companion { position: fixed; z-index: 80; padding: 0; border-radius: 16px; background: var(--surface); box-shadow: 0 6px 24px #253b6026; touch-action: none; user-select: none; cursor: grab; }
-.floating-companion:active { cursor: grabbing; }
-.floating-companion:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
-.floating-companion .agent-sprite { pointer-events: none; }
-.topbar-status { flex: none; font-size: 12px; white-space: nowrap; }
+/* 桌面伙伴融入侧栏品牌区，手机继续使用欢迎形象与顶栏伙伴。 */
 .chat-column { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
 .chat-content { display: flex; flex-direction: column; flex: 1; min-height: 0; min-width: 0; }
 .is-empty .chat-content { flex: none; }
@@ -236,10 +235,7 @@ input, textarea { caret-color: var(--accent); }
   .conversation-row:not(.active):not(:hover):not(:focus-within) .conversation-action { opacity: 0; }
 }
 @media (min-width: 761px) {
-  /* 聊天左侧、记忆右侧留出卡片空间，不增加顶栏和正文的高度。 */
-  .topbar { padding-right: 152px; }
-  .app-shell[data-view='chat'] .topbar { padding-left: 152px; padding-right: 28px; }
-  .memory-workspace .memory-header { padding-right: 152px; }
+  /* 伙伴已在侧栏，欢迎引导独立居中。 */
   .agent-companion.welcome { text-align: center; }
 }
 @media (max-width: 1100px) {

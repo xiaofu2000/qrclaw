@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { ChatPanel } from '../features/chat/ChatPanel'
 import { useChatWorkspace } from '../features/chat/useChatWorkspace'
 import { InspectorPanel } from '../features/inspector/InspectorPanel'
@@ -8,7 +8,6 @@ import { Sidebar } from '../components/Sidebar'
 import { Topbar } from '../components/Topbar'
 import { MemoryWorkspace } from '../features/memory/MemoryPanel'
 import { AgentCompanion } from '../components/AgentCompanion'
-import { FloatingCompanion } from '../components/FloatingCompanion'
 import { ArrowUpRight, Code2, ListTodo, BookOpen } from 'lucide-react'
 
 /** 组合工作区视图，业务数据与任务状态仍由现有 ViewModel 提供。 */
@@ -19,9 +18,8 @@ export function App() {
   const [inspectorOpen, setInspectorOpen] = useState(false)
   const [memoryOpen, setMemoryOpen] = useState(() => window.location.hash.startsWith('#/memory'))
   const [narrow, setNarrow] = useState(() => window.matchMedia('(max-width: 760px)').matches)
-  const surfaceRef = useRef<HTMLDivElement>(null)
   useEffect(() => {
-    // 只挂载一个动画实例，手机保留现有布局，桌面使用悬浮卡片。
+    // 只挂载一个动画实例，手机保留现有布局，桌面放在侧栏顶部。
     const media = window.matchMedia('(max-width: 760px)')
     function resize() { setNarrow(media.matches) }
     media.addEventListener('change', resize)
@@ -85,15 +83,15 @@ export function App() {
     <div className="app-shell" data-view={memoryOpen ? 'memory' : 'chat'}>
       {(sidebarOpen || inspectorOpen && !memoryOpen) && <button className="panel-backdrop" aria-label="关闭面板" onClick={() => { setSidebarOpen(false); setInspectorOpen(false) }} />}
         <Sidebar conversations={chat.conversations} activeId={chat.activeId} runningIds={chat.runningIds} mutatingIds={chat.mutatingIds}
-          open={sidebarOpen} creating={chat.creating || chat.loading && !chat.activeId}
+          open={sidebarOpen} creating={chat.creating || chat.loading && !chat.activeId} activity={narrow ? null : chat.activity}
           onOpenChat={() => { showChat(); setSidebarOpen(false) }} onClose={() => setSidebarOpen(false)}
           memoryOpen={memoryOpen} onOpenMemory={() => { window.location.hash = '/memory'; setMemoryOpen(true); setSidebarOpen(false); setInspectorOpen(false) }}
           onNewChat={() => { showChat(); setSidebarOpen(false); void chat.newConversation() }}
           onSelectConversation={id => { showChat(); setSidebarOpen(false); void chat.loadConversation(id) }}
           onRenameConversation={(id, title) => void chat.renameConversation(id, title)}
           onDeleteConversation={id => void chat.deleteConversation(id)} />
-      <div className="work-surface" ref={surfaceRef}>
-        <Topbar title={title} memoryOpen={memoryOpen} companion={narrow ? companion : null} activity={narrow ? null : chat.activity}
+      <div className="work-surface">
+        <Topbar title={title} memoryOpen={memoryOpen} companion={narrow ? companion : null}
           sidebarOpen={sidebarOpen} onToggleSidebar={() => { setSidebarOpen(value => !value); setInspectorOpen(false) }}
           inspectorOpen={inspectorOpen} onToggleInspector={() => { setInspectorOpen(value => !value); setSidebarOpen(false) }} />
       <div className={`workspace ${inspectorOpen && !memoryOpen ? 'with-inspector' : ''}`}>
@@ -125,7 +123,6 @@ export function App() {
           childStreaming={chat.childStreaming} onMainAgent={() => chat.selectSubAgent(null)} onClose={() => setInspectorOpen(false)} />}
       </div>
       </div>
-      {!narrow && <FloatingCompanion activity={chat.activity} sessionId={chat.activeId} corner={memoryOpen ? 'right' : 'left'} surfaceRef={surfaceRef} />}
     </div>
   )
 }

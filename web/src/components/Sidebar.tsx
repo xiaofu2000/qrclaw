@@ -1,6 +1,7 @@
 import { Plus, Library, MessageSquare, HardDrive, X } from 'lucide-react'
 import { ConversationList } from '../features/conversations/ConversationList'
-import type { Conversation } from '../lib/types'
+import type { AgentActivity, Conversation } from '../lib/types'
+import { AgentSprite } from './AgentSprite'
 
 type SidebarProps = {
   conversations: Conversation[]
@@ -10,6 +11,7 @@ type SidebarProps = {
   open: boolean
   creating: boolean
   memoryOpen: boolean
+  activity: AgentActivity | null
   onOpenMemory: () => void
   onOpenChat: () => void
   onClose: () => void
@@ -20,10 +22,18 @@ type SidebarProps = {
 }
 
 /** 导航与历史始终在同一位置，数据与会话操作仍由工作区管理。 */
-export function Sidebar({ conversations, activeId, runningIds, mutatingIds, open, creating, memoryOpen, onOpenMemory, onOpenChat, onClose, onNewChat, onSelectConversation, onRenameConversation, onDeleteConversation }: SidebarProps) {
+export function Sidebar({ conversations, activeId, runningIds, mutatingIds, open, creating, memoryOpen, activity, onOpenMemory, onOpenChat, onClose, onNewChat, onSelectConversation, onRenameConversation, onDeleteConversation }: SidebarProps) {
   return (
     <aside id="session-sidebar" className={`sidebar ${open ? 'open' : ''}`} aria-label="历史会话">
-      <div className="sidebar-brand"><span className="brand-mark" aria-hidden="true">Q<span>·</span></span><div><strong>QRClaw</strong><span>你的 AI 工作伙伴</span></div><button className="icon-button sidebar-close" aria-label="关闭会话列表" onClick={onClose}><X size={20} /></button></div>
+      <div className={`sidebar-brand ${activity ? 'with-companion' : ''}`} data-phase={activity?.phase}>
+        {activity ? <div className="sidebar-companion-stage"><AgentSprite key={activeId} phase={activity.phase} /></div>
+          : <span className="brand-mark" aria-hidden="true">Q<span>·</span></span>}
+        <div className="sidebar-brand-copy"><strong>QRClaw</strong>
+          {activity ? <div className={`companion-status ${activity.status}`} role="status"><span className="status-dot" aria-hidden="true" />{activity.label}</div>
+            : <span>你的 AI 工作伙伴</span>}
+        </div>
+        <button className="icon-button sidebar-close" aria-label="关闭会话列表" onClick={onClose}><X size={20} /></button>
+      </div>
       <button className="new-chat" type="button" disabled={creating} onClick={onNewChat}><Plus size={18} />{creating ? '正在创建…' : '开启新对话'}</button>
       <nav className="workspace-nav" aria-label="工作空间导航">
         <button className={`workspace-nav-item ${!memoryOpen ? 'selected' : ''}`} aria-current={!memoryOpen ? 'page' : undefined} onClick={onOpenChat}><MessageSquare size={18} />对话工作台</button>
