@@ -1,0 +1,383 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-16T07:55:39.466156+00:00",
+  "title": "Design System: QRClaw",
+  "extensions": {
+    "colorMeta": {
+      "accent": {
+        "role": "primary",
+        "displayName": "工作钴蓝",
+        "tonalRamp": [
+          "oklch(15.00% 0.19895 265.49)",
+          "oklch(26.43% 0.19895 265.49)",
+          "oklch(37.86% 0.19895 265.49)",
+          "oklch(49.29% 0.19895 265.49)",
+          "oklch(60.71% 0.19895 265.49)",
+          "oklch(72.14% 0.19895 265.49)",
+          "oklch(83.57% 0.19895 265.49)",
+          "oklch(95.00% 0.19895 265.49)"
+        ]
+      },
+      "accent-hover": {
+        "role": "primary",
+        "displayName": "深钴蓝",
+        "tonalRamp": [
+          "oklch(15.00% 0.18031 265.46)",
+          "oklch(26.43% 0.18031 265.46)",
+          "oklch(37.86% 0.18031 265.46)",
+          "oklch(49.29% 0.18031 265.46)",
+          "oklch(60.71% 0.18031 265.46)",
+          "oklch(72.14% 0.18031 265.46)",
+          "oklch(83.57% 0.18031 265.46)",
+          "oklch(95.00% 0.18031 265.46)"
+        ]
+      },
+      "accent-soft": {
+        "role": "primary",
+        "displayName": "浅钴蓝",
+        "tonalRamp": [
+          "oklch(15.00% 0.02117 268.43)",
+          "oklch(26.43% 0.02117 268.43)",
+          "oklch(37.86% 0.02117 268.43)",
+          "oklch(49.29% 0.02117 268.43)",
+          "oklch(60.71% 0.02117 268.43)",
+          "oklch(72.14% 0.02117 268.43)",
+          "oklch(83.57% 0.02117 268.43)",
+          "oklch(95.00% 0.02117 268.43)"
+        ]
+      },
+      "canvas": {
+        "role": "neutral",
+        "displayName": "蓝灰桌面",
+        "tonalRamp": [
+          "oklch(15.00% 0.00967 252.81)",
+          "oklch(26.43% 0.00967 252.81)",
+          "oklch(37.86% 0.00967 252.81)",
+          "oklch(49.29% 0.00967 252.81)",
+          "oklch(60.71% 0.00967 252.81)",
+          "oklch(72.14% 0.00967 252.81)",
+          "oklch(83.57% 0.00967 252.81)",
+          "oklch(95.00% 0.00967 252.81)"
+        ]
+      },
+      "surface": {
+        "role": "neutral",
+        "displayName": "白纸",
+        "tonalRamp": [
+          "oklch(15.00% 0.00000 0.00)",
+          "oklch(26.43% 0.00000 0.00)",
+          "oklch(37.86% 0.00000 0.00)",
+          "oklch(49.29% 0.00000 0.00)",
+          "oklch(60.71% 0.00000 0.00)",
+          "oklch(72.14% 0.00000 0.00)",
+          "oklch(83.57% 0.00000 0.00)",
+          "oklch(95.00% 0.00000 0.00)"
+        ]
+      },
+      "surface-soft": {
+        "role": "neutral",
+        "displayName": "雾白",
+        "tonalRamp": [
+          "oklch(15.00% 0.00574 264.53)",
+          "oklch(26.43% 0.00574 264.53)",
+          "oklch(37.86% 0.00574 264.53)",
+          "oklch(49.29% 0.00574 264.53)",
+          "oklch(60.71% 0.00574 264.53)",
+          "oklch(72.14% 0.00574 264.53)",
+          "oklch(83.57% 0.00574 264.53)",
+          "oklch(95.00% 0.00574 264.53)"
+        ]
+      },
+      "ink": {
+        "role": "neutral",
+        "displayName": "墨蓝",
+        "tonalRamp": [
+          "oklch(15.00% 0.04036 260.36)",
+          "oklch(26.43% 0.04036 260.36)",
+          "oklch(37.86% 0.04036 260.36)",
+          "oklch(49.29% 0.04036 260.36)",
+          "oklch(60.71% 0.04036 260.36)",
+          "oklch(72.14% 0.04036 260.36)",
+          "oklch(83.57% 0.04036 260.36)",
+          "oklch(95.00% 0.04036 260.36)"
+        ]
+      },
+      "muted": {
+        "role": "neutral",
+        "displayName": "灰蓝",
+        "tonalRamp": [
+          "oklch(15.00% 0.03737 258.36)",
+          "oklch(26.43% 0.03737 258.36)",
+          "oklch(37.86% 0.03737 258.36)",
+          "oklch(49.29% 0.03737 258.36)",
+          "oklch(60.71% 0.03737 258.36)",
+          "oklch(72.14% 0.03737 258.36)",
+          "oklch(83.57% 0.03737 258.36)",
+          "oklch(95.00% 0.03737 258.36)"
+        ]
+      },
+      "line": {
+        "role": "neutral",
+        "displayName": "细线蓝灰",
+        "tonalRamp": [
+          "oklch(15.00% 0.01557 257.20)",
+          "oklch(26.43% 0.01557 257.20)",
+          "oklch(37.86% 0.01557 257.20)",
+          "oklch(49.29% 0.01557 257.20)",
+          "oklch(60.71% 0.01557 257.20)",
+          "oklch(72.14% 0.01557 257.20)",
+          "oklch(83.57% 0.01557 257.20)",
+          "oklch(95.00% 0.01557 257.20)"
+        ]
+      },
+      "danger": {
+        "role": "neutral",
+        "displayName": "错误红",
+        "tonalRamp": [
+          "oklch(15.00% 0.15844 20.02)",
+          "oklch(26.43% 0.15844 20.02)",
+          "oklch(37.86% 0.15844 20.02)",
+          "oklch(49.29% 0.15844 20.02)",
+          "oklch(60.71% 0.15844 20.02)",
+          "oklch(72.14% 0.15844 20.02)",
+          "oklch(83.57% 0.15844 20.02)",
+          "oklch(95.00% 0.15844 20.02)"
+        ]
+      },
+      "success": {
+        "role": "neutral",
+        "displayName": "完成绿",
+        "tonalRamp": [
+          "oklch(15.00% 0.08130 170.02)",
+          "oklch(26.43% 0.08130 170.02)",
+          "oklch(37.86% 0.08130 170.02)",
+          "oklch(49.29% 0.08130 170.02)",
+          "oklch(60.71% 0.08130 170.02)",
+          "oklch(72.14% 0.08130 170.02)",
+          "oklch(83.57% 0.08130 170.02)",
+          "oklch(95.00% 0.08130 170.02)"
+        ]
+      },
+      "warning": {
+        "role": "neutral",
+        "displayName": "等待赭黄",
+        "tonalRamp": [
+          "oklch(15.00% 0.10783 75.63)",
+          "oklch(26.43% 0.10783 75.63)",
+          "oklch(37.86% 0.10783 75.63)",
+          "oklch(49.29% 0.10783 75.63)",
+          "oklch(60.71% 0.10783 75.63)",
+          "oklch(72.14% 0.10783 75.63)",
+          "oklch(83.57% 0.10783 75.63)",
+          "oklch(95.00% 0.10783 75.63)"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "headline": {
+        "displayName": "欢迎标题",
+        "purpose": "新会话的操作引导标题；当前没有独立品牌 display 字体。"
+      },
+      "page-title": {
+        "displayName": "页面标题",
+        "purpose": "记忆工作区标题。"
+      },
+      "document-title": {
+        "displayName": "文档标题",
+        "purpose": "记忆详情标题。"
+      },
+      "body": {
+        "displayName": "聊天正文",
+        "purpose": "长回复与消息阅读。"
+      },
+      "reading": {
+        "displayName": "记忆正文",
+        "purpose": "最大 75ch 的长文阅读。"
+      },
+      "label": {
+        "displayName": "操作标签",
+        "purpose": "记忆页紧凑操作按钮。"
+      }
+    },
+    "shadows": [
+      {
+        "name": "work-surface",
+        "value": "0 6px 30px #253b6010",
+        "purpose": "桌面工作面与外层底色的柔和分离；手机取消。"
+      },
+      {
+        "name": "inspector-drawer",
+        "value": "-12px 0 40px #172c4720",
+        "purpose": "执行过程覆盖式抽屉；同时使用 #152a4a44 遮罩。"
+      }
+    ],
+    "motion": [
+      {
+        "name": "control-transition",
+        "value": "160ms ease-out",
+        "purpose": "按钮颜色、输入边线与 Plan 滑块状态切换。"
+      },
+      {
+        "name": "loading-spin",
+        "value": "1.2s linear infinite",
+        "purpose": "正在运行的加载图标旋转。"
+      },
+      {
+        "name": "thinking-breathe",
+        "value": "1.4s infinite",
+        "purpose": "思考点透明度变化；三个点分别延迟 0、.15s、.3s。"
+      },
+      {
+        "name": "companion-sampling",
+        "value": "30fps",
+        "purpose": "bloub 引擎最多每秒采样 30 帧；隐藏页暂停，减少动态效果时显示代表帧。"
+      },
+      {
+        "name": "reduced-motion",
+        "value": "none",
+        "purpose": "系统减少动态效果时取消全局 CSS 动画和过渡。"
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "mobile-max-width",
+        "value": "760px"
+      },
+      {
+        "name": "inspector-overlay-max-width",
+        "value": "1100px"
+      },
+      {
+        "name": "memory-compact-max-width",
+        "value": "1120px"
+      },
+      {
+        "name": "memory-single-pane-max-width",
+        "value": "1000px"
+      },
+      {
+        "name": "memory-wide-min-width",
+        "value": "1500px"
+      },
+      {
+        "name": "compact-max-height",
+        "value": "660px"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "开启新对话",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "侧边栏主要操作；全宽、最小高 44px。",
+      "html": "<button class=\"ds-new-chat\" type=\"button\"><svg width=\"18\" height=\"18\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M12 5v14M5 12h14\"/></svg>开启新对话</button>",
+      "css": ".ds-new-chat { display:flex; align-items:center; justify-content:center; gap:9px; min-height:44px; width:100%; border:0; border-radius:10px; background:var(--accent,#315cda); color:#fff; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif; font-size:13px; font-weight:600; cursor:pointer; transition:background-color 160ms ease-out,color 160ms ease-out,border-color 160ms ease-out; } .ds-new-chat:hover:not(:disabled) { background:#254ab9; } .ds-new-chat:focus-visible { outline:2px solid var(--accent,#315cda); outline-offset:3px; } .ds-new-chat:active:not(:disabled) { filter:brightness(.96); } .ds-new-chat:disabled { cursor:not-allowed; opacity:.48; } @media (prefers-reduced-motion:reduce) { .ds-new-chat { animation:none !important; transition:none !important; scroll-behavior:auto !important; } }"
+    },
+    {
+      "name": "记忆次要操作",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "记忆页刷新、编辑等描边操作。",
+      "html": "<button class=\"ds-secondary\" type=\"button\">编辑</button>",
+      "css": ".ds-secondary { display:inline-flex; align-items:center; justify-content:center; gap:6px; min-height:34px; padding:7px 11px; border:1px solid var(--line,#dce3ed); border-radius:8px; background:var(--surface,#fff); color:var(--ink,#202c40); font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif; font-size:12px; line-height:1.5; white-space:nowrap; cursor:pointer; transition:background-color 160ms ease-out,color 160ms ease-out,border-color 160ms ease-out; } .ds-secondary:hover:not(:disabled) { background:var(--surface-soft,#f5f7fb); border-color:#bbc8dc; } .ds-secondary:focus-visible { outline:2px solid var(--accent,#315cda); outline-offset:3px; } .ds-secondary:active:not(:disabled) { filter:brightness(.96); } .ds-secondary:disabled { cursor:not-allowed; opacity:.45; } @media (prefers-reduced-motion:reduce) { .ds-secondary { animation:none !important; transition:none !important; scroll-behavior:auto !important; } }"
+    },
+    {
+      "name": "图标轻操作",
+      "kind": "button",
+      "refersTo": "button-icon",
+      "description": "顶部栏和抽屉的轻量图标操作。",
+      "html": "<button class=\"ds-icon-button\" type=\"button\" aria-label=\"关闭面板\"><svg width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"m18 6-12 12M6 6l12 12\"/></svg></button>",
+      "css": ".ds-icon-button { display:inline-flex; align-items:center; justify-content:center; width:36px; height:36px; border:0; border-radius:8px; background:transparent; color:var(--muted,#5d6b80); cursor:pointer; transition:background-color 160ms ease-out,color 160ms ease-out; } .ds-icon-button:hover { background:var(--accent-soft,#eaf0ff); color:var(--accent,#315cda); } .ds-icon-button:focus-visible { outline:2px solid var(--accent,#315cda); outline-offset:3px; } .ds-icon-button:active:not(:disabled) { filter:brightness(.96); } .ds-icon-button:disabled { opacity:.48; cursor:not-allowed; } @media (prefers-reduced-motion:reduce) { .ds-icon-button { animation:none !important; transition:none !important; scroll-behavior:auto !important; } }"
+    },
+    {
+      "name": "发送消息",
+      "kind": "button",
+      "refersTo": "button-send",
+      "description": "输入区内的主要图标动作；包含发送不可用状态。",
+      "html": "<button class=\"ds-send\" type=\"button\" aria-label=\"发送消息\"><svg width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"m5 12 7-7 7 7M12 19V5\"/></svg></button>",
+      "css": ".ds-send { display:flex; align-items:center; justify-content:center; width:36px; height:36px; border:0; border-radius:10px; background:var(--accent,#315cda); color:#fff; cursor:pointer; transition:background-color 160ms ease-out,color 160ms ease-out; } .ds-send:hover:not(:disabled) { background:#254ab9; } .ds-send:focus-visible { outline:2px solid var(--accent,#315cda); outline-offset:3px; } .ds-send:active:not(:disabled) { filter:brightness(.96); } .ds-send:disabled { background:#dfe6f2; color:#72839c; opacity:1; cursor:not-allowed; } @media (max-width:760px) { .ds-send { width:34px; height:34px; } } @media (prefers-reduced-motion:reduce) { .ds-send { animation:none !important; transition:none !important; scroll-behavior:auto !important; } }"
+    },
+    {
+      "name": "记忆搜索",
+      "kind": "input",
+      "refersTo": "input-search",
+      "description": "列表内搜索入口；输入提示使用实际 muted token。",
+      "html": "<label class=\"ds-search\"><svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><circle cx=\"11\" cy=\"11\" r=\"8\"/><path d=\"m21 21-4.3-4.3\"/></svg><input class=\"ds-search-input\" type=\"search\" aria-label=\"搜索记忆\" placeholder=\"名称、标签或正文\" /></label>",
+      "css": ".ds-search { display:flex; align-items:center; gap:8px; min-height:38px; padding:0 11px; border:1px solid var(--line,#dce3ed); border-radius:9px; background:var(--surface,#fff); color:var(--muted,#5d6b80); } .ds-search:focus-within { outline:2px solid var(--accent,#315cda); outline-offset:2px; } .ds-search-input { min-width:0; width:100%; border:0; outline:none; background:transparent; padding:9px 0; color:var(--ink,#202c40); caret-color:var(--accent,#315cda); font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif; font-size:12px; } .ds-search-input::placeholder { color:var(--muted,#5d6b80); } .ds-search-input:focus-visible { outline:none; } @media (max-width:760px) { .ds-search { min-height:42px; } .ds-search-input { font-size:16px; } } @media (prefers-reduced-motion:reduce) { .ds-search, .ds-search-input { animation:none !important; transition:none !important; scroll-behavior:auto !important; } }"
+    },
+    {
+      "name": "工作空间导航",
+      "kind": "nav",
+      "refersTo": "navigation-item",
+      "description": "当前页用浅蓝面与深蓝文字标记，历史列表另有当前行规则。",
+      "html": "<nav class=\"ds-nav\" aria-label=\"工作空间导航\"><button class=\"ds-nav-item\" type=\"button\" aria-current=\"page\"><svg width=\"18\" height=\"18\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z\"/></svg>对话工作台</button><button class=\"ds-nav-item\" type=\"button\"><svg width=\"18\" height=\"18\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M4 6v14M8 6v14M12 6v14m4-14 4 14M4 3v0M8 3v0M12 3v0\"/></svg>记忆库</button></nav>",
+      "css": ".ds-nav { display:grid; gap:4px; padding:12px 0 18px; border-bottom:1px solid #d7e0ed; } .ds-nav-item { display:flex; align-items:center; gap:11px; min-height:42px; padding:10px 12px; border:0; border-radius:9px; background:transparent; color:#4e607a; text-align:left; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif; font-size:13px; cursor:pointer; transition:background-color 160ms ease-out,color 160ms ease-out; } .ds-nav-item:hover { background:#e1e9f4; } .ds-nav-item[aria-current=\"page\"] { background:#dce6fa; color:#254ebd; font-weight:600; } .ds-nav-item:focus-visible { outline:2px solid var(--accent,#315cda); outline-offset:3px; } .ds-nav-item:active:not(:disabled) { filter:brightness(.96); } @media (prefers-reduced-motion:reduce) { .ds-nav, .ds-nav-item { animation:none !important; transition:none !important; scroll-behavior:auto !important; } }"
+    },
+    {
+      "name": "Plan 模式开关",
+      "kind": "custom",
+      "refersTo": "plan-switch",
+      "description": "已开启状态的视觉示例；实际切换由应用事件与 ViewModel 提供。",
+      "html": "<button class=\"ds-plan\" type=\"button\" role=\"switch\" aria-label=\"启用 Plan 模式\" aria-checked=\"true\"><span class=\"ds-plan-track\" aria-hidden=\"true\"><span class=\"ds-plan-thumb\"></span></span>Plan 模式</button>",
+      "css": ".ds-plan { display:inline-flex; align-items:center; gap:7px; border:0; padding:6px 8px; border-radius:6px; background:var(--surface-soft,#f5f7fb); color:var(--muted,#5d6b80); font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif; font-size:11px; cursor:pointer; transition:background-color 160ms ease-out,color 160ms ease-out; } .ds-plan-track { width:26px; height:16px; padding:2px; border-radius:10px; background:#a3b0c3; } .ds-plan-thumb { display:block; width:12px; height:12px; border-radius:50%; background:#fff; transition:transform 160ms ease-out; } .ds-plan[aria-checked=\"true\"] { color:var(--accent,#315cda); background:var(--accent-soft,#eaf0ff); } .ds-plan[aria-checked=\"true\"] .ds-plan-track { background:var(--accent,#315cda); } .ds-plan[aria-checked=\"true\"] .ds-plan-thumb { transform:translateX(10px); } .ds-plan:focus-visible { outline:2px solid var(--accent,#315cda); outline-offset:3px; } .ds-plan:active:not(:disabled) { filter:brightness(.96); } .ds-plan:disabled { opacity:.48; cursor:not-allowed; } @media (prefers-reduced-motion:reduce) { .ds-plan, .ds-plan-thumb, .ds-plan-track { animation:none !important; transition:none !important; scroll-behavior:auto !important; } }"
+    },
+    {
+      "name": "子任务卡片",
+      "kind": "card",
+      "refersTo": "subagent-card",
+      "description": "进入完整子任务过程的整行按钮；文案仅为设计预览。",
+      "html": "<button class=\"ds-subagent\" type=\"button\"><svg width=\"18\" height=\"18\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M6 3v12a6 6 0 0 0 6 6h6M6 9h12\"/><circle cx=\"18\" cy=\"9\" r=\"2\"/><circle cx=\"18\" cy=\"21\" r=\"2\"/></svg><span class=\"ds-subagent-body\"><strong class=\"ds-subagent-title\">子任务</strong><span class=\"ds-subagent-description\">任务说明</span></span><span class=\"ds-subagent-state\">运行中</span></button>",
+      "css": ".ds-subagent { width:100%; display:flex; align-items:flex-start; gap:12px; padding:15px 16px; border:1px solid var(--line,#dce3ed); border-radius:12px; background:var(--surface,#fff); color:var(--accent,#315cda); text-align:left; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif; cursor:pointer; transition:background-color 160ms ease-out,color 160ms ease-out,border-color 160ms ease-out; } .ds-subagent:hover { background:var(--surface-soft,#f5f7fb); border-color:#b6c7e7; } .ds-subagent:focus-visible { outline:2px solid var(--accent,#315cda); outline-offset:3px; } .ds-subagent:active:not(:disabled) { filter:brightness(.96); } .ds-subagent-body { min-width:0; flex:1; display:flex; flex-direction:column; gap:6px; font-size:12px; line-height:1.65; } .ds-subagent-title { color:var(--ink,#202c40); font-weight:600; } .ds-subagent-description { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--muted,#5d6b80); } .ds-subagent-state { flex-shrink:0; font-size:11px; color:var(--accent,#315cda); } @media (prefers-reduced-motion:reduce) { .ds-subagent, .ds-subagent-body, .ds-subagent-description, .ds-subagent-state, .ds-subagent-title { animation:none !important; transition:none !important; scroll-behavior:auto !important; } }"
+    },
+    {
+      "name": "消息输入工作面",
+      "kind": "custom",
+      "refersTo": "composer",
+      "description": "从单行开始的输入容器；发送按钮同排，Plan 与上下文位于下方工具行。",
+      "html": "<div class=\"ds-composer\"><textarea class=\"ds-composer-input\" aria-label=\"消息\" placeholder=\"描述任务，或接着聊…\" rows=\"1\"></textarea></div>",
+      "css": ".ds-composer { display:flex; align-items:flex-end; gap:12px; padding:8px 12px; border:1px solid #c7d3e6; border-radius:16px; background:var(--surface,#fff); transition:border-color 160ms ease-out; } .ds-composer:focus-within { border-color:var(--accent,#315cda); } .ds-composer-input { display:block; width:100%; flex:1; min-width:0; min-height:1.65em; margin:5px 0; overflow-y:auto; max-height:180px; border:0; outline:0; resize:none; background:transparent; padding:0 2px; color:var(--ink,#202c40); caret-color:var(--accent,#315cda); font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif; font-size:15px; line-height:1.65; } .ds-composer-input::placeholder { color:var(--muted,#5d6b80); } .ds-composer-input:focus-visible { outline:0; } @media (max-width:760px) { .ds-composer { gap:10px; padding:8px 10px; } .ds-composer-input { font-size:16px; margin:4px 0; } } @media (prefers-reduced-motion:reduce) { .ds-composer, .ds-composer-input { animation:none !important; transition:none !important; scroll-behavior:auto !important; } }"
+    }
+  ],
+  "narrative": {
+    "northStar": "蓝图工作室",
+    "overview": "蓝灰色桌面托起明亮的白色工作面，黑色 bloub 伙伴提供持续可见的陪伴与任务状态。界面的个性来自清楚的区域关系、准确的状态反馈和轻盈的留白；主要内容仍是用户输入、回复与记忆正文。\n\n操作区保持紧凑，阅读区保留宽松行距。钴蓝集中标识主要动作、当前位置、可访问的链接与正在进行的工作；轻边线和中性色阶组织信息，柔和阴影仅区分工作面与抽屉的空间层级。",
+    "keyCharacteristics": [
+      "蓝灰底、白色工作面、钴蓝动作色。",
+      "同一套中文系统字体，标题、正文与辅助信息层次分明。",
+      "黑色伙伴与文字状态共同反馈真实任务阶段，工作时融入侧栏或顶栏。",
+      "独立滚动的工作区域，窄屏通过抽屉与列表、详情切换保留阅读空间。"
+    ],
+    "rules": [
+      {
+        "name": "The Action Blue Rule",
+        "body": "钴蓝对应动作、选择、链接或真实运行状态；大面积阅读背景使用中性色。",
+        "section": "colors"
+      },
+      {
+        "name": "The Reading Rhythm Rule",
+        "body": "正文保持宽松行距，工具与元信息保持紧凑；不要用辅助标签的字号承载长回复。",
+        "section": "typography"
+      },
+      {
+        "name": "The Quiet Surface Rule",
+        "body": "常规内容靠底色和细线分区；保留阴影给承载整个工作区的表面与覆盖式执行抽屉。",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "**Do** 使用既有语义色；placeholder 与辅助文字使用 `muted`。",
+      "**Do** 在文字状态旁保留伙伴，并由真实活动数据驱动形态。",
+      "**Do** 维持正文行距、局部滚动与窄屏抽屉的键盘焦点行为。",
+      "**Do** 为可操作项提供悬停、聚焦、禁用及必要的错误反馈。",
+      "**Do** 保留减少动态效果与页面隐藏时暂停的行为。"
+    ],
+    "donts": [
+      "**Don't** 把截图中的验证示例、数量或运行状态变成产品默认内容。",
+      "**Don't** 为工作伙伴另加独占正文高度的状态带，或同时挂载多个动画实例。",
+      "**Don't** 用装饰网格、霓虹或新增背景渐变覆盖安静的阅读工作面。",
+      "**Don't** 把 sidecar 的合成色阶、未使用变量或局部色差当成已统一的全局规范。",
+      "**Don't** 把当前操作界面的系统标题字体扩展为独立品牌展示字体规范。"
+    ]
+  }
+}

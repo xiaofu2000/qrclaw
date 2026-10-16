@@ -1,34 +1,31 @@
-import { List, PanelRight } from 'lucide-react'
-import type { AgentActivity } from '../lib/types'
-import { AgentSprite } from './AgentSprite'
+import { Menu, PanelRight, MessageSquare, Library } from 'lucide-react'
+import type { ReactNode } from 'react'
 
 type TopbarProps = {
-  activity: AgentActivity
-  sessionId: string
   title: string
+  memoryOpen: boolean
+  companion: ReactNode
   sidebarOpen: boolean
   inspectorOpen: boolean
-  showInspector: boolean
   onToggleSidebar: () => void
   onToggleInspector: () => void
 }
 
-/** 展示当前会话标题，以及由 ViewModel 提供的精灵和工作状态。 */
-export function Topbar({ activity, sessionId, title, sidebarOpen, inspectorOpen, showInspector, onToggleSidebar, onToggleInspector }: TopbarProps) {
+/** 顶栏负责页面定位，窄屏时同时容纳伙伴，不另占正文高度。 */
+export function Topbar({ title, memoryOpen, companion, sidebarOpen, inspectorOpen, onToggleSidebar, onToggleInspector }: TopbarProps) {
   return (
     <header className="topbar">
       <div className="topbar-heading">
-        <button className="icon-button sidebar-toggle" aria-label="切换会话列表" aria-expanded={sidebarOpen} aria-controls="session-sidebar" onClick={onToggleSidebar}><List size={20} /></button>
-        <span className="brand">QRClaw</span>
-        <span className="conversation-heading" title={title}>{title}</span>
+        <button className="icon-button sidebar-toggle" aria-label="切换会话列表" aria-expanded={sidebarOpen} aria-controls="session-sidebar" onClick={onToggleSidebar}><Menu size={20} /></button>
+        <span className="page-symbol" aria-hidden="true">{memoryOpen ? <Library size={18} /> : <MessageSquare size={18} />}</span>
+        <span className="page-kind">{memoryOpen ? '记忆库' : '对话'}</span>
+        <span className="heading-divider" aria-hidden="true">/</span>
+        <span className="conversation-heading" title={title}>{memoryOpen ? '让经验成为下一次的起点' : title}</span>
       </div>
-      <div className="topbar-actions">
-        <div className="agent-status" data-phase={activity.phase}>
-          <AgentSprite key={sessionId} phase={activity.phase} />
-          <span className={`status-label ${activity.status}`} role="status">{activity.label}</span>
-        </div>
-        {showInspector && <button className="icon-button" aria-label="切换执行过程" aria-expanded={inspectorOpen} aria-controls="run-inspector" onClick={onToggleInspector}><PanelRight size={19} /></button>}
-      </div>
+      {companion}
+      {!memoryOpen && <button className="inspector-toggle" aria-label="切换执行过程" aria-expanded={inspectorOpen} aria-controls="run-inspector" onClick={onToggleInspector}>
+        <PanelRight size={17} /><span>执行过程</span>
+      </button>}
     </header>
   )
 }

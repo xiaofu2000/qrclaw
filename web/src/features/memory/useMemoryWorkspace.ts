@@ -78,6 +78,7 @@ export function useMemoryWorkspace(api: MemoryApi, visible: boolean, activityKey
 
   /** 切换页面保留各自的编辑草稿，旧详情不能覆盖新的选择。 */
   function selectPage(name: string) {
+    if (selectedRef.current === name) return
     epoch.current++
     selectedRef.current = name
     setSelected(name)

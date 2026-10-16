@@ -1,5 +1,5 @@
 import { useLayoutEffect, useRef, useState } from 'react'
-import { ArrowDown, Bot, Check, Copy, GitBranch, Pencil, Trash2 } from 'lucide-react'
+import { ArrowDown, Check, Copy, GitBranch, Pencil, Trash2 } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import type { ChatTimelineItem, Message } from '../../lib/types'
@@ -61,8 +61,7 @@ export function ChatPanel({ sessionId, timeline, onSelectSubAgent, streaming, ru
           setShowJump(!followRef.current)
         }
       }}>
-        {loading && !timeline.length ? <div className="chat-empty">正在载入会话…</div>
-          : !timeline.length && <div className="chat-empty"><Bot size={30} strokeWidth={1.5} /><h1>有什么需要我帮你做？</h1><p>分析代码、执行任务，或整理长期记忆。</p></div>}
+        {loading && !timeline.length && <div className="chat-skeleton" role="status"><span className="sr-only">正在载入会话…</span><i /><i /><i /></div>}
         <div className="message-list">
           {timeline.map(item => 'childSessionId' in item ? (
             <article key={item.id} className="chat-message subagent">

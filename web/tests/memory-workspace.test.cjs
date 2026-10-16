@@ -57,6 +57,30 @@ test('切换详情后旧请求不能覆盖新页面', async () => {
   assert.equal(view.detail.name, 'B'); hook.close()
 })
 
+test('加载中重复选择当前记忆不会丢弃详情响应或卡住加载状态', async () => {
+  const api = client(), pending = deferred()
+  api.getWikiPage = async () => pending.promise
+  const hook = workspace(api)
+  let view = await hook.flush()
+  assert.equal(view.selected, 'A'); assert.equal(view.loading, true)
+  const reads = api.reads
+  view.selectPage('A'); view.selectPage('A'); view = await hook.flush()
+  pending.resolve(page('A')); view = await hook.flush()
+  assert.equal(view.detail?.name, 'A'); assert.equal(view.loading, false)
+  assert.equal(api.reads, reads); hook.close()
+})
+
+test('加载完成后重复选择当前记忆保留详情和未保存草稿', async () => {
+  const api = client(), hook = workspace(api)
+  let view = await hook.flush(); view.startEdit(); view = hook.render()
+  view.updateDraft({ content: '尚未保存的草稿' }); view = hook.render()
+  const detail = view.detail, draft = view.draft, reads = api.reads
+  view.selectPage('A'); view = await hook.flush()
+  assert.equal(view.detail, detail); assert.equal(view.draft, draft)
+  assert.equal(view.loading, false); assert.equal(api.reads, reads)
+  assert.equal(api.writes.length, 0); hook.close()
+})
+
 test('旧搜索不能覆盖新搜索和分页结果', async () => {
   const api = client(), old = deferred(), original = api.listWikiPages
   api.listWikiPages = async (query, offset) => query === 'old' ? old.promise : original.call(api, query, offset)
