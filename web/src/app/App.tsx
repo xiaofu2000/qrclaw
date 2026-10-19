@@ -82,7 +82,7 @@ export function App() {
   return (
     <div className="app-shell" data-view={memoryOpen ? 'memory' : 'chat'}>
       {(sidebarOpen || inspectorOpen && !memoryOpen) && <button className="panel-backdrop" aria-label="关闭面板" onClick={() => { setSidebarOpen(false); setInspectorOpen(false) }} />}
-        <Sidebar conversations={chat.conversations} activeId={chat.activeId} runningIds={chat.runningIds} mutatingIds={chat.mutatingIds}
+        <Sidebar conversations={chat.conversations} activeId={chat.activeId} runningIds={chat.runningIds} unreadIds={chat.unreadIds} mutatingIds={chat.mutatingIds}
           open={sidebarOpen} creating={chat.creating || chat.loading && !chat.activeId} activity={narrow ? null : chat.activity}
           onOpenChat={() => { showChat(); setSidebarOpen(false) }} onClose={() => setSidebarOpen(false)}
           memoryOpen={memoryOpen} onOpenMemory={() => { window.location.hash = '/memory'; setMemoryOpen(true); setSidebarOpen(false); setInspectorOpen(false) }}
@@ -101,6 +101,7 @@ export function App() {
             onOpenSession={id => { showChat(); void chat.loadConversation(id) }} />
           <main className="chat-content" id="conversation" hidden={memoryOpen}>
           <ChatPanel sessionId={chat.activeId} timeline={chat.timeline} streaming={chat.streaming} running={chat.running} queued={chat.queued}
+            visible={!memoryOpen && !sidebarOpen && !inspectorOpen} unreadReplyId={chat.unreadReplyId} onReplyRead={chat.markReplyRead}
             loading={chat.loading} mutating={chat.mutating} onSelectSubAgent={id => { chat.selectSubAgent(id); setInspectorOpen(true) }}
             latestUserMessageId={chat.messages.filter(message => message.role === 'user').at(-1)?.uuid}
             onEditLatestMessage={(id, content) => void chat.editLatestMessage(id, content)}

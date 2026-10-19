@@ -7,6 +7,7 @@ from typing import Any
 from filelock import FileLock
 
 from qrclaw.memory.context.session import Session, delete_session, list_sessions
+from qrclaw.memory.context.session.session import latest_reply_id
 from qrclaw.workspace import Workspace
 from qrclaw.config import _MODEL_MAX_TOKENS, COMPRESS_THRESHOLD
 
@@ -131,6 +132,7 @@ class SessionService:
                 and isinstance(message.get("content"), str)), "新对话"),
             "history_version": session.history_version,
             "message_count": len(session.messages),
+            "last_reply_id": latest_reply_id(session.messages, session.history_version),
             "updated_at": updated_at,
             "prompt_tokens": session.usage["prompt_tokens"],
             "completion_tokens": session.usage["completion_tokens"],

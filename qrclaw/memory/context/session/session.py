@@ -36,6 +36,20 @@ def _normalize_message(message: dict) -> dict:
     return message
 
 
+def latest_reply_id(messages: list[dict], history_version: int = 0) -> str | None:
+    """返回末轮正文回复的稳定标识，工具调用和执行报告不作为已读目标。"""
+    user_index = next((i for i in range(len(messages) - 1, -1, -1) if messages[i].get("role") == "user"), -1)
+    if user_index < 0:
+        return None
+    for index in range(len(messages) - 1, user_index, -1):
+        message = messages[index]
+        if (message.get("role") == "assistant" and message.get("kind") != "execution_report"
+                and not message.get("tool_calls") and isinstance(message.get("content"), str)
+                and message["content"].strip()):
+            return message.get("uuid") or f"legacy:{history_version}:{index}"
+    return None
+
+
 def list_sessions(sessions_dir: Path) -> list[dict]:
     sessions_dir.mkdir(parents=True, exist_ok=True)
     sessions = []
@@ -56,6 +70,7 @@ def list_sessions(sessions_dir: Path) -> list[dict]:
                 "title": title,
                 "message_count": len(messages),
                 "updated_at": mtime,
+                "last_reply_id": latest_reply_id(messages, data.get("history_version", 0) if isinstance(data, dict) else 0),
             })
         except Exception:
             pass

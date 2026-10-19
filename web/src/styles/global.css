@@ -79,6 +79,7 @@ input, textarea { caret-color: var(--accent); }
 .conversation-item { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; padding: 12px 9px; border: 0; border-radius: 9px; color: #4a5a71; background: transparent; text-align: left; }
 .conversation-row.active .conversation-item { color: #233f79; font-weight: 600; }
 .conversation-title { font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+.unread-dot { width: 7px; height: 7px; flex: none; border-radius: 50%; background: var(--accent); }
 .conversation-action { display: inline-flex; align-items: center; justify-content: center; flex: none; width: 27px; height: 32px; border: 0; border-radius: 6px; background: transparent; color: var(--muted); }
 .conversation-action:hover:not(:disabled), .conversation-action:focus-visible { background: var(--accent-soft); color: var(--accent); }
 .conversation-action.danger:hover:not(:disabled) { color: var(--danger); background: #faecee; }

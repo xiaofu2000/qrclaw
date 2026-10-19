@@ -877,3 +877,104 @@ test('主会话继续运行时，已中断的旧子任务不再驱动精灵', as
   progress.resolve()
   hook.close()
 })
+
+test('完成回复保持未读，确认阅读后恢复初始态，刷新与改名不会重新提示', async () => {
+  const api = client(), preferences = new Map()
+  api.sessions.A.messages = [{ role: 'user', content: '问题' }, { role: 'assistant', uuid: 'reply-1', content: '答复' }]
+  let hook = workspace(api, preferences), view = await hook.flush()
+  assert.equal(view.activity.phase, 'completed')
+  assert.equal(view.unreadReplyId, 'reply-1')
+  assert.equal(view.unreadIds.has('A'), true)
+  await view.loadConversation('A')
+  view = hook.render()
+  assert.equal(view.activity.phase, 'completed', '选择会话不等于读过最新回复')
+  view.markReplyRead('A', 'reply-1')
+  view = hook.render()
+  assert.equal(view.activity.phase, 'idle')
+  assert.equal(view.unreadReplyId, null)
+  assert.equal(view.unreadIds.has('A'), false)
+  await view.renameConversation('A', '新的标题')
+  assert.equal(hook.render().activity.phase, 'idle')
+  hook.close()
+  hook = workspace(api, preferences)
+  view = await hook.flush()
+  assert.equal(view.activity.phase, 'idle')
+  assert.deepEqual(JSON.parse(preferences.get('qrclaw.readReplies')).A, ['reply-1'])
+  hook.close()
+})
+
+test('后台完成保留未读，切换会话和迟到的阅读事件不误读其他会话或新回复', async () => {
+  const api = client(), pending = deferred()
+  api.chatStream = () => pending.promise
+  const hook = workspace(api)
+  let view = await hook.flush()
+  const sending = view.send('后台任务')
+  await hook.render().loadConversation('B')
+  api.sessions.A = { ...api.sessions.A, messages: [{ role: 'user', content: '后台任务' }, { role: 'assistant', uuid: 'done-A', content: '完成' }] }
+  pending.resolve()
+  await sending
+  view = await hook.flush()
+  assert.equal(view.activity.phase, 'idle')
+  assert.equal(view.unreadIds.has('A'), true)
+  view.markReplyRead('A', 'done-A')
+  assert.equal(hook.render().unreadIds.has('A'), true, '后台会话不能由迟到事件标记已读')
+  await view.loadConversation('A')
+  view = hook.render()
+  view.markReplyRead('A', 'done-A')
+  assert.equal(hook.render().activity.phase, 'idle')
+  api.sessions.A = { ...api.sessions.A, history_version: 1, messages: [{ role: 'user', content: '重跑问题' }, { role: 'assistant', uuid: 'new-A', content: '新答复' }] }
+  await hook.render().loadConversation('A')
+  view = hook.render()
+  view.markReplyRead('A', 'done-A')
+  assert.equal(hook.render().unreadReplyId, 'new-A', '同样消息数量的新答复不能被旧回执清除')
+  hook.close()
+})
+
+test('列表摘要能还原未打开会话的未读提示，工具与报告不算正文回复', async () => {
+  const api = client(), preferences = new Map([['qrclaw.readReplies', JSON.stringify({ A: ['seen-A'] })]])
+  api.listSessions = async () => [
+    { ...session('A'), last_reply_id: 'seen-A' }, { ...session('B'), last_reply_id: 'unseen-B' },
+    { ...session('C'), active_subagents: true, last_reply_id: 'working-C' },
+  ]
+  api.sessions.A.messages = [{ role: 'user', content: '执行' },
+    { role: 'assistant', content: '正在调用', tool_calls: [{ id: 'call' }] },
+    { role: 'tool', content: '结果' }, { role: 'assistant', kind: 'execution_report', content: '报告' }]
+  const hook = workspace(api, preferences), view = await hook.flush()
+  assert.equal(view.activity.phase, 'idle')
+  assert.equal(view.unreadReplyId, null)
+  assert.deepEqual([...view.unreadIds], ['B'])
+  hook.close()
+})
+
+test('已读回复经过压缩或删除后保留状态，下一轮和失败状态不会被清除', async () => {
+  const api = client(), preferences = new Map([['qrclaw.readReplies', JSON.stringify({ A: ['first', 'second'] })]])
+  api.sessions.A = { ...session('A'), history_version: 2, messages: [{ role: 'user', uuid: 'u1', content: '第一轮' },
+    { role: 'assistant', uuid: 'first', content: '回复' }] }
+  const hook = workspace(api, preferences)
+  let view = await hook.flush()
+  assert.equal(view.activity.phase, 'idle')
+  api.sessions.A = { ...api.sessions.A, run_status: 'running', messages: [...api.sessions.A.messages, { role: 'user', content: '下一轮' }] }
+  const progress = deferred()
+  api.streamEvents = () => progress.promise
+  await view.loadConversation('A')
+  view = await hook.flush()
+  view.markReplyRead('A', 'first')
+  assert.notEqual(hook.render().activity.phase, 'idle')
+  api.sessions.A = { ...api.sessions.A, run_status: 'idle', run_error: '任务失败' }
+  view = await hook.poll()
+  assert.equal(view.activity.phase, 'error')
+  assert.equal(view.unreadReplyId, null)
+  progress.resolve()
+  hook.close()
+})
+
+test('损坏或禁用的浏览器存储不阻断当前页面的已读确认', async () => {
+  const api = client(), preferences = new Map([['qrclaw.readReplies', 'null']])
+  api.sessions.A.messages = [{ role: 'user', content: '旧会话' }, { role: 'assistant', content: '没有UUID的回复' }]
+  preferences.set = () => { throw new Error('浏览器禁止存储') }
+  const hook = workspace(api, preferences), view = await hook.flush()
+  assert.equal(view.unreadReplyId, 'legacy:0:1')
+  view.markReplyRead('A', view.unreadReplyId)
+  assert.equal(hook.render().activity.phase, 'idle')
+  hook.close()
+})

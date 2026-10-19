@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { ArrowDown, Check, Copy, GitBranch, Pencil, Trash2 } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -14,6 +14,9 @@ type ChatPanelProps = {
   queued: boolean
   loading: boolean
   mutating: boolean
+  visible: boolean
+  unreadReplyId: string | null
+  onReplyRead: (sessionId: string, replyId: string) => void
   latestUserMessageId?: string
   onEditLatestMessage: (messageId: string, content: string) => void
   onDeleteLatestMessage: (messageId: string) => void
@@ -21,8 +24,9 @@ type ChatPanelProps = {
 
 /** 展示主 Agent 消息，并提供最后一条用户消息的编辑入口。 */
 export function ChatPanel({ sessionId, timeline, onSelectSubAgent, streaming, running, queued, loading, mutating,
-  latestUserMessageId, onEditLatestMessage, onDeleteLatestMessage }: ChatPanelProps) {
+  visible, unreadReplyId, onReplyRead, latestUserMessageId, onEditLatestMessage, onDeleteLatestMessage }: ChatPanelProps) {
   const historyRef = useRef<HTMLDivElement>(null)
+  const readMarkerRef = useRef<HTMLDivElement>(null)
   const followRef = useRef(true)
   const previousSessionRef = useRef(sessionId)
   const [showJump, setShowJump] = useState(false)
@@ -32,6 +36,7 @@ export function ChatPanel({ sessionId, timeline, onSelectSubAgent, streaming, ru
   const [editContent, setEditContent] = useState('')
 
   useLayoutEffect(() => {
+    if (!visible) return
     if (sessionId !== previousSessionRef.current) {
       followRef.current = true
       previousSessionRef.current = sessionId
@@ -42,7 +47,34 @@ export function ChatPanel({ sessionId, timeline, onSelectSubAgent, streaming, ru
       history.scrollTop = history.scrollHeight
       setShowJump(false)
     } else if (history) setShowJump(true)
-  }, [sessionId, timeline, streaming, running])
+  }, [sessionId, timeline, streaming, running, visible])
+
+  useEffect(() => {
+    if (!visible || !unreadReplyId || running || loading || mutating) return
+    const history = historyRef.current, marker = readMarkerRef.current
+    if (!history || !marker) return
+    let inView = false, cancelled = false
+    /** 仅前台聊天实际看到回复末尾时确认已读，后台完成不会自动清除提示。 */
+    function acknowledge() {
+      if (cancelled || !inView || document.visibilityState !== 'visible' || !document.hasFocus()) return
+      const bounds = marker!.getBoundingClientRect(), viewport = history!.getBoundingClientRect()
+      // 滚动高度会取整，允许末尾标记有不足一像素的偏差。
+      if (history!.clientHeight > 0 && bounds.top >= viewport.top && bounds.bottom <= viewport.bottom + 1) onReplyRead(sessionId, unreadReplyId!)
+    }
+    const observer = new IntersectionObserver(entries => {
+      inView = entries.some(entry => entry.isIntersecting)
+      acknowledge()
+    }, { root: history, threshold: 0 })
+    observer.observe(marker)
+    document.addEventListener('visibilitychange', acknowledge)
+    window.addEventListener('focus', acknowledge)
+    return () => {
+      cancelled = true
+      observer.disconnect()
+      document.removeEventListener('visibilitychange', acknowledge)
+      window.removeEventListener('focus', acknowledge)
+    }
+  }, [sessionId, visible, unreadReplyId, running, loading, mutating, onReplyRead])
 
   async function copy(message: Message) {
     try {
@@ -55,6 +87,7 @@ export function ChatPanel({ sessionId, timeline, onSelectSubAgent, streaming, ru
   return (
     <section className="chat-panel" aria-label="对话内容" aria-busy={loading}>
       <div className="chat-history" ref={historyRef} onScroll={() => {
+        if (!visible) return
         const history = historyRef.current
         if (history) {
           followRef.current = history.scrollHeight - history.scrollTop - history.clientHeight < 80
@@ -109,6 +142,7 @@ export function ChatPanel({ sessionId, timeline, onSelectSubAgent, streaming, ru
           {running && <div className="pending-response" role="status"><span className="thinking-dots" aria-hidden="true"><i /><i /><i /></span>{queued ? '任务已排队，等待执行…' : '正在处理任务…'}</div>}
           {copyError && <div className="copy-error" role="alert">{copyError}</div>}
         </div>
+        <div ref={readMarkerRef} aria-hidden="true" style={{ height: 1 }} />
       </div>
       {showJump && <button className="jump-latest" onClick={() => {
         followRef.current = true

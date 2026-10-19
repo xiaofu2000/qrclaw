@@ -255,6 +255,25 @@ class TestTokenCounting:
 class TestSessionList:
     """测试会话列表管理"""
 
+    def test_latest_reply_id_excludes_tools_reports_and_prior_turns(self, temp_dir):
+        """只为末轮正文提供稳定标识，改名不让已读回复重新出现。"""
+        from qrclaw.memory.context.session.session import latest_reply_id
+        session = Session(temp_dir, session_id="unread")
+        session.add({"role": "user", "content": "问题"})
+        session.add({"role": "assistant", "content": "调用工具", "tool_calls": [
+            {"id": "call", "type": "function", "function": {"name": "read_file", "arguments": "{}"}}]})
+        session.add({"role": "assistant", "kind": "execution_report", "content": "报告"})
+        assert list_sessions(temp_dir)[0]["last_reply_id"] is None
+        session.add({"role": "assistant", "content": "正文回复"})
+        reply_id = session.messages[-1]["uuid"]
+        session.set_title("新标题")
+        assert list_sessions(temp_dir)[0]["last_reply_id"] == reply_id
+        session.add({"role": "user", "content": "下一轮"})
+        assert list_sessions(temp_dir)[0]["last_reply_id"] is None
+        legacy = [{"role": "user", "content": "旧问题"}, {"role": "assistant", "content": "旧答复"}]
+        assert latest_reply_id(legacy, 2) == "legacy:2:1"
+        assert latest_reply_id([{"role": "assistant", "content": "历史摘要"}]) is None
+
     def test_list_sessions(self, temp_dir):
         """测试列出会话"""
         # 创建多个会话

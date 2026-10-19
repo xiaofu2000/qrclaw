@@ -4,8 +4,28 @@ import type { AgentActivity, ChatTimelineItem, Conversation, Message, SessionDet
 
 type ApiClient = ReturnType<typeof createApiClient>
 
+/** 只保存回复标识；旧浏览器记录损坏时不影响继续聊天。 */
+function loadReadReplies(): Record<string, string[]> {
+  try {
+    const value = JSON.parse(localStorage.getItem('qrclaw.readReplies') ?? '{}')
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return {}
+    return Object.fromEntries(Object.entries(value).filter((entry): entry is [string, string[]] =>
+      Array.isArray(entry[1]) && entry[1].every(id => typeof id === 'string')))
+  } catch { return {} }
+}
+
+/** 与列表接口使用相同的末轮回复规则，兼容尚未升级的本地服务。 */
+function latestReplyId(session: SessionDetail | null): string | null {
+  if (!session) return null
+  const userIndex = session.messages.findLastIndex(message => message.role === 'user')
+  const replyIndex = session.messages.findLastIndex(message => message.role === 'assistant'
+    && message.kind !== 'execution_report' && !message.tool_calls?.length && typeof message.content === 'string' && message.content.trim())
+  if (userIndex < 0 || replyIndex <= userIndex) return null
+  return session.messages[replyIndex].uuid ?? `legacy:${session.history_version ?? 0}:${replyIndex}`
+}
+
 /** 从当前轮次推导真实工作状态，避免旧工具事件和其他会话驱动当前精灵。 */
-function getAgentActivity({ session, cards, running, streaming, error, loading, creating, mutating, backgroundCount }: {
+function getAgentActivity({ session, cards, running, streaming, error, loading, creating, mutating, backgroundCount, unread }: {
   session: SessionDetail | null
   cards: SubAgentCard[]
   running: boolean
@@ -15,6 +35,7 @@ function getAgentActivity({ session, cards, running, streaming, error, loading, 
   creating: boolean
   mutating: boolean
   backgroundCount: number
+  unread: boolean
 }): AgentActivity {
   if (error) return { phase: 'error', label: '需要检查', status: 'error' }
   if (loading || creating || mutating) return {
@@ -36,14 +57,15 @@ function getAgentActivity({ session, cards, running, streaming, error, loading, 
     return { phase: 'thinking', label: status?.title === '重规划中' ? '正在调整计划' : '正在思考', status: 'busy' }
   }
   if (backgroundCount) return { phase: 'background', label: `${backgroundCount} 个后台任务处理中`, status: 'busy' }
-  if (userIndex >= 0 && session?.messages.slice(userIndex + 1).some(message => message.role === 'assistant' && message.kind !== 'execution_report')) {
+  if (unread) {
     return { phase: 'completed', label: '本轮已完成', status: 'ready' }
   }
   return { phase: 'idle', label: '可以开始', status: 'ready' }
 }
 
 function toConversation(session: SessionSummary): Conversation {
-  return { id: session.id, title: session.title || '新对话', updatedAt: session.updated_at, messageCount: session.message_count }
+  return { id: session.id, title: session.title || '新对话', updatedAt: session.updated_at, messageCount: session.message_count,
+    lastReplyId: session.run_status === 'idle' && !session.active_subagents ? session.last_reply_id : null }
 }
 
 function normalizeMessages(sessionId: string, messages: SessionDetail['messages']): Message[] {
@@ -122,6 +144,7 @@ export function useChatWorkspace(api: ApiClient) {
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [activeId, setActiveId] = useState('')
   const [sessions, setSessions] = useState<Record<string, SessionDetail>>({})
+  const [readReplies, setReadReplies] = useState(loadReadReplies)
   const [streaming, setStreaming] = useState<Record<string, string>>({})
   const [childStreaming, setChildStreaming] = useState<Record<string, string>>({})
   const [selectedChildren, setSelectedChildren] = useState<Record<string, string>>({})
@@ -147,6 +170,23 @@ export function useChatWorkspace(api: ApiClient) {
   const streamBaselinesRef = useRef(new Map<string, number>())
   const historyVersionsRef = useRef(new Map<string, number>())
   const deletedIdsRef = useRef(new Set<string>())
+
+  /** 视图只能确认当前已结束的回复，迟到的可见事件不能读掉下一轮或其他会话。 */
+  const markReplyRead = useCallback((id: string, replyId: string) => {
+    const detail = sessions[id]
+    if (id !== activeIdRef.current || !detail || detail.run_status !== 'idle' || detail.active_subagents
+      || runningRef.current.has(id) || mutatingRef.current.has(id) || latestReplyId(detail) !== replyId) return
+    setReadReplies(current => {
+      if (current[id]?.includes(replyId)) return current
+      const saved = loadReadReplies()
+      const next = { ...current }
+      for (const [key, ids] of Object.entries(saved)) next[key] = [...new Set([...ids, ...(current[key] ?? [])])]
+      next[id] = [...new Set([...(next[id] ?? []), replyId])]
+      try { localStorage.setItem('qrclaw.readReplies', JSON.stringify(next)) }
+      catch { console.warn('无法保存已读状态，本次页面仍可使用。') }
+      return next
+    })
+  }, [sessions])
 
   const storeSession = useCallback((session: SessionDetail) => {
     if (deletedIdsRef.current.has(session.id)) return
@@ -578,12 +618,20 @@ export function useChatWorkspace(api: ApiClient) {
   const visibleStreaming = (streaming[activeId] ?? '').slice((session?.messages ?? []).slice(streamBaselinesRef.current.get(activeId) ?? session?.messages.length ?? 0)
     .filter(message => message.role === 'assistant' && message.kind !== 'execution_report')
     .reduce((length, message) => length + (typeof message.content === 'string' ? message.content.length : 0), 0))
+  const unreadIds = new Set(conversations.filter(item => {
+    const detail = sessions[item.id]
+    if (runningIds.has(item.id) || detail?.active_subagents || detail?.run_error) return false
+    const replyId = detail ? latestReplyId(detail) : item.lastReplyId
+    return replyId && !readReplies[item.id]?.includes(replyId)
+  }).map(item => item.id))
+  const unreadReplyId = !running && !loading && !mutatingIds.has(activeId) && !session?.active_subagents && !error
+    && unreadIds.has(activeId) ? latestReplyId(session) : null
   const activity = getAgentActivity({ session, cards, running, streaming: visibleStreaming, error, loading, creating,
-    mutating: mutatingIds.has(activeId), backgroundCount: runningIds.size - Number(running) })
+    mutating: mutatingIds.has(activeId), backgroundCount: runningIds.size - Number(running), unread: Boolean(unreadReplyId) })
   const status: AgentActivity['status'] = running || loading || creating || mutatingIds.has(activeId) ? 'busy' : error ? 'error' : 'ready'
 
   return {
-    planEnabled, compressing, contextUsage, compressionNotice, activity,
+    planEnabled, compressing, contextUsage, compressionNotice, activity, unreadIds, unreadReplyId, markReplyRead,
     status,
     /** 保存浏览器的执行偏好，下次发送或编辑重跑时使用。 */
     togglePlan: () => setPlanEnabled(current => {

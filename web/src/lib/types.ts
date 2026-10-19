@@ -37,6 +37,7 @@ export type Conversation = {
   title: string
   updatedAt: string
   messageCount?: number
+  lastReplyId?: string | null
 }
 
 export type RunStatus = 'ready' | 'busy' | 'error'
@@ -55,6 +56,7 @@ export type SessionSummary = {
   updated_at: string
   run_status: 'idle' | 'queued' | 'running'
   active_subagents?: boolean
+  last_reply_id?: string | null
 }
 
 export type SessionDetail = {
@@ -65,6 +67,7 @@ export type SessionDetail = {
   updated_at: string
   run_status: SessionSummary['run_status']
   active_subagents?: boolean
+  last_reply_id?: string | null
   run_error: string | null
   prompt_tokens: number
   completion_tokens: number

@@ -6,6 +6,7 @@ type ConversationListProps = {
   conversations: Conversation[]
   activeId: string
   runningIds: Set<string>
+  unreadIds: Set<string>
   mutatingIds: Set<string>
   onSelect: (conversationId: string) => void
   onRename: (conversationId: string, title: string) => void
@@ -13,7 +14,7 @@ type ConversationListProps = {
 }
 
 /** 会话列表只管理改名输入和删除确认，数据操作交给工作区。 */
-export function ConversationList({ conversations, activeId, runningIds, mutatingIds, onSelect, onRename, onDelete }: ConversationListProps) {
+export function ConversationList({ conversations, activeId, runningIds, unreadIds, mutatingIds, onSelect, onRename, onDelete }: ConversationListProps) {
   const [editingId, setEditingId] = useState('')
   const [title, setTitle] = useState('')
 
@@ -40,6 +41,7 @@ export function ConversationList({ conversations, activeId, runningIds, mutating
               className="conversation-item" onClick={() => onSelect(conversation.id)}>
               <span className="conversation-title">{conversation.title}</span>
               {runningIds.has(conversation.id) && <LoaderCircle size={15} className="spin" aria-label="任务处理中" />}
+              {unreadIds.has(conversation.id) && !runningIds.has(conversation.id) && <span className="unread-dot" role="img" aria-label="有未读回复" title="有未读回复" />}
               {mutatingIds.has(conversation.id) && <LoaderCircle size={15} className="spin" aria-label="更新会话中" />}
             </button>
             <button className="conversation-action" type="button" aria-label={`重命名会话 ${conversation.title}`}

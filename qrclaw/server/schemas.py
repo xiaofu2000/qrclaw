@@ -27,6 +27,7 @@ class SessionSummary(BaseModel):
     updated_at: str
     run_status: Literal["idle", "queued", "running"] = "idle"
     active_subagents: bool = False
+    last_reply_id: str | None = None
 
 
 class SessionDetail(BaseModel):
@@ -37,6 +38,7 @@ class SessionDetail(BaseModel):
     history_version: int = 0
     run_status: Literal["idle", "queued", "running"] = "idle"
     active_subagents: bool = False
+    last_reply_id: str | None = None
     run_error: str | None = None
     prompt_tokens: int = 0
     completion_tokens: int = 0

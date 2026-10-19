@@ -81,6 +81,20 @@ def test_session_list_has_readable_title_and_detail_has_events(temp_dir, monkeyp
     assert detail["events"][0]["content"] == "检查代码"
 
 
+def test_session_summary_and_detail_share_latest_reply_id(temp_dir):
+    """摘要即可识别新回复，列表和详情返回同一个消息标识。"""
+    workspace = Workspace(_root=temp_dir)
+    session = Session(workspace.sessions_dir, session_id="read-state")
+    session.add({"role": "user", "content": "问题"})
+    session.add({"role": "assistant", "content": "答复"})
+    reply_id = session.messages[-1]["uuid"]
+    session.add({"role": "assistant", "kind": "execution_report", "content": "报告"})
+    with TestClient(create_app(workspace), client=("127.0.0.1", 50000)) as client:
+        summary = client.get("/v1/sessions").json()[0]
+        detail = client.get("/v1/sessions/read-state").json()
+        assert summary["last_reply_id"] == detail["last_reply_id"] == reply_id
+
+
 def test_session_rename_persists_for_empty_and_existing_conversations(temp_dir):
     """会话标题由持久化字段提供，空会话也可改名。"""
     workspace = Workspace(_root=temp_dir)

@@ -7,6 +7,7 @@ type SidebarProps = {
   conversations: Conversation[]
   activeId: string
   runningIds: Set<string>
+  unreadIds: Set<string>
   mutatingIds: Set<string>
   open: boolean
   creating: boolean
@@ -22,7 +23,7 @@ type SidebarProps = {
 }
 
 /** 导航与历史始终在同一位置，数据与会话操作仍由工作区管理。 */
-export function Sidebar({ conversations, activeId, runningIds, mutatingIds, open, creating, memoryOpen, activity, onOpenMemory, onOpenChat, onClose, onNewChat, onSelectConversation, onRenameConversation, onDeleteConversation }: SidebarProps) {
+export function Sidebar({ conversations, activeId, runningIds, unreadIds, mutatingIds, open, creating, memoryOpen, activity, onOpenMemory, onOpenChat, onClose, onNewChat, onSelectConversation, onRenameConversation, onDeleteConversation }: SidebarProps) {
   return (
     <aside id="session-sidebar" className={`sidebar ${open ? 'open' : ''}`} aria-label="历史会话">
       <div className={`sidebar-brand ${activity ? 'with-companion' : ''}`} data-phase={activity?.phase}>
@@ -41,7 +42,7 @@ export function Sidebar({ conversations, activeId, runningIds, mutatingIds, open
       </nav>
       <div className="sidebar-header"><span>最近对话</span><span>{conversations.length}</span></div>
       <nav className="sidebar-list" aria-label="选择会话">
-        <ConversationList conversations={conversations} activeId={memoryOpen ? '' : activeId} runningIds={runningIds} mutatingIds={mutatingIds} onSelect={onSelectConversation}
+        <ConversationList conversations={conversations} activeId={memoryOpen ? '' : activeId} runningIds={runningIds} unreadIds={unreadIds} mutatingIds={mutatingIds} onSelect={onSelectConversation}
           onRename={onRenameConversation} onDelete={onDeleteConversation} />
       </nav>
       <div className="sidebar-footer"><HardDrive size={17} /><div><strong>本地工作空间</strong><span>对话与记忆，在这里积累</span></div></div>
