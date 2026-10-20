@@ -1,6 +1,7 @@
 import { WebsiteModel } from './model.js';
 import { phases, scenes, memories, entries } from './content.js';
 import { sampleTimeline, samplePresentation } from './scene-state.js?v=sync-20261020-3';
+import { bindHeroScroll } from './hero-scroll.js';
 
 const reduced = window.matchMedia('(prefers-reduced-motion: reduce)');
 const model = new WebsiteModel(reduced.matches);
@@ -14,6 +15,8 @@ let brain;
 let brainReady = false;
 let rendered = {};
 let toastTimer;
+let displayedPhase = -1;
+let displayedProgress = 0;
 
 /** 用可读文字提供复制成功与失败反馈。 */
 function showToast(text) {
@@ -37,14 +40,6 @@ function renderSelection(buttons, selected, attribute, key) {
 /** 渲染静态内容与离散状态；每帧 WebGL 更新不触发 DOM 渲染。 */
 function render() {
   const state = model.state;
-  if (state.phase !== rendered.phase) {
-    renderSelection(phaseButtons, state.phase, 'aria-pressed', 'phase');
-    document.querySelector('#phase-description').textContent = phases[state.phase];
-    phaseButtons.forEach((button, index) => {
-      if (index === state.phase) button.setAttribute('aria-describedby', 'phase-description');
-      else button.removeAttribute('aria-describedby');
-    });
-  }
   if (state.scene !== rendered.scene) {
     const scene = scenes[state.scene];
     renderSelection(sceneButtons, state.scene, 'aria-selected', 'scene');
@@ -103,13 +98,14 @@ function wireTabs(buttons, select) {
   }));
 }
 
-/** 阶段按钮使用相同滚动坐标，不建立另一套动画状态。 */
-phaseButtons.forEach(button => button.addEventListener('click', () => {
+/** 点击标签与滑动分段都落到同一原生滚动坐标。 */
+function goToPhase(phase) {
   const hero = document.querySelector('#top');
-  const progress = Number(button.dataset.phase) / 3;
+  const progress = phase / 3;
   window.scrollTo({ top: hero.offsetTop + progress * (hero.offsetHeight - innerHeight), behavior: 'instant' });
   updateScroll(true);
-}));
+}
+phaseButtons.forEach(button => button.addEventListener('click', () => goToPhase(Number(button.dataset.phase))));
 sceneButtons.forEach(button => button.addEventListener('click', () => { model.update({ playing: false }); model.select('scene', Number(button.dataset.scene)); }));
 memoryButtons.forEach(button => button.addEventListener('click', () => model.select('memory', Number(button.dataset.memory))));
 entryButtons.forEach(button => button.addEventListener('click', () => model.select('entry', button.dataset.entry)));
@@ -189,6 +185,17 @@ function updateScroll(force = false) {
 /** 正文、主体和工作台共用实际渲染进度，不能让目标章节抢在镜头之前出现。 */
 function renderBrainTransition(presentation) {
   const frame = samplePresentation(presentation);
+  displayedProgress = presentation;
+  // 标签等正文到位再更新，不能提前标记仍在追赶的目标章节。
+  if (frame.opacity >= 0.99 && frame.chapter !== displayedPhase) {
+    displayedPhase = frame.chapter;
+    renderSelection(phaseButtons, displayedPhase, 'aria-pressed', 'phase');
+    document.querySelector('#phase-description').textContent = phases[displayedPhase];
+    phaseButtons.forEach((button, index) => {
+      if (index === displayedPhase) button.setAttribute('aria-describedby', 'phase-description');
+      else button.removeAttribute('aria-describedby');
+    });
+  }
   const stage = document.querySelector('.scene-stage');
   stage.dataset.chapter = String(frame.chapter);
   stage.dataset.presentation = String(presentation);
@@ -210,6 +217,11 @@ window.addEventListener('resize', () => updateScroll(true));
 motionButton.addEventListener('click', () => updateScroll(true));
 reduced.addEventListener('change', () => updateScroll(true));
 updateScroll(true);
+const disposeHeroScroll = bindHeroScroll(hero, {
+  getPhase: () => model.state.phase,
+  isSettled: () => !brainReady || Math.abs(displayedProgress - model.state.progress) < 0.02,
+  goTo: goToPhase,
+});
 const sceneTimer = setInterval(() => model.advance('scene'), 5000);
 
 /** 先展示真实模型静帧；三维失败时保持全部正文与导航可用。 */
@@ -250,6 +262,7 @@ window.addEventListener('pagehide', event => {
     cancelAnimationFrame(scrollFrame);
     clearInterval(sceneTimer);
     observer.disconnect();
+    disposeHeroScroll();
     brain?.dispose();
   }
 });

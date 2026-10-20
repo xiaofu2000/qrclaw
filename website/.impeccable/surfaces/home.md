@@ -17,7 +17,7 @@ STORY: 交代任务，看到拆解与工具接力，理解记忆可追溯，再�
 
 FIRST VIEWPORT: 顶部固定导航；左侧两行标题“让想法，开始执行。”、一句简介与一个文字行动；右侧玻璃大脑。底部四个序号与暂停图标；后续相机沿连续小弧线进入不同构图，最后拉远衔接真实界面。平板和手机保留上方正文与下方操作区。
 
-FORM: 用户明确选定的 AH 大脑与 Aether 冷蓝玻璃方向优先，不重新打开设计选择。Signature interaction: 精确滚动状态控制目标导航，指数平滑进度统一控制正文、位置/视线曲线、灯光和工作台交接。原生滚动可倒退，按钮可跳阶段；减少动态效果显示静态关键帧。已安装并应用 MengTo/Skills 的 build-threejs-scroll-worlds，固定版本、镜头账本与验证预算见 docs/brain-home-motion.md。
+FORM: 用户明确选定的 AH 大脑与 Aether 冷蓝玻璃方向优先，不重新打开设计选择。Signature interaction: 首屏一次手势推进一段，指数平滑进度统一控制正文、选中标签、位置/视线曲线、灯光和工作台交接。原生滚动可倒退，按钮可跳阶段；减少动态效果显示静态关键帧。已安装并应用 MengTo/Skills 的 build-threejs-scroll-worlds，固定版本、镜头账本与验证预算见 docs/brain-home-motion.md。
 
 FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, DESIGN.md, and every shipping raster carrying its provenance
 
