@@ -1,0 +1,228 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-20T05:34:48.120037Z",
+  "title": "Design System: QRClaw 大脑视觉样片",
+  "extensions": {
+    "colorMeta": {
+      "night": {
+        "displayName": "深夜蓝黑",
+        "role": "neutral",
+        "tonalRamp": [
+          "oklch(15% 0.035 258)",
+          "oklch(27% 0.035 258)",
+          "oklch(38% 0.035 258)",
+          "oklch(50% 0.035 258)",
+          "oklch(61% 0.035 258)",
+          "oklch(72% 0.035 258)",
+          "oklch(84% 0.035 258)",
+          "oklch(95% 0.035 258)"
+        ]
+      },
+      "ice-white": {
+        "displayName": "冰白",
+        "role": "neutral",
+        "tonalRamp": [
+          "oklch(15% 0.012 255)",
+          "oklch(27% 0.012 255)",
+          "oklch(38% 0.012 255)",
+          "oklch(50% 0.012 255)",
+          "oklch(61% 0.012 255)",
+          "oklch(72% 0.012 255)",
+          "oklch(84% 0.012 255)",
+          "oklch(95% 0.012 255)"
+        ]
+      },
+      "ice-blue": {
+        "displayName": "冰蓝",
+        "role": "primary",
+        "tonalRamp": [
+          "oklch(15% 0.075 245)",
+          "oklch(27% 0.075 245)",
+          "oklch(38% 0.075 245)",
+          "oklch(50% 0.075 245)",
+          "oklch(61% 0.075 245)",
+          "oklch(72% 0.075 245)",
+          "oklch(84% 0.075 245)",
+          "oklch(95% 0.075 245)"
+        ]
+      },
+      "secondary-text": {
+        "displayName": "次级灰蓝",
+        "role": "neutral",
+        "tonalRamp": [
+          "oklch(15% 0.03 260)",
+          "oklch(27% 0.03 260)",
+          "oklch(38% 0.03 260)",
+          "oklch(50% 0.03 260)",
+          "oklch(61% 0.03 260)",
+          "oklch(72% 0.03 260)",
+          "oklch(84% 0.03 260)",
+          "oklch(95% 0.03 260)"
+        ]
+      },
+      "control-text": {
+        "displayName": "控件灰蓝",
+        "role": "neutral",
+        "tonalRamp": [
+          "oklch(15% 0.035 258)",
+          "oklch(27% 0.035 258)",
+          "oklch(38% 0.035 258)",
+          "oklch(50% 0.035 258)",
+          "oklch(61% 0.035 258)",
+          "oklch(72% 0.035 258)",
+          "oklch(84% 0.035 258)",
+          "oklch(95% 0.035 258)"
+        ]
+      },
+      "control-surface": {
+        "displayName": "控件暗面",
+        "role": "neutral",
+        "tonalRamp": [
+          "oklch(15% 0.035 258)",
+          "oklch(27% 0.035 258)",
+          "oklch(38% 0.035 258)",
+          "oklch(50% 0.035 258)",
+          "oklch(61% 0.035 258)",
+          "oklch(72% 0.035 258)",
+          "oklch(84% 0.035 258)",
+          "oklch(95% 0.035 258)"
+        ]
+      },
+      "control-hover": {
+        "displayName": "悬停暗面",
+        "role": "neutral",
+        "tonalRamp": [
+          "oklch(15% 0.045 258)",
+          "oklch(27% 0.045 258)",
+          "oklch(38% 0.045 258)",
+          "oklch(50% 0.045 258)",
+          "oklch(61% 0.045 258)",
+          "oklch(72% 0.045 258)",
+          "oklch(84% 0.045 258)",
+          "oklch(95% 0.045 258)"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "首屏标题",
+        "purpose": "QRDisplay 中文标题。"
+      },
+      "headline": {
+        "displayName": "第二阶段标题",
+        "purpose": "窄屏固定 36px。"
+      },
+      "body": {
+        "displayName": "说明正文",
+        "purpose": "第二阶段说明；窄屏 13px。"
+      },
+      "label": {
+        "displayName": "阶段导航",
+        "purpose": "阶段名称。"
+      },
+      "control": {
+        "displayName": "小控件",
+        "purpose": "动态开关与阶段序号。"
+      }
+    },
+    "shadows": [],
+    "motion": [
+      {
+        "name": "preview-progress",
+        "value": "brainProgress(scrollProgress) / 3",
+        "purpose": "样片文本进度 0..1 映射到官网 0..1/3，仅连接前两个相机端点；文本映射首尾各停顿 18%。"
+      },
+      {
+        "name": "shared-camera-damping",
+        "value": "1 - exp(-5.2 * min(dt, 1/30))",
+        "purpose": "共享官网位置与视线曲线；静态模式直接使用关键端点，无模型呼吸。"
+      },
+      {
+        "name": "static-mode",
+        "value": "scrollProgress < 0.5 ? 0 : 1",
+        "purpose": "暂停与减少动态模式直接切换完整镜头，传入共享场景前再除以 3。"
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "preview-layout-max",
+        "value": "700px"
+      },
+      {
+        "name": "shared-camera-compact-max",
+        "value": "900px"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "动态开关",
+      "kind": "button",
+      "refersTo": "motion-toggle",
+      "description": "可暂停动态的胶囊按钮；行为由页面控制器提供。",
+      "html": "<button class=\"ds-motion\" type=\"button\" aria-pressed=\"false\">暂停动态</button>",
+      "css": ".ds-motion{font-family:Satoshi,'PingFang SC','Microsoft YaHei',sans-serif;color:#b3c1d5;border:1px solid #35445c;border-radius:99px;background:#071020;padding:12px 16px;font-size:11px;cursor:pointer}.ds-motion:hover{border-color:#99b9df;background:#0c1c34}.ds-motion:focus-visible{outline:2px solid #a8d9ff;outline-offset:6px;}"
+    },
+    {
+      "name": "阶段导航",
+      "kind": "nav",
+      "refersTo": "phase-navigation",
+      "description": "以细底线和 aria-current 标识当前阶段，保留 11px 序号。",
+      "html": "<nav class=\"ds-phases\" aria-label=\"样片阶段\"><a href=\"#idea\" aria-current=\"step\"><span>01</span> 想法</a><a href=\"#action\"><span>02</span> 执行</a></nav>",
+      "css": ".ds-phases{font-family:Satoshi,'PingFang SC','Microsoft YaHei',sans-serif;display:flex;gap:30px;color:#b3c1d5;font-size:12px}.ds-phases a{display:flex;gap:10px;padding:12px 0;border-bottom:1px solid transparent;color:inherit;text-decoration:none}.ds-phases a[aria-current]{color:#fff;border-color:#d5e7ff}.ds-phases span{font-size:11px;color:#94abc9}.ds-phases a:focus-visible{outline:2px solid #a8d9ff;outline-offset:6px;}@media(max-width:700px){.ds-phases{gap:22px}}"
+    },
+    {
+      "name": "正文链接",
+      "kind": "custom",
+      "refersTo": "text-link",
+      "description": "细底线、宽间距箭头；悬停使用冰蓝。",
+      "html": "<a class=\"ds-link\" href=\"#workflow\">了解执行过程 <svg viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path d=\"M6 18 18 6M6 6h12v12\"/></svg></a>",
+      "css": ".ds-link{font-family:Satoshi,'PingFang SC','Microsoft YaHei',sans-serif;color:#eef5ff;display:inline-flex;align-items:center;gap:42px;border-bottom:1px solid #526780;padding:9px 0;font-size:14px;text-decoration:none}.ds-link svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.5}.ds-link:hover{color:#a8d9ff}.ds-link:focus-visible{outline:2px solid #a8d9ff;outline-offset:6px;}"
+    },
+    {
+      "name": "品牌页头",
+      "kind": "nav",
+      "description": "只呈现品牌与探索链接，不包含装饰眉题。",
+      "html": "<nav class=\"ds-header\" aria-label=\"主导航\"><a class=\"ds-wordmark\" href=\"index.html\" aria-label=\"QRClaw 首页\">QRClaw</a><a class=\"ds-explore\" href=\"index.html#start\">探索 QRClaw <svg viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path d=\"M6 18 18 6M6 6h12v12\"/></svg></a></nav>",
+      "css": ".ds-header{font-family:Satoshi,'PingFang SC','Microsoft YaHei',sans-serif;color:#eef5ff;display:flex;align-items:center;justify-content:space-between;padding:28px 4vw}.ds-header a{color:inherit;text-decoration:none}.ds-wordmark{font-size:26px;font-weight:700;letter-spacing:-.04em}.ds-explore{display:inline-flex;align-items:center;gap:16px;padding:10px 0;font-size:13px}.ds-explore svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.5}.ds-explore:hover{color:#a8d9ff}.ds-header a:focus-visible{outline:2px solid #a8d9ff;outline-offset:6px;}@media(max-width:700px){.ds-header{padding:22px 24px}.ds-wordmark{font-size:23px}.ds-explore{font-size:12px}}"
+    },
+    {
+      "name": "主标题与说明",
+      "kind": "custom",
+      "description": "直接进入主题的中文标题；字体为页面实际本地字体及回退。",
+      "html": "<div class=\"ds-intro\"><h1>让想法，开始执行。</h1><p>为你规划步骤、调用工具的 AI Agent。</p></div>",
+      "css": ".ds-intro{text-align:center;color:#eef5ff}.ds-intro h1{margin:0;font-family:QRDisplay,'PingFang SC',sans-serif;font-size:clamp(32px,4.4vw,70px);font-weight:700;letter-spacing:-.03em;line-height:1.2;text-wrap:balance}.ds-intro p{font-family:Satoshi,'PingFang SC','Microsoft YaHei',sans-serif;margin-top:20px;font-size:14px;color:#afbbce}@media(max-width:700px){.ds-intro p{font-size:12px}}"
+    }
+  ],
+  "narrative": {
+    "northStar": "冷蓝玻璃暗棚",
+    "overview": "用户选定 AH 的 Human Brain 与 Aether 1 冷蓝玻璃方向。完整人脑的自然褶皱承担主体细节，暗场、窄条反射与短中文标题共同建立空间感。\n\n本文件管理独立两阶段样片的版式；正式官网已接入同一个 AH 模型与玻璃方向，其四阶段布局由 `../../DESIGN.md` 和 `../../.impeccable/design.json` 管理。两者共享当前 `src/brain-scene.js` 与 `src/brain-camera.js`，不是彼此冻结的旧版本。样片构图见[表面契约](../../.impeccable/surfaces/brain-preview.md)。",
+    "keyCharacteristics": [
+      "深蓝黑暗场、冰蓝反射与白色文字。",
+      "真实模型褶皱、透射与透明度共同构成玻璃体积。",
+      "大幅留白、短标题、细线导航与胶囊动态控制。"
+    ],
+    "rules": [
+      {
+        "name": "The Dark Refraction Rule",
+        "body": "透射背景必须存在于 WebGL 场景内；CSS 背景不能代替玻璃采样所需的暗场。",
+        "section": "colors"
+      },
+      {
+        "name": "The Direct Title Rule",
+        "body": "标题直接进入正文主题，不增加眉题或“VISUAL STUDY / 01”装饰标签。",
+        "section": "typography"
+      }
+    ],
+    "dos": [
+      "**Do** 保留真实模型、可见署名及原始资产证据。",
+      "**Do** 让标题、镜头、阶段状态共享进度，并保持键盘和减少动态模式可用。",
+      "**Do** 将移动浏览器视口检查与真实设备性能验证分开记录。"
+    ],
+    "donts": [
+      "**Don't** 将样片的两阶段版式当作正式官网四阶段布局，或把共享渲染器当作独立旧版本。",
+      "**Don't** 用透明 WebGL 画布加 CSS 暗底代替真实透射背景。",
+      "**Don't** 添加卡通表情、替代脑模型或装饰眉题。"
+    ]
+  }
+}

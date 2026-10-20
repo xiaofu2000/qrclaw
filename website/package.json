@@ -1,0 +1,17 @@
+{
+  "name": "qrclaw-website",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "python3 -m http.server 8877 --bind 127.0.0.1 --directory site",
+    "test": "node --test tests/*.test.mjs",
+    "check": "node tools/check-site.mjs && node tools/check-brain.mjs",
+    "build": "npm run build:brain && node tools/package-static.mjs",
+    "build:brain": "esbuild src/brain-scene.js --bundle --minify --format=esm --legal-comments=linked --outfile=site/scripts/brain-scene.js"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.2",
+    "three": "0.186.1"
+  }
+}

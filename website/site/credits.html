@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>开源与素材说明 — QRClaw</title>
+  <meta name="description" content="QRClaw 官网使用的开源软件、字体、产品演示与设计参考来源。">
+  <link rel="icon" href="assets/mark.svg"><link rel="stylesheet" href="styles/main.css">
+  <style>
+    .credits{max-width:780px;padding-block:80px}.credits h1{font-size:40px;margin:45px 0 30px}
+    .credits h2{font-size:23px;margin:38px 0 15px}.credits p,.credits li{font-size:15px;line-height:1.9;color:var(--muted)}
+    .credits a:not(.brand){color:var(--blue);text-decoration:underline}.credits li+li{margin-top:12px}.credits ul{padding-left:21px}
+    @media(max-width:640px){.credits{padding-block:40px}.credits h1{font-size:30px}}
+  </style>
+</head>
+<body><main class="credits container">
+  <a class="brand" href="index.html"><img src="assets/mark.svg" width="32" height="32" alt="">QRClaw</a>
+  <h1>开源与素材说明</h1>
+  <p>官网的产品介绍依据 QRClaw 当前功能编写。页面中的任务截图来自真实运行的 QRClaw 工作台，使用专门准备的虚构项目笔记；记忆节点交互为已标注的内容示意。</p>
+  <h2>开源软件与字体</h2>
+  <ul>
+    <li><a href="https://github.com/xiaofu2000/qrclaw" target="_blank" rel="noreferrer">QRClaw</a>：本地 AI Agent，采用 MIT 许可。</li>
+    <li><a href="https://threejs.org/" target="_blank" rel="noreferrer">Three.js</a>：用于首屏实时 3D 场景，版本 0.186.1，采用 <a href="assets/vendor/three-LICENSE.txt">MIT 许可</a>。</li>
+    <li><a href="https://sketchfab.com/3d-models/human-brain-c9c9d4d671b94345952d012cc2ea7a24">Human Brain</a>：由 <a href="https://sketchfab.com/agher">AH</a> 创作，采用 <a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a>。本站保留原始模型几何，调整了玻璃材质、光照、缩放及镜头；加载静帧由同一场景导出，不代表原作者为 QRClaw 背书。</li>
+    <li><a href="https://github.com/MengTo/Skills/tree/398cd41c86ba42fbb30e944ae507f463648f08b7/agent-skills/web-design/build-threejs-scroll-worlds">Build Three.js Scroll Worlds</a>：运镜参考其位置/视线独立曲线、精确滚动与平滑渲染分离、帧率无关阻尼、响应式镜头与降级方法。采用 <a href="assets/vendor/mengto-skills-LICENSE.txt">MIT 许可</a>，未使用其演示模型。</li>
+    <li><a href="https://github.com/sebastianvasquezechavarria1234/scroll-driven-camera-three.js">Keyframe Scroll Odyssey</a>：滚动阶段停顿与三次缓动方法改编自该免费示例，采用 <a href="assets/vendor/camera-LICENSE.txt">MIT 许可</a>，未使用其建筑模型。</li>
+    <li><a href="https://www.fontshare.com/fonts/satoshi" target="_blank" rel="noreferrer">Satoshi / Fontshare</a>：英文品牌与界面字体，由 Deni Anggara 为 Indian Type Foundry 设计，采用 ITF Free Font License。使用条款见 <a href="https://www.fontshare.com/licenses" target="_blank" rel="noreferrer">Fontshare 许可</a>。</li>
+    <li><a href="https://github.com/jeremy-prt/bloub" target="_blank" rel="noreferrer">bloub</a>：产品截图中的工作伙伴使用该项目的动画引擎。代码采用 MIT 许可；许可不包含其模仿的 Grok / x.ai 角色设计。QRClaw 与 x.ai 无隶属或背书关系。</li>
+    <li><a href="https://fonts.google.com/noto/specimen/Noto+Sans+SC">Noto Sans SC</a>：中文展示标题字体，按官网文字制作子集并自托管；采用 <a href="assets/fonts/noto-sans-sc-OFL.txt">SIL Open Font License 1.1</a>。</li>
+  </ul>
+  <h2>设计参考与取舍</h2>
+  <p>参考 <a href="https://www.scrolltide.co/" target="_blank" rel="noreferrer">Scrolltide</a> 的滚动叙事、<a href="https://mobbin.com/" target="_blank" rel="noreferrer">Mobbin</a> 的产品流程展示方式，以及 <a href="https://spline.design/" target="_blank" rel="noreferrer">Spline</a> 的空间交互表达。配色围绕 QRClaw 既有钴蓝展开，并用 <a href="https://www.coolors.app/" target="_blank" rel="noreferrer">Coolors</a> 的配色思路校准。没有复制这些网站的付费模板或宣称与其合作。</p>
+  <p>评估了 <a href="https://lottiefiles.com/" target="_blank" rel="noreferrer">LottieFiles</a>、<a href="https://threejs-journey.com/" target="_blank" rel="noreferrer">Three.js Journey</a> 和 <a href="https://3dicons.co/" target="_blank" rel="noreferrer">3dicons</a>；本版使用 AH 授权模型与真实产品截图，未引入这些网站的动画、课程素材或图标包。</p>
+  <h2>使用边界</h2>
+  <p>本网站是产品介绍与步骤演示，不会调用访客本机的 Agent。使用 QRClaw 时，模型能力与费用取决于你配置的模型和服务。自动记忆与工具结果仍需结合实际任务核对。</p>
+  <p style="margin-top:38px"><a href="index.html">返回官网</a></p>
+</main></body>
+</html>

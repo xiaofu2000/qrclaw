@@ -1,0 +1,85 @@
+/* 正式首页沿用真实产品正文；四个空间构图由同一个玻璃大脑衔接。 */
+:root { --paper:#030916; --night:#030916; --soft:#0c1524; --ink:#eef5ff; --muted:#aebfd4; --line:#30425c; --blue:#aac9ff; }
+.site-header { background:linear-gradient(#030916 12%,#030916e0 65%,#03091600); }
+.nav-wrap { height:82px; border-bottom:0; }
+.hero { height:410svh; background:#030916; }
+.scene-stage { min-height:0; }
+.scene-stage:after { background:linear-gradient(transparent,#030916 90%); height:125px; }
+.hero-art,.scene-stage[data-chapter="1"] .hero-art,.scene-stage[data-chapter="2"] .hero-art { inset:0; }
+.hero-art { transition:none; }
+#brain-canvas { display:block; width:100%; height:100%; opacity:0; transition:opacity .35s; }
+.hero-art.ready #brain-canvas { opacity:1; }
+.brain-poster { position:absolute; inset:0; }
+.brain-poster img { width:100%; height:100%; object-fit:cover; }
+.hero-art.ready .brain-poster { visibility:hidden; }
+#brain-status { position:absolute; z-index:2; bottom:150px; left:20px; right:20px; color:#b9cce3; text-align:center; font-size:12px; }
+.hero-copy { top:15%; }
+.hero h1 { font-size:clamp(42px,4.8vw,70px); }
+.hero-intro { font-size:15px; margin-top:17px; color:#b6c7de; }
+.hero-actions { margin-top:20px; gap:28px; }
+.hero-actions .button { min-height:44px; padding:10px 20px; font-size:13px; }
+.hero-actions .text-link { font-size:13px; }
+.scene-copy { top:30%; left:7%; width:31%; }
+.scene-copy h2 { font-size:clamp(34px,3.6vw,54px); }
+.scene-copy>p { color:#bacbe1; font-size:15px; }
+.chapter-two { left:auto; right:7%; }
+.chapter-three { top:22%; left:7%; width:30%; }
+.scene-task { border-color:#4c6687; }
+.scene-task i { background:#a7d5ff; }
+.scene-task code { color:#bad7ff; }
+.scene-bridge { top:25%; right:6%; width:51%; box-shadow:0 24px 60px #0007; }
+.scene-stage[data-chapter="3"] .hero-art { opacity:1; }
+.hero-loop { bottom:22px; padding-top:8px; border-top-color:#364b67; }
+.loop-step.active .step-number { color:#c2dfff; }
+.loop-step i { background:#b6dcff; }
+#phase-description { color:#b7c9e2; }
+.scene-disclaimer { font-size:11px; color:#a9bbd3; }
+.scene-disclaimer:hover { color:#e9f4ff; text-decoration:underline; }
+.workflow { background:var(--paper); }
+@media (max-height:760px) and (min-width:901px) {
+  .hero-copy { top:14%; }
+  .hero h1 { font-size:46px; }
+  .hero-intro { margin-top:12px; }
+  .hero-actions { margin-top:14px; }
+  .scene-copy { top:25%; }
+  .scene-copy h2 { font-size:40px; }
+  .scene-task { margin-top:20px; padding-top:16px; }
+}
+@media (max-width:900px) {
+  .hero { height:390svh; }
+  .hero-copy { top:15%; }
+  .hero h1 { font-size:clamp(33px,5.8vw,49px); }
+  .hero-intro { font-size:14px; }
+  .hero-actions { gap:22px; }
+  .scene-copy,.chapter-two,.chapter-three { top:112px; left:28px; right:28px; width:auto; max-width:none; }
+  .scene-copy h2 { font-size:34px; }
+  .scene-copy>p { font-size:14px; margin-top:16px; }
+  .scene-task { margin-top:16px; padding-top:12px; }
+  .scene-task>span { font-size:11px; }
+  .scene-bridge { top:43%; left:28px; right:28px; width:auto; max-height:36svh; }
+  .scene-bridge img { max-height:calc(36svh - 34px); object-fit:contain; }
+  .hero-loop { bottom:18px; }
+  #brain-status { bottom:150px; }
+}
+@media (max-width:720px) {
+  .nav-wrap { height:72px; }
+  .site-header nav { background:#071329; border-color:#30425c; }
+  .hero-copy { top:15%; left:20px; right:20px; }
+  .hero h1 { font-size:clamp(31px,7.5vw,45px); }
+  .hero-intro { font-size:13px; line-height:1.8; margin-top:16px; }
+  .hero-actions { margin-top:18px; gap:20px; }
+  .hero-actions .button { min-height:44px; font-size:12px; }
+  .hero-actions .text-link { font-size:12px; }
+  .scene-copy,.chapter-two,.chapter-three { top:98px; left:24px; right:24px; }
+  .scene-copy h2 { font-size:30px; line-height:1.25; }
+  .scene-copy>p { font-size:13px; margin-top:13px; }
+  .scene-task { margin-top:12px; gap:6px; padding-top:10px; }
+  .scene-task strong { font-size:12px; }
+  .scene-bridge { left:20px; right:20px; top:43%; }
+  .scene-disclaimer { font-size:11px; }
+  .loop-controls { gap:14px; }
+  .loop-step { font-size:12px; gap:7px; }
+}
+@media (prefers-reduced-motion:reduce) {
+  #brain-canvas { transition:none; }
+}

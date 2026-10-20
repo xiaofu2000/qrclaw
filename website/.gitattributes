@@ -1,0 +1,2 @@
+# 生成文件包含 Three.js 的原始 GLSL 字符串；可维护源码位于 src/orbit.js。
+site/scripts/orbit.js linguist-generated=true -whitespace
