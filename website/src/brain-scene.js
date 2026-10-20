@@ -36,9 +36,9 @@ export async function createBrainScene(canvas, { onFrame, onFailure } = {}) {
   const environment = new THREE.Scene();
   environment.background = new THREE.Color(0x020611);
   const panels = [
-    { position: [-4, 2, 3], size: [1.2, 7], color: 0xbddaff, intensity: 5 },
+    { position: [-4, 2, 3], size: [1.2, 7], color: 0xbddaff, intensity: 6.5 },
     { position: [4, 1, 0], size: [0.8, 6], color: 0x639fff, intensity: 3 },
-    { position: [0, 5, -2], size: [6, 1.5], color: 0xe1edff, intensity: 4 },
+    { position: [0, 5, -2], size: [6, 1.5], color: 0xe1edff, intensity: 6 },
     { position: [0, -3, 2], size: [4, 0.6], color: 0x3462bd, intensity: 1.5 },
   ].map(({ position, size, color, intensity }) => {
     const panel = new THREE.Mesh(
@@ -95,11 +95,17 @@ export async function createBrainScene(canvas, { onFrame, onFailure } = {}) {
     glassMaterials.add(glass);
     node.material = glass;
   });
-  const rim = new THREE.DirectionalLight(0x7db5ff, 1.5);
+  const lightRig = new THREE.Group();
+  lightRig.position.copy(model.position);
+  const rim = new THREE.DirectionalLight(0x7db5ff, 2.3);
   rim.position.set(-4, 2, -3);
-  const key = new THREE.DirectionalLight(0xdcecff, 0.8);
+  const key = new THREE.DirectionalLight(0xdcecff, 2.4);
   key.position.set(3, 5, 4);
-  scene.add(rim, key);
+  const fill = new THREE.SpotLight(0xeaf4ff, 22, 0, Math.PI / 5, 0.7, 2);
+  fill.position.set(-3, 3, 4);
+  for (const light of [rim, key, fill]) light.target = model;
+  lightRig.add(rim, key, fill);
+  scene.add(lightRig);
 
   let progress = 0;
   let smoothProgress = 0;
@@ -128,6 +134,9 @@ export async function createBrainScene(canvas, { onFrame, onFailure } = {}) {
     const pose = cameraPath(smoothProgress);
     camera.position.copy(pose.position);
     camera.lookAt(pose.target);
+    // 灯组和棚灯反射沿同一平滑视角转动，回退或暂停时不会独自跳变。
+    lightRig.quaternion.copy(camera.quaternion);
+    scene.environmentRotation.setFromQuaternion(camera.quaternion);
     if (camera.fov !== pose.fov) { camera.fov = pose.fov; camera.updateProjectionMatrix(); }
     renderer.render(scene, camera);
     onFrame?.(smoothProgress);

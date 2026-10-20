@@ -24,3 +24,5 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 当前记录：正式首页已接入 AH 玻璃大脑；独立终审查看 16 帧及运镜录屏，视觉要求满足。设计系统与 sidecar 已按最终 CSS 层叠、共享场景和独立窄屏镜头同步；证据位于 `.impeccable/review/home-brain/`。主任务记录 10 项测试和 check 通过；发布状态由实际部署结果另行确认，手机尺寸视口记录不代表手机硬件验证。
 
 终审结论（2026-10-20）：ship。旧设计文档已同步，Persistence 修复 resolved，无剩余阻断项。
+
+同日按用户反馈做窄范围调整：滚动轨道延长至 540svh / 500svh，阻尼降为 3.2；主光、轮廓光、柔边聚光和反射环境随平滑镜头朝向旋转。桌面、平板、手机四阶段构图、前进回退、减少动态与静帧降级已复查，证据在 `.impeccable/review/slow-light/`。

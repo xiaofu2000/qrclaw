@@ -431,7 +431,7 @@
       },
       {
         "name": "scroll-smoothing",
-        "value": "1 - exp(-5.2 * min(dt, 1/30))",
+        "value": "1 - exp(-3.2 * min(dt, 1/30))",
         "purpose": "帧率无关阻尼；精确滚动状态与渲染状态分离，静态模式直接到端点。"
       },
       {

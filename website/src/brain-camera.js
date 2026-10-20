@@ -37,6 +37,6 @@ export function createCameraPath(compact) {
 /** 采用已安装 Scroll Worlds skill 的帧率无关阻尼；长暂停后不跨越整条路径。 */
 export function dampProgress(current, target, seconds) {
   const dt = Math.max(0, Math.min(Number.isFinite(seconds) ? seconds : 0, 1 / 30));
-  const next = current + (target - current) * (1 - Math.exp(-5.2 * dt));
+  const next = current + (target - current) * (1 - Math.exp(-3.2 * dt));
   return Math.abs(next - target) < 0.00005 ? target : next;
 }

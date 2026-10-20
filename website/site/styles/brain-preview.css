@@ -17,7 +17,7 @@ a:focus-visible, button:focus-visible { outline: 2px solid #a8d9ff; outline-offs
 .wordmark { font-size: 26px; font-weight: 700; letter-spacing: -.04em; }
 .header-link { display: inline-flex; align-items: center; gap: 16px; padding: 10px 0; font-size: 13px; }
 .header-link:hover, .text-link:hover, footer a:hover { color: #a8d9ff; }
-.scroll-track { height: 240svh; }
+.scroll-track { height: 290svh; }
 .stage { position: sticky; top: 0; height: 100svh; overflow: hidden; isolation: isolate; }
 .backlight { position: absolute; inset: 0; z-index: -1; background: radial-gradient(ellipse at 52% 70%, #153363 0, #08162d 33%, #030916 68%); }
 #brain-canvas { position: absolute; width: 100%; height: 100%; inset: 0; }

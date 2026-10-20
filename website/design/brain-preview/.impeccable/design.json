@@ -134,7 +134,7 @@
       },
       {
         "name": "shared-camera-damping",
-        "value": "1 - exp(-5.2 * min(dt, 1/30))",
+        "value": "1 - exp(-3.2 * min(dt, 1/30))",
         "purpose": "共享官网位置与视线曲线；静态模式直接使用关键端点，无模型呼吸。"
       },
       {

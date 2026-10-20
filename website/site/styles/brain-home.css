@@ -2,7 +2,7 @@
 :root { --paper:#030916; --night:#030916; --soft:#0c1524; --ink:#eef5ff; --muted:#aebfd4; --line:#30425c; --blue:#aac9ff; }
 .site-header { background:linear-gradient(#030916 12%,#030916e0 65%,#03091600); }
 .nav-wrap { height:82px; border-bottom:0; }
-.hero { height:410svh; background:#030916; }
+.hero { height:540svh; background:#030916; }
 .scene-stage { min-height:0; }
 .scene-stage:after { background:linear-gradient(transparent,#030916 90%); height:125px; }
 .hero-art,.scene-stage[data-chapter="1"] .hero-art,.scene-stage[data-chapter="2"] .hero-art { inset:0; }
@@ -46,7 +46,7 @@
   .scene-task { margin-top:20px; padding-top:16px; }
 }
 @media (max-width:900px) {
-  .hero { height:390svh; }
+  .hero { height:500svh; }
   .hero-copy { top:15%; }
   .hero h1 { font-size:clamp(33px,5.8vw,49px); }
   .hero-intro { font-size:14px; }
