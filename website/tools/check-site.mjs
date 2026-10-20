@@ -14,7 +14,7 @@ async function checkPage(name) {
   for (const [, target] of html.matchAll(/\b(?:src|href)="([^"]+)"/g)) {
     if (/^(https?:|data:|mailto:)/.test(target)) continue;
     if (target.startsWith('#')) assert(ids.includes(target.slice(1)), `${name} 中不存在 ${target}`);
-    else await access(path.join(root, target.split('#')[0]));
+    else await access(path.join(root, target.split(/[?#]/)[0]));
   }
   for (const [, target] of html.matchAll(/\b(?:aria-controls|aria-labelledby|data-copy)="([^"]+)"/g)) {
     for (const id of target.split(' ')) assert(ids.includes(id), `${name} 的目标 ${id} 不存在`);

@@ -14,7 +14,7 @@ export async function createBrainScene(canvas, { onFrame, onFailure } = {}) {
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
   // 折射必须采样场景背景；透明画布会让 Three.js 的透射缓冲退回白底。
   renderer.setClearColor(0x030916, 1);
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, canvas.clientWidth <= 900 ? 1.35 : 1.7));
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, canvas.clientWidth <= 900 ? 1.25 : 1.4));
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.18;
   const scene = new THREE.Scene();
@@ -159,7 +159,7 @@ export async function createBrainScene(canvas, { onFrame, onFailure } = {}) {
       cameraPath = createCameraPath(compact);
       smoothProgress = progress;
     }
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, compact ? 1.35 : 1.7));
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, compact ? 1.25 : 1.4));
     renderer.setSize(width, height, false);
     camera.aspect = width / height;
     camera.updateProjectionMatrix();

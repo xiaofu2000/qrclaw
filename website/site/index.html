@@ -17,8 +17,8 @@
   <link rel="preload" href="assets/fonts/noto-sans-sc-headings.ttf" as="font" type="font/ttf" crossorigin>
   <link rel="preload" href="assets/fonts/satoshi-700.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="styles/main.css">
-  <link rel="stylesheet" href="styles/brain-home.css">
-  <script type="module" src="scripts/app.js"></script>
+  <link rel="stylesheet" href="styles/brain-home.css?v=sync-20261020-3">
+  <script type="module" src="scripts/app.js?v=sync-20261020-3"></script>
 <noscript><style>.hero{height:100svh}.loop-controls,.motion-toggle{display:none}</style></noscript>
 </head>
 <body>
@@ -43,35 +43,32 @@
         </div>
         <p id="brain-status" role="status">正在准备三维画面…</p>
         <div class="hero-copy" data-chapter="0">
-          <h1 id="hero-title">让想法，开始执行。</h1>
-          <p class="hero-intro">QRClaw，你的本地 AI 工作伙伴。<br class="mobile-break">能调用工具，也能积累经验。</p>
-          <div class="hero-actions"><a class="button button-white" href="#start">开始使用 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14m-6-6 6 6-6 6"/></svg></a><a class="text-link light" href="#workflow">看真实演示 <span class="play-icon" aria-hidden="true"></span></a></div>
+          <h1 id="hero-title">让想法，<br>开始执行。</h1>
+          <p class="hero-intro">你的本地 AI 工作伙伴。</p>
+          <div class="hero-actions"><a class="text-link light" href="#start">开始使用 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14m-6-6 6 6-6 6"/></svg></a></div>
         </div>
         <div class="scene-copy chapter-one" data-chapter="1" hidden>
           <h2>把一件大事，<br>拆成下一步。</h2>
-          <p>简单任务直接执行。<br>需要规划时，让 Plan 把目标展开，<br>独立子任务交给子 Agent。</p>
-          <div class="scene-task"><span>任务示意</span><strong>整理项目笔记，生成工作摘要。</strong><div><i></i>读取材料 <i></i>整理要点 <i></i>输出结果</div></div>
+          <p>简单任务直接执行，复杂工作按需规划。</p>
         </div>
         <div class="scene-copy chapter-two" data-chapter="2" hidden>
           <h2>工具在行动，<br>你始终看得见。</h2>
-          <p>文件、Shell、网页与 MCP。<br>让合适的工具进入任务，<br>每一次调用都有过程与结果。</p>
-          <div class="scene-task"><span>执行示意</span><code>read_file → write_file</code><strong>从一段要求，到一个真实文件。</strong></div>
+          <p>每一次工具调用，都有过程和结果可查。</p>
         </div>
         <div class="scene-copy chapter-three" data-chapter="3" hidden>
           <h2>完成这一次，<br>记住下一次。</h2>
-          <p>值得复用的经验沉淀为 Wiki。<br>有来源、能编辑，让下一次对话<br>拥有可以继续工作的上下文。</p>
+          <p>把有用的经验，留给下一次工作。</p>
           <a class="text-link light" href="#workflow">进入真实工作台演示 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14m-6-6 6 6-6 6"/></svg></a>
         </div>
         <div class="scene-bridge" aria-hidden="true"><div class="bridge-bar"><span>QRClaw</span><span>你的本地工作空间</span></div><img src="assets/product-result.webp" width="1440" height="1000" alt=""></div>
         <div class="hero-loop container">
           <div class="loop-stages"><div class="loop-controls" role="group" aria-label="跳转工作原理阶段">
-            <button class="loop-step active" data-phase="0" aria-pressed="true"><span class="step-number">01</span><span>唤醒</span><i></i></button>
-            <button class="loop-step" data-phase="1" aria-pressed="false"><span class="step-number">02</span><span>拆解</span><i></i></button>
-            <button class="loop-step" data-phase="2" aria-pressed="false"><span class="step-number">03</span><span>执行</span><i></i></button>
-            <button class="loop-step" data-phase="3" aria-pressed="false"><span class="step-number">04</span><span>记忆</span><i></i></button>
-          </div><p id="phase-description">向下滚动，展开一次任务的工作原理。</p></div>
-          <a class="scene-disclaimer" href="credits.html">Human Brain · AH / CC BY 4.0</a>
-          <button class="motion-toggle" id="motion-toggle" aria-pressed="false" aria-label="暂停页面动画"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M7 5v10M13 5v10"/></svg><span>暂停动画</span></button>
+            <button class="loop-step active" data-phase="0" aria-label="01 唤醒" title="唤醒" aria-pressed="true"><span class="step-number">01</span><i></i></button>
+            <button class="loop-step" data-phase="1" aria-label="02 拆解" title="拆解" aria-pressed="false"><span class="step-number">02</span><i></i></button>
+            <button class="loop-step" data-phase="2" aria-label="03 执行" title="执行" aria-pressed="false"><span class="step-number">03</span><i></i></button>
+            <button class="loop-step" data-phase="3" aria-label="04 记忆" title="记忆" aria-pressed="false"><span class="step-number">04</span><i></i></button>
+          </div><p class="sr-only" id="phase-description">向下滚动，展开一次任务的工作原理。</p></div>
+          <button class="motion-toggle" id="motion-toggle" aria-pressed="false" aria-label="暂停页面动画"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M7 5v10M13 5v10"/></svg><span class="sr-only">暂停动画</span></button>
         </div>
       </div>
     </section>

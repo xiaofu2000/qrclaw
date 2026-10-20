@@ -1,6 +1,6 @@
 import { WebsiteModel } from './model.js';
 import { phases, scenes, memories, entries } from './content.js';
-import { sampleTimeline } from './scene-state.js';
+import { sampleTimeline, samplePresentation } from './scene-state.js?v=sync-20261020-3';
 
 const reduced = window.matchMedia('(prefers-reduced-motion: reduce)');
 const model = new WebsiteModel(reduced.matches);
@@ -11,6 +11,7 @@ const entryButtons = [...document.querySelectorAll('[data-entry]')];
 const motionButton = document.querySelector('#motion-toggle');
 const playbackButton = document.querySelector('#story-play');
 let brain;
+let brainReady = false;
 let rendered = {};
 let toastTimer;
 
@@ -182,21 +183,26 @@ function updateScroll(force = false) {
   const { phase } = sampleTimeline(progress);
   const presentation = model.state.reducedMotion || model.state.paused ? phase / 3 : progress;
   model.update({ progress: presentation, phase });
-  chapterElements.forEach(el => { el.hidden = Number(el.dataset.chapter) !== phase; });
-  document.querySelector('.scene-stage').dataset.chapter = String(phase);
-  chapterElements.forEach(el => {
-    const distance = Math.abs(presentation * 3 - Number(el.dataset.chapter));
-    el.style.opacity = String(Math.max(0, Math.min(1, (0.5 - distance) / 0.15)));
-  });
-  if (!brain) renderBrainTransition(presentation);
+  if (!brainReady) renderBrainTransition(phase / 3);
 }
 
-/** 工作台交接跟随实际镜头进度；导航与可访问状态仍使用精确滚动位置。 */
+/** 正文、主体和工作台共用实际渲染进度，不能让目标章节抢在镜头之前出现。 */
 function renderBrainTransition(presentation) {
+  const frame = samplePresentation(presentation);
+  const stage = document.querySelector('.scene-stage');
+  stage.dataset.chapter = String(frame.chapter);
+  stage.dataset.presentation = String(presentation);
+  chapterElements.forEach(el => {
+    const active = Number(el.dataset.chapter) === frame.chapter && frame.opacity > 0;
+    el.hidden = !active;
+    el.inert = !active || frame.opacity < 0.5;
+    el.style.opacity = String(active ? frame.opacity : 0);
+    el.style.transform = `translateY(${frame.offset}px)`;
+  });
   const bridge = document.querySelector('.scene-bridge');
-  const reveal = Math.max(0, Math.min(1, (presentation - 0.78) / 0.18));
+  const reveal = frame.bridge;
   bridge.style.opacity = String(reveal);
-  bridge.style.transform = `translateY(${(1 - reveal) * 48}px) scale(${0.94 + reveal * 0.06})`;
+  bridge.style.transform = `translateY(${(1 - reveal) * 60}px) scale(${0.9 + reveal * 0.1})`;
   document.querySelector('.hero-art').style.opacity = String(1 - reveal * 0.72);
 }
 window.addEventListener('scroll', () => { if (!scrollFrame) scrollFrame = requestAnimationFrame(() => updateScroll()); }, { passive: true });
@@ -211,20 +217,23 @@ async function loadBrain() {
   const art = document.querySelector('.hero-art');
   const status = document.querySelector('#brain-status');
   try {
-    const { createBrainScene } = await import('./brain-scene.js');
+    const { createBrainScene } = await import('./brain-scene.js?v=sync-20261020-3');
     brain = await createBrainScene(document.querySelector('#brain-canvas'), {
       onFrame: renderBrainTransition,
       onFailure(message) {
+        brainReady = !message;
         art.classList.toggle('ready', !message);
         status.hidden = !message;
         status.textContent = message || '';
+        if (message) renderBrainTransition(sampleTimeline(model.state.progress).phase / 3);
       },
     });
     brain.update(model.state.progress, model.state.paused || model.state.reducedMotion);
+    brainReady = true;
     art.classList.add('ready');
     status.hidden = true;
     if (location.hostname === '127.0.0.1' && new URLSearchParams(location.search).has('scene-debug')) {
-      const { mountSceneDebug } = await import('./scene-debug.js');
+      const { mountSceneDebug } = await import('./scene-debug.js?v=sync-20261020-3');
       mountSceneDebug(brain, model);
     }
   } catch (error) {

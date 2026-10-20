@@ -102,7 +102,7 @@ components:
 
 ## Elevation & Depth
 
-界面没有盒阴影。深度来自原模型几何、物理玻璃、实际 WebGL 暗场和灯光。场景背景是 256×256 径向纹理：中心 `(130,172)`、半径 175，色标为 `0: #1a3765`、`.45: #08162f`、`1: #02050d`；渲染采用 ACESFilmic、曝光 1.18，设备像素比上限为桌面 1.7、画布宽度 ≤900px 为 1.35。
+界面没有盒阴影。深度来自原模型几何、物理玻璃、实际 WebGL 暗场和灯光。场景背景是 256×256 径向纹理：中心 `(130,172)`、半径 175，色标为 `0: #1a3765`、`.45: #08162f`、`1: #02050d`；渲染采用 ACESFilmic、曝光 1.18，设备像素比上限为桌面 1.4、画布宽度 ≤900px 为 1.25。
 
 运行时 `MeshPhysicalMaterial`：`color #e5f3ff`、`roughness .13`、`metalness 0`、`transmission 1`、`thickness .9`、`ior 1.42`、`attenuationColor #a8daff`、`attenuationDistance 4`、`clearcoat 0`、`transparent true`、`opacity .68`、`DoubleSide`、`depthWrite false`。保留原法线贴图，`normalScale (.22,.22)`；这包含部分透明混合，不描述成纯物理透射。
 

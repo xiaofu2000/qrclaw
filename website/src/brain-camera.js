@@ -4,7 +4,7 @@ import { sampleTimeline } from '../site/scripts/scene-state.js';
 /** 正式官网四个镜头端点；窄屏为上方文案保留独立安全区。 */
 export const cameraChapters = {
   desktop: [
-    { position: [-2.5, 0.4, 9.5], target: [0, 0.55, 0], fov: 34 },
+    { position: [-2.5, 0.4, 9.5], target: [-1.35, -0.15, 0], fov: 34 },
     { position: [-0.4, 0.9, 7.2], target: [-1.6, 0, 0], fov: 35 },
     { position: [3.8, 1.4, 6.2], target: [1.7, 0.1, 0], fov: 36 },
     { position: [4.2, 3.2, 10.8], target: [2.4, 1.75, 0], fov: 35 },
