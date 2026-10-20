@@ -416,7 +416,7 @@ def test_semantic_recall_when_keyword_search_misses(temp_dir, monkeypatch):
     wiki.save_page("回复风格", "尽量简洁")
     monkeypatch.setattr(
         "qrclaw.memory.wiki.selection.WikiPageSelector.select",
-        lambda self, query, messages, **kwargs: SimpleNamespace(selected=[SimpleNamespace(name="回复风格")]),
+        lambda self, query, messages, **kwargs: SimpleNamespace(selected=[SimpleNamespace(name="回复风格", relevance=1.0)]),
     )
 
     pages = wiki.select_relevant_pages("怎样回答用户", [], top_k=1)
