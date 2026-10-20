@@ -1,7 +1,6 @@
 import { WebsiteModel } from './model.js';
 import { phases, scenes, memories, entries } from './content.js';
 import { sampleTimeline, samplePresentation } from './scene-state.js?v=sync-20261020-3';
-import { bindHeroScroll } from './hero-scroll.js';
 
 const reduced = window.matchMedia('(prefers-reduced-motion: reduce)');
 const model = new WebsiteModel(reduced.matches);
@@ -16,7 +15,6 @@ let brainReady = false;
 let rendered = {};
 let toastTimer;
 let displayedPhase = -1;
-let displayedProgress = 0;
 
 /** 用可读文字提供复制成功与失败反馈。 */
 function showToast(text) {
@@ -98,7 +96,7 @@ function wireTabs(buttons, select) {
   }));
 }
 
-/** 点击标签与滑动分段都落到同一原生滚动坐标。 */
+/** 标签直接定位到章节；普通滚动完全由浏览器处理。 */
 function goToPhase(phase) {
   const hero = document.querySelector('#top');
   const progress = phase / 3;
@@ -185,7 +183,6 @@ function updateScroll(force = false) {
 /** 正文、主体和工作台共用实际渲染进度，不能让目标章节抢在镜头之前出现。 */
 function renderBrainTransition(presentation) {
   const frame = samplePresentation(presentation);
-  displayedProgress = presentation;
   // 标签等正文到位再更新，不能提前标记仍在追赶的目标章节。
   if (frame.opacity >= 0.99 && frame.chapter !== displayedPhase) {
     displayedPhase = frame.chapter;
@@ -217,11 +214,6 @@ window.addEventListener('resize', () => updateScroll(true));
 motionButton.addEventListener('click', () => updateScroll(true));
 reduced.addEventListener('change', () => updateScroll(true));
 updateScroll(true);
-const disposeHeroScroll = bindHeroScroll(hero, {
-  getPhase: () => model.state.phase,
-  isSettled: () => !brainReady || Math.abs(displayedProgress - model.state.progress) < 0.02,
-  goTo: goToPhase,
-});
 const sceneTimer = setInterval(() => model.advance('scene'), 5000);
 
 /** 先展示真实模型静帧；三维失败时保持全部正文与导航可用。 */
@@ -244,8 +236,9 @@ async function loadBrain() {
     brainReady = true;
     art.classList.add('ready');
     status.hidden = true;
-    if (location.hostname === '127.0.0.1' && new URLSearchParams(location.search).has('scene-debug')) {
-      const { mountSceneDebug } = await import('./scene-debug.js?v=sync-20261020-3');
+    const params = new URLSearchParams(location.search);
+    if ((location.hostname === '127.0.0.1' && params.has('scene-debug')) || params.has('scroll-debug')) {
+      const { mountSceneDebug } = await import('./scene-debug.js?v=native-20261020');
       mountSceneDebug(brain, model);
     }
   } catch (error) {
@@ -262,7 +255,6 @@ window.addEventListener('pagehide', event => {
     cancelAnimationFrame(scrollFrame);
     clearInterval(sceneTimer);
     observer.disconnect();
-    disposeHeroScroll();
     brain?.dispose();
   }
 });

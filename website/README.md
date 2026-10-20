@@ -22,15 +22,14 @@ npm run dev
 - `site/scripts/content.js`：步骤、记忆示意与使用方式数据。
 - `site/scripts/model.js`：与 DOM 无关的交互状态。
 - `site/scripts/scene-state.js`：四阶段镜头的进度、停顿与缓动计算。
-- `site/scripts/hero-scroll.js`：首屏单次手势分段、惯性合并与边界放行。
 - `site/scripts/app.js`：渲染、键盘、复制和观察器。
 - `src/brain-scene.js`：共享 AH 原模型、玻璃材质、灯光、渲染与资源释放。
 - `src/brain-camera.js`：桌面 / compact 镜头端点、位置与视线曲线、阻尼；场景修改后运行 `npm run build`。
-- `site/scripts/scene-debug.js`：仅 `127.0.0.1` 加 `?scene-debug` 时载入的诊断面板。
+- `site/scripts/scene-debug.js`：显式诊断参数下加载的帧指标与被动滚动日志。
 - `site/assets/`：本地字体、真实产品截图、图标与素材许可。
 - `docs/`：素材、实测依据及验收记录。
 
-界面与逻辑分离。滚动坐标保存目标位置，平滑渲染状态统一控制正文、选中标签、相机、灯光与工作台交接；首屏一次滚轮或触摸手势只推进一段；模型固定。暂停或减少动态效果直接切换静态关键镜头，离屏、后台与镜头到位时停止持续绘制。3D 加载失败或 context 丢失时显示真实模型静帧，保留全部文字与入口。独立 `brain-preview.html` 与官网共享渲染器，但将样片 0..1 进度映射到官网 0..1/3，仅播放前两个镜头端点。
+界面与逻辑分离。滚动坐标保存目标位置，平滑渲染状态统一控制正文、选中标签、相机、灯光与工作台交接；滚动不等待镜头或下一次手势；模型固定。暂停或减少动态效果直接切换静态关键镜头，离屏、后台与镜头到位时停止持续绘制。3D 加载失败或 context 丢失时显示真实模型静帧，保留全部文字与入口。独立 `brain-preview.html` 与官网共享渲染器，但将样片 0..1 进度映射到官网 0..1/3，仅播放前两个镜头端点。
 
 ## 模型与运镜来源
 
@@ -38,14 +37,14 @@ npm run dev
 
 已安装并应用 [build-threejs-scroll-worlds](https://github.com/MengTo/Skills/tree/398cd41c86ba42fbb30e944ae507f463648f08b7/agent-skills/web-design/build-threejs-scroll-worlds)，固定版本 `398cd41c86ba42fbb30e944ae507f463648f08b7`；本地位于 `/Users/admin/.codex/skills/build-threejs-scroll-worlds/SKILL.md`。曲线、阻尼、独立窄屏镜头与渲染状态分离的应用记录见 [运镜说明](docs/brain-home-motion.md)。[来源快照](docs/skill-source.json) 中的 stars 属于仓库，不是单项 skill 效果评分。
 
-## 本地场景诊断
+## 场景与滚动诊断
 
 ```bash
 npm run build:brain
 npm run dev
 ```
 
-打开 `http://127.0.0.1:8877/?scene-debug`，可查看 exact / rendered 进度、帧间隔与渲染计数，下载真实静帧、录制前进回退、预览减少动态或模拟 context 丢失。诊断入口仅在本地 `127.0.0.1` 启用。
+打开 `http://127.0.0.1:8877/?scene-debug`，可查看 exact / rendered 进度、帧间隔与渲染计数，下载真实静帧、录制前进回退、预览减少动态或模拟 context 丢失。线上加 `?scroll-debug=1` 可显式打开同一诊断面板，查看输入次数、被阻止次数和实际滚动位置；监听器均为被动监听，日志不上传。正常无参数页面不加载诊断代码。
 
 本轮终审的 16 帧与录屏见 `.impeccable/review/home-brain/`；10 项测试和 check 已通过。录制期间、本地桌面浏览器 DPR 1 的帧间隔中位数 / p95 为：桌面 16.7 / 25.1ms，手机尺寸视口 8.8 / 17.1ms；后者不是手机硬件结果。
 
