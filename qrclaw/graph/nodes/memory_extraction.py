@@ -141,7 +141,30 @@ class MemoryExtractionNode:
             })
             if extraction is None:
                 raise RuntimeError("记忆分析失败")
-            return runner.process_extraction_result(extraction, sources=sources, explicit=True)
+            written = runner.process_extraction_result(extraction, sources=sources, explicit=True)
+            if self.session is not None:
+                self._acknowledge_sources(sources)
+            return written
+
+    def _acknowledge_sources(self, sources: list[dict]) -> None:
+        """主动写入已分析过的会话正文不再进入自动批次，避免同一内容重复整理。"""
+        covered = {(source["message_id"], source["version"]) for source in sources}
+
+        def change(state):
+            """只确认已分析版本，保留分析期间新增或编辑的正文。"""
+            if self.session is not None and not self.session._path.exists():
+                return
+            state.pending_messages = [m for m in state.pending_messages
+                                      if (m["uuid"], _signature(m)) not in covered]
+            pending_ids = {m["uuid"] for m in state.pending_messages}
+            state.preserved_message_ids = [key for key in state.preserved_message_ids if key in pending_ids]
+            for message_id, version in covered:
+                if message_id not in pending_ids:
+                    state.seen_messages[message_id] = version
+            state.force_pending = bool(state.preserved_message_ids)
+            state.extraction_status = "pending" if state.pending_messages else "completed"
+            state.last_error = ""
+        self.indexer.update(change)
 
     def _batch_is_current(self, batch: list[dict]) -> bool:
         """写入前检查会话和消息版本，阻止已删改消息的旧结果落盘。"""

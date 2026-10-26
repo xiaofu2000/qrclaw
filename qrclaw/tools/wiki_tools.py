@@ -88,7 +88,7 @@ class LintWikiArgs(BaseModel):
     semantic: bool = Field(default=False, description="用户明确要求模型检查跨页语义矛盾时才启用")
 
 
-@register(description="主动记住用户确认的偏好、项目配置、约束和可复用经验；一次性回复和未确认推测不要写入。", args_model=WriteWikiPageArgs, agents=[AgentType.MAIN])
+@register(description="仅在用户明确要求记住某事时调用（如“记住”“以后都这样”）；其他长期信息由后台自动整理，不要自行调用。", args_model=WriteWikiPageArgs, agents=[AgentType.MAIN])
 def write_wiki_page(content: str) -> str:
     """主动记忆立即执行，并同步维护索引和来源。"""
     try:

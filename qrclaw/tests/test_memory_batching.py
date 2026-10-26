@@ -242,6 +242,105 @@ def test_manual_memory_ignores_automatic_threshold_and_cooldown(tmp_path, virtua
     assert node.get_stats()["total_extractions"] == 0
 
 
+@pytest.mark.parametrize("needs_update", [True, False])
+def test_manual_memory_consumes_analyzed_session_messages(tmp_path, virtual_time, needs_update):
+    """绑定会话时主动写入已分析全部正文，自动批次不再重复处理，之后的新消息照常排队。"""
+    workspace = Workspace(_root=tmp_path)
+    session = Session(workspace.sessions_dir, resume=False)
+    for message in _turns(3):
+        session.add(message)
+    node = MemoryExtractionNode(WikiMemory(workspace.memory_dir), llm_analyzer=_analyzer(needs_update), session=session)
+    node.preserve_before_compression(session.messages)
+    node.indexer.update(lambda state: setattr(state, "last_error", "上次提取失败"))
+    assert node.get_pending_count() == 1
+    assert node.write_now("请记住我喜欢中文回复") == int(needs_update)
+    assert node.get_pending_count() == 0
+    state = node.indexer.get_state()
+    assert state.preserved_message_ids == []
+    assert not state.force_pending
+    assert state.extraction_status == "completed"
+    assert state.last_error == ""
+    node.collect(session.messages)
+    assert node.get_pending_count() == 0
+    session.add({"role": "user", "content": "新的偏好", "uuid": "u9"})
+    node.collect(session.messages)
+    assert [m["uuid"] for m in node.indexer.get_state().pending_messages] == ["u9"]
+
+
+@pytest.mark.parametrize("edited", [True, False])
+def test_manual_memory_keeps_messages_changed_during_analysis(tmp_path, virtual_time, edited):
+    """主动分析期间新到达或被编辑的正文保留一份，新消息继续遵守自动提取门槛。"""
+    workspace = Workspace(_root=tmp_path)
+    session = Session(workspace.sessions_dir, resume=False)
+    for message in _turns(3):
+        session.add(message)
+    analyzer = _analyzer()
+    node = MemoryExtractionNode(WikiMemory(workspace.memory_dir), llm_analyzer=analyzer, session=session)
+    node.preserve_before_compression(session.messages)
+    messages = list(session.messages)
+    changed = {"role": "user", "content": "改为英文回复", "uuid": "u0" if edited else "u9"}
+    if edited:
+        messages[0] = changed
+    else:
+        messages.append(changed)
+
+    def analyze(*args):
+        """模拟模型调用期间另一请求提交新的正文快照。"""
+        node.collect(messages)
+        return ExtractionSchema(needs_update=False, pages=[])
+
+    analyzer.analyze.side_effect = analyze
+    assert node.write_now("请记住我喜欢中文回复") == 0
+    node.collect(messages)
+    state = node.indexer.get_state()
+    assert state.pending_messages == [changed]
+    if not edited:
+        assert state.preserved_message_ids == []
+        assert not state.force_pending
+        assert node.next_delay() is None
+
+
+@pytest.mark.parametrize("failed_stage", ["analysis", "save"])
+def test_failed_manual_memory_keeps_pending_sources(tmp_path, virtual_time, failed_stage):
+    """主动分析或保存失败时不确认来源，保留自动批次供之后重试。"""
+    workspace = Workspace(_root=tmp_path)
+    session = Session(workspace.sessions_dir, resume=False)
+    for message in _turns(3):
+        session.add(message)
+    analyzer = _analyzer()
+    node = MemoryExtractionNode(WikiMemory(workspace.memory_dir), llm_analyzer=analyzer, session=session)
+    node.preserve_before_compression(session.messages)
+    before = node.indexer.get_state()
+    if failed_stage == "analysis":
+        analyzer.analyze.return_value = None
+    else:
+        node._get_runner().process_extraction_result = MagicMock(side_effect=RuntimeError("保存失败"))
+    with pytest.raises(RuntimeError):
+        node.write_now("请记住我喜欢中文回复")
+    assert node.indexer.get_state() == before
+
+
+def test_manual_memory_does_not_recreate_deleted_session_progress(tmp_path, virtual_time):
+    """主动分析期间删除会话后，结果确认不能重建已清理的提取进度。"""
+    workspace = Workspace(_root=tmp_path)
+    session = Session(workspace.sessions_dir, resume=False)
+    session.add(_turns(1)[0])
+    analyzer = _analyzer()
+    node = MemoryExtractionNode(WikiMemory(workspace.memory_dir), llm_analyzer=analyzer, session=session)
+    node.collect(session.messages)
+    progress_path, = (workspace.memory_dir / ".extractions").glob("*.json")
+
+    def analyze(*args):
+        """模拟模型调用期间会话及其提取进度被清理。"""
+        session._path.unlink()
+        node.indexer.discard()
+        return ExtractionSchema(needs_update=False, pages=[])
+
+    analyzer.analyze.side_effect = analyze
+    assert node.write_now("请记住我喜欢中文回复") == 0
+    assert not progress_path.exists()
+
+
 def test_compression_preserves_original_pending_body(tmp_path, virtual_time):
     """压缩前持久化原文，恢复后分析一次原文，不重复分析摘要。"""
     workspace = Workspace(_root=tmp_path)
