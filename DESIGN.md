@@ -1,264 +1,97 @@
 ---
 name: QRClaw
-description: 蓝图工作室——明亮、清晰、由真实任务状态驱动的日常 AI 工作台
+description: 工作项——深浅两套主题、聊天为主体、属性栏常驻的日常 AI 工作台
 colors:
-  accent: "#315cda"
-  accent-hover: "#254ab9"
-  accent-soft: "#eaf0ff"
-  canvas: "#edf2f8"
-  surface: "#fff"
-  surface-soft: "#f5f7fb"
-  ink: "#202c40"
-  muted: "#5d6b80"
-  line: "#dce3ed"
-  danger: "#b33842"
-  success: "#28725c"
-  warning: "#946614"
+  dark:
+    canvas: "#0a0a0b"
+    surface: "#0f0f11"
+    surface-raised: "#16161a"
+    surface-soft: "#1c1c21"
+    ink: "#e6e6e8"
+    ink-2: "#c4c4ca"
+    muted: "#8e8e96"
+    faint: "#86868e"
+    line: "#232327"
+    line-strong: "#2e2e34"
+    accent: "#6d8bff"
+    accent-soft: "#1d2445"
+    user-bubble: "#4a63e0"
+    danger: "#f2788a"
+    success: "#4cb782"
+    warning: "#e2a336"
+  light:
+    canvas: "#f5f5f7"
+    surface: "#fcfcfd"
+    surface-raised: "#fff"
+    surface-soft: "#eeeef2"
+    ink: "#18181b"
+    ink-2: "#3a3a42"
+    muted: "#5f5f68"
+    faint: "#696972"
+    line: "#e5e5ea"
+    line-strong: "#d7d7de"
+    accent: "#3d5ee8"
+    accent-soft: "#e9edff"
+    user-bubble: "#3d5ee8"
+    danger: "#c4314b"
+    success: "#23895a"
+    warning: "#b06e0a"
 typography:
-  headline:
-    fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif"
-    fontSize: "32px"
-    fontWeight: 650
-    lineHeight: 1.35
-    letterSpacing: "-0.03em"
-  page-title:
-    fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif"
-    fontSize: "22px"
-    fontWeight: 650
-    lineHeight: 1.3
-    letterSpacing: "-0.025em"
-  document-title:
-    fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif"
-    fontSize: "24px"
-    fontWeight: 650
-    lineHeight: 1.45
-    letterSpacing: "-0.025em"
-  body:
-    fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif"
-    fontSize: "15px"
-    fontWeight: 400
-    lineHeight: 1.85
-  reading:
-    fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif"
-    fontSize: "15px"
-    fontWeight: 400
-    lineHeight: 1.85
-  label:
-    fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif"
-    fontSize: "12px"
-    fontWeight: 400
-    lineHeight: 1.5
-rounded:
-  compact: "6px"
-  control: "8px"
-  list: "9px"
-  action: "10px"
-  card: "12px"
-  radius: "14px"
-  composer: "16px"
-  work-surface: "18px"
-spacing:
-  "4": "4px"
-  "8": "8px"
-  "12": "12px"
-  "16": "16px"
-  "20": "20px"
-  "24": "24px"
-  "28": "28px"
-  "32": "32px"
-  "36": "36px"
-components:
-  button-primary:
-    backgroundColor: "{colors.accent}"
-    textColor: "{colors.surface}"
-    rounded: "{rounded.action}"
-    width: "100%"
-  button-primary-hover:
-    backgroundColor: "{colors.accent-hover}"
-  button-secondary:
-    backgroundColor: "{colors.surface}"
-    textColor: "{colors.ink}"
-    typography: "{typography.label}"
-    rounded: "{rounded.control}"
-    padding: "7px 11px"
-  button-icon:
-    backgroundColor: "transparent"
-    textColor: "{colors.muted}"
-    rounded: "{rounded.control}"
-    width: "36px"
-    height: "36px"
-  button-send:
-    backgroundColor: "{colors.accent}"
-    textColor: "{colors.surface}"
-    rounded: "{rounded.action}"
-    width: "36px"
-    height: "36px"
-  input-search:
-    backgroundColor: "{colors.surface}"
-    textColor: "{colors.ink}"
-    rounded: "{rounded.list}"
-    padding: "0 11px"
-  navigation-item:
-    backgroundColor: "transparent"
-    textColor: "#4e607a"
-    rounded: "{rounded.list}"
-    padding: "10px 12px"
-  plan-switch:
-    backgroundColor: "{colors.surface-soft}"
-    textColor: "{colors.muted}"
-    rounded: "{rounded.compact}"
-    padding: "6px 8px"
-  subagent-card:
-    backgroundColor: "{colors.surface}"
-    textColor: "{colors.accent}"
-    rounded: "{rounded.card}"
-    padding: "15px 16px"
-    width: "100%"
-  composer:
-    backgroundColor: "{colors.surface}"
-    textColor: "{colors.ink}"
-    rounded: "{rounded.composer}"
-    padding: "16px"
+  family: "Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif"
+  mono: "'JetBrains Mono', ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace"
+  base: "15px / 1.6"
+  reply: "16px / 1.85"
+  user-bubble: "15.5px / 1.75"
+  session-title: "24px / 1.45, 600"
+  label: "13px"
+sizes:
+  sidebar: "272px（≤1100px 为 240px）"
+  properties: "340px，宽于 1100px 常驻，否则为抽屉"
+  chat-column: "最大 840px"
+  sidebar-sprite: "56px 圆角底板"
+  chat-avatar: "36px（手机 30px）"
+  composer: "默认一行，最高 180px 后内部滚动"
 ---
 
 # Design System: QRClaw
 
 ## Overview
 
-**Creative North Star: "蓝图工作室"**
+**北极星：「工作项」。** 每个会话都是一项持续几天的工作，有状态、有规模、有留下的经验。界面结构借鉴 Linear 的 issue 详情：左边是导航与会话，中间是对话，右边是属性。对话区按聊天软件的习惯组织，你和 QRClaw 的消息一眼就能分开。
 
-蓝灰色桌面托起明亮的白色工作面，黑色 bloub 伙伴提供持续可见的陪伴与任务状态。界面的个性来自清楚的区域关系、准确的状态反馈和轻盈的留白；主要内容仍是用户输入、回复与记忆正文。
+这一版来自 2026-11-06 的三方向评审，用户在 iA「工作文档」、TE「仪器」、Linear「工作项」三个方向里选了「工作项」，并在原型阶段提出四条调整：同时要深色和浅色、头像和品牌图标要大、输入框默认一行、用户与 Agent 消息要明确区分。原型与评审记录在 `design-demos/`。
 
-操作区保持紧凑，阅读区保留宽松行距。钴蓝集中标识主要动作、当前位置、可访问的链接与正在进行的工作；轻边线和中性色阶组织信息，柔和阴影仅区分工作面与抽屉的空间层级。
-
-**Key Characteristics:**
-- 蓝灰底、白色工作面、钴蓝动作色。
-- 同一套中文系统字体，标题、正文与辅助信息层次分明。
-- 黑色伙伴与文字状态共同反馈真实任务阶段；桌面伙伴固定在侧栏顶部，与 QRClaw 名称和真实状态成组，聊天与记忆保持同一位置和实例；手机延续欢迎区或顶栏伙伴。
-- 独立滚动的工作区域，窄屏通过抽屉与列表、详情切换保留阅读空间。
-
-本文件依据当前 `web/src/styles/global.css`、`web/src/features/memory/memory.css` 与组件代码提取；已有桌面、手机截图仅用于核对组成。frontmatter 是已实现值的规范记录，尚未改写为 CSS 变量的间距和圆角仍是提取尺度。未使用的 `--sidebar` 不纳入色板。色阶预览属于 sidecar 展示数据，不是新增界面配色。
+**关键特征：**
+- 深浅两套主题共用一套变量名，默认跟随系统，侧栏底部可切换为浅色或深色，选择存在浏览器 `qrclaw.theme`。
+- 面板之间只用 1px 线分隔，不用投影堆层级；只有窄屏抽屉有阴影。
+- 小精灵是唯一的动画实例：桌面在侧栏顶部，手机在顶栏。聊天和属性栏里的 QRClaw 头像是同一引擎渲染的静态帧，不额外挂载动画。
 
 ## Colors
 
-冷调纸面与蓝灰文字建立长时间工作的安静背景，钴蓝提供明确的交互重心。
+两套主题的取值见 frontmatter，组件只引用变量名，不写死颜色。
 
-### Primary
-- **工作钴蓝**（`accent`）：新对话、发送、当前 Plan 状态、链接与进行中的任务。
-- **深钴蓝**（`accent-hover`）：新对话与发送按钮悬停。记忆保存按钮现有悬停值为 `#254ab8`，保留为该组件局部差异，不冒充统一 token。
-- **浅钴蓝**（`accent-soft`）：轻操作悬停、Plan 开启及记忆条目选中。主导航当前项另有局部背景和文字值，组件示例按源代码保留。
+- **accent**：链接、当前选择、运行中的状态、焦点框。
+- **user-bubble**：你的消息气泡与发送按钮，配白字，两套主题下对比度都在 4.5:1 以上。
+- **surface-raised**：QRClaw 回复卡片、输入框、浅色下的白卡。
+- **success / warning / danger**：完成、整理阈值、错误；状态始终附文字。
 
-### Neutral
-- **蓝灰桌面**（`canvas`）：外层空间与侧边导航的底色。
-- **白纸**（`surface`）：工作面、输入区与默认按钮。
-- **雾白**（`surface-soft`）：过程记录、代码相关容器、辅助控件与悬停面。
-- **墨蓝**（`ink`）：正文与主要标题。
-- **灰蓝**（`muted`）：说明、辅助标签与输入提示。placeholder 与普通辅助文字使用相同的可读颜色。
-- **细线蓝灰**（`line`）：分区边线、表格与默认描边。
-
-状态色使用 **完成绿**（`success`）、**错误红**（`danger`）、**等待赭黄**（`warning`），分别对应成功、失败、等待或处理中；状态始终附有文字。它们是功能色，不作为第二套装饰主题。
-
-**The Action Blue Rule.** 钴蓝对应动作、选择、链接或真实运行状态；大面积阅读背景使用中性色。
+记忆页（`features/memory/memory.css`）同样只引用这些变量，跟随主题切换。
 
 ## Typography
 
-**Body Font:** frontmatter 中的中文系统无衬线字体栈，按平台回退。操作标题共用该字体栈；当前没有独立品牌 display 字体，不将其推定为展示页的字体规范。
-
-**Character:** 中文优先，靠大小、字重与行距表达层级。代码块保留浏览器的等宽字体回退，记忆来源的原文块则明确继承界面字体。
-
-### Hierarchy
-- **Headline**：欢迎标题使用 `headline`；中等窗口缩为 28px，手机为 27px。
-- **Page title**：记忆页标题使用 `page-title`；手机为 20px。
-- **Document title**：记忆文档标题使用 `document-title`；手机为 22px。
-- **Body**：聊天内容使用 `body`；手机字号缩为 14px，保持行距。Markdown 一级至三级标题分别为 25px、21px、18px。
-- **Reading**：记忆正文使用 `reading`，最大行宽为 75ch。
-- **Label**：记忆操作按钮采用 `label`；导航和常规说明多为 13px，次要元信息为 10–12px。计数、时间和上下文用量使用等宽数字。
-
-**The Reading Rhythm Rule.** 正文保持宽松行距，工具与元信息保持紧凑；不要用辅助标签的字号承载长回复。
+一套无衬线字体栈，中文走系统字体；数字、工具名、代码用等宽。正文 15px，回复正文 16px、行高 1.85；会话标题 24px；辅助信息 13px，最小 12px。
 
 ## Layout
 
-桌面外壳高为 100dvh，默认导航宽 240px，工作面上、右、下留 16px 外沿。顶部栏高 56px；工作面使用 flex/grid 的 `min-width: 0`、`min-height: 0` 将长内容留在所属滚动区。执行过程展开时占右侧 300px。桌面伙伴固定在侧栏顶部的品牌区，以 104px 原 SVG 舞台替代 Q 标记；右侧为 QRClaw 名称与真实状态。状态文字为 12px、行高 18px，预留 36px 的两行高度，阶段变化不推挤导航。聊天与记忆页共用这一位置和动画实例；主顶栏保留页面与操作，移除独立状态及为悬浮卡片设置的占位内边距，伙伴不占用或遮挡主阅读区。
+- **侧栏**：顶部 56px 小精灵底板加名称和实时状态；下面依次是「开启新对话」、导航（收件箱、当前对话、记忆库）、会话列表、底部的本地工作空间与主题切换。会话前的状态图标：转圈表示运行中，实心环表示有未读回复，虚线圈表示空白，对勾表示已读。
+- **对话区**：顶部是会话标题、消息数与上下文整理次数，以及「全部 / 只看对话 / 只看过程」三个筛选。每条你的消息开启一轮，右对齐蓝色气泡，带 36px「你」头像；到下一条你的消息之前，QRClaw 的回复、工具调用、子 Agent 和执行汇报都收进左侧同一条消息里，带 36px 小精灵头像，并保持原始顺序。连续的工具调用合并成一行，显示次数和工具名，展开可看每次的结果；写入记忆的调用另起一行，并提供记忆库入口。复制按钮只放在这一轮最后一段回复下。
+- **输入区**：默认一行，发送按钮同排，随内容长高到 180px 后内部滚动；Plan、上下文占比和按键提示在框外的工具行。中文输入法确认不触发发送。
+- **属性栏**（`features/inspector/InspectorPanel.tsx`）：状态、执行者、Plan、上下文（含整理阈值刻度）、已整理次数、累计用量、工具调用统计、子 Agent 列表、写入记忆次数、最近记录。数字全部从会话详情与事件推导，不需要新接口。点选子 Agent 后，同一面板显示它的任务、完整会话和工具状态。宽于 1100px 时常驻，否则从顶栏「属性」按钮打开抽屉。
+- **收件箱**（`#/inbox`）：会话按运行中、等你查看、其他分组，显示消息数与更新时间。每个会话的工具次数需要会话列表接口新增字段，目前不显示。
+- **记忆库**（`#/memory`）：结构不变，沿用列表、正文、来源与关联的布局，换成主题变量。
 
-聊天消息与输入区的外部最大宽度均为 820px，桌面左右内边距 36px；欢迎引导行最大宽度为 740px。消息间隔 28px，用户消息最多占可用宽度的 88%，手机为 92%。输入区位于消息滚动区之外，并计入底部安全区。
-
-记忆页以紧凑工具栏保留标题、刷新和检查入口。错误提示、任务与提取记录、检查结果统一置于工具栏之后、列表与详情之前的 `memory-auxiliary` 辅助区，总高度上限为 `min(240px, 30%)`，共享一个滚动区。任务与提取记录默认收起，检查结果首次出现时展开且可收起；各块不再独立限高和嵌套滚动，避免同时展开时累加挤占正文。
-
-记忆页在宽度大于 1000px 时采用列表与详情两栏，列表条目与详情各自滚动。工作区与两栏外层使用 `overflow: clip`，避免焦点操作触发外层程序滚动。列表默认宽 280px，详情内边距为 20px 28px 32px；宽度不超过 1120px 时列表为 240px，详情内边距为 20px 24px，编辑表单属性改为单列。1500px 以上详情左右内边距扩为 52px，标题与操作可并排。
-
-响应规则按现有边界保留，不将相近断点强行合并：
-- **≤1100px**：主导航为 220px；执行过程转为右侧抽屉，宽 340px，保留视口外沿与遮罩。
-- **≤1000px**：记忆列表与详情一次只显示一栏。选中记忆进入详情，通过“返回记忆列表”回到列表；返回只切换展示，保留搜索条件与编辑草稿，并恢复列表中当前条目的焦点。若当前条目不在筛选结果内，则聚焦搜索框；进入详情与返回列表均使用 `preventScroll`，保留各自滚动位置。
-- **≤760px**：工作面铺满视口，无外沿、外层圆角或阴影；顶部栏高 64px，工作时容纳 72px 伙伴舞台，空白会话的欢迎舞台为 180px。导航转为宽 292px 的左侧抽屉，受视口最大宽度约束；抽屉保留 Q 标记与“你的 AI 工作伙伴”说明，不挂载伙伴动画。记忆页延续单栏切换，详情内边距为 12px 16px 28px，表单属性保持单列。
-- **≤660px 高度**：欢迎区域从顶部开始排布，手机欢迎舞台缩为 150px，使输入可通过滚动访问；桌面侧栏舞台保持 104px。
-
-间距以 frontmatter 的提取尺度为主，紧密组常用 4–12px，区块间常用 16–36px。现有组件也有 7px、18px、22px、26px 等局部值，未被统一改写。
+响应式：≤1100px 属性栏改为抽屉、侧栏 240px；≤760px 侧栏改为左侧抽屉，顶栏放小精灵与状态，消息头像缩为 30px，你的气泡最多占 84% 宽度。
 
 ## Elevation & Depth
 
-以白底、浅色辅助面与细分隔线为主，仅外层工作面和浮动执行抽屉使用柔和阴影。普通按钮、消息、记忆条目与子任务卡片不依靠投影表达可点击性。
-
-### Shadow Vocabulary
-- **工作面悬浮**：`0 6px 30px #253b6010`，区分桌面底色与白纸工作区；手机撤去。
-- **执行抽屉**：`-12px 0 40px #172c4720`，配合 `#152a4a44` 遮罩区分覆盖层。
-
-**The Quiet Surface Rule.** 常规内容靠底色和细线分区；保留阴影给承载整个工作区的表面与覆盖式执行抽屉。
-
-## Shapes
-
-圆角按对象尺度分配：小型文字操作采用 `compact`，常规按钮采用 `control`，导航与输入字段采用 `list`，主要动作采用 `action`，子任务与提示容器采用 `card`，消息编辑容器采用 `radius`，大输入区与抽屉采用 `composer`，桌面工作面采用 `work-surface`。
-
-圆角是角色相关的提取尺度，并非所有容器统一为 12–16px。用户消息采用 `14px 14px 4px 14px` 的方向性轮廓；状态点和开关滑块为圆形，回到底部按钮为 20px 圆角。图标使用现有 Lucide 描边 SVG，伙伴保留 bloub 原始有机路径与动画。
-
-## Components
-
-### Buttons
-- **主要操作**：新对话为全宽钴蓝按钮，最小高 44px，13px、600 字重；发送为 36px 方形图标按钮，手机为 34px。
-- **次要操作**：白底细描边，采用 `button-secondary`；记忆页主要保存操作沿用其 8px 圆角和紧凑尺寸，改变为钴蓝底。
-- **轻操作**：图标按钮为 36px、透明底；悬停和展开时用浅钴蓝背景及钴蓝图标。
-- **状态**：常规按钮禁用时降低不透明度；发送按钮有独立灰蓝禁用配色。按下使用 `brightness(.96)`，颜色状态切换为 160ms ease-out。焦点使用 2px 钴蓝轮廓，偏移 3px。
-
-### Inputs / Fields
-- **消息输入**：白底大圆角容器，1px `#c7d3e6` 边线；聚焦时边线变为钴蓝。textarea 桌面为 15px、手机为 16px，初始一行，随换行与文本折行增高至 180px，超过后内部滚动，清空后恢复一行。发送按钮与输入同排，Plan 和上下文位于下方紧凑工具行；提示文字为 `muted`。
-- **搜索**：图标和输入位于同一 9px 圆角描边框内，桌面最小高 38px，手机为 42px；聚焦使用 2px 钴蓝轮廓、2px 偏移。
-- **记忆编辑**：9px 圆角、`#c9d3e2` 边线、10px 12px 内边距；正文 textarea 最小高 260px，可纵向调整。冲突与删除确认就地显示文字与恢复操作。
-
-### Navigation
-
-主导航为左对齐的图标与文字行，最小高 42px，选中项使用浅蓝背景和深蓝文字。历史会话当前项使用白色背景；标题截断，改名与删除保持独立入口。在支持悬停的桌面，非当前行的操作在悬停或键盘焦点进入后显示。手机抽屉支持关闭按钮、遮罩、Escape、焦点约束及关闭后的焦点恢复。
-
-### Plan switch / Status labels
-
-Plan 使用紧凑文字按钮与 26px × 16px 开关轨道；开启后背景与轨道转为蓝色。任务、记忆状态采用文字色与必要的小状态点，不统一包装成胶囊标签。示例仅呈现视觉状态，实际切换和任务数据仍由应用提供。
-
-### Cards / Containers
-
-子任务卡片为整行可点击的白底细描边容器，12px 圆角、15px 16px 内边距，悬停改浅色背景和更清楚的边线。工具结果与执行报告采用 10px 圆角辅助面，内容按需展开。记忆条目默认透明，选中后使用浅钴蓝面；文档正文直接呈现在工作面上。
-
-### AI 工作伙伴
-
-黑色 bloub SVG 是签名组件，状态文案与动画使用同一个 ViewModel 的活动数据。SVG 阶段依次映射为 idle、thinking、sleep、orbit、burst、wide、comet、notify、alert；后台工作也使用 orbit。动画本身隐藏于辅助技术，文字通过 `role="status"` 提供信息。
-
-完成态表示最新正文回复尚未读过，会话列表用钴蓝小点标记，并提供“有未读回复”的辅助文字。前台聊天页实际显示回复末尾后，由 ViewModel 确认已读，伙伴恢复初始态；记忆页、打开面板、后台窗口或尚未滚动到最新内容时保留提示。阅读记录以回复标识保存在当前浏览器，刷新与改名不重置，下一轮回复重新提示；运行中和失败态不因阅读确认而清除。
-
-桌面采用用户选定的方案 B：104px 原 SVG 舞台固定在侧栏顶部，替代 Q 标记，右侧紧邻 QRClaw 名称与真实状态。状态文字为 12px、行高 18px，最小高度 36px。伙伴直接融入品牌区，不再使用悬浮卡片、拖动、方向键或 Home 键定位，也不随聊天与记忆切换左右位置。新会话中心保留任务引导文字，伙伴仍在侧栏。手机欢迎舞台保留 180px，短屏缩为 150px；工作时仍位于 64px 顶栏内，舞台为 72px。舞台包含动画留白，不应将这些值误报为黑色角色本体的直径。
-
-桌面侧栏、手机欢迎页与手机顶栏之间只挂载一个伙伴动画实例。桌面聊天与记忆切换时，侧栏中的实例保持挂载；桌面主顶栏不再重复呈现伙伴状态。手机侧栏抽屉保留 Q 标记与既有说明，不增加第二个动画实例。
-
-伙伴最多每秒采样 30 帧；页面隐藏时暂停，系统启用减少动态效果时显示对应阶段的代表帧。全局同时取消 CSS 动画与过渡。bloub 轨道原生的 SVG 渐变属于动画资产，界面不另加装饰渐变；不得误将此规则解释为删除原始动画细节。
-
-## Do's and Don'ts
-
-### Do:
-- **Do** 使用既有语义色；placeholder 与辅助文字使用 `muted`。
-- **Do** 保持伙伴与真实状态相邻；桌面固定在侧栏顶部，手机延续欢迎区或顶栏，并由真实活动数据驱动形态。
-- **Do** 维持正文行距、局部滚动与窄屏抽屉的键盘焦点行为。
-- **Do** 为可操作项提供悬停、聚焦、禁用及必要的错误反馈。
-- **Do** 保留减少动态效果与页面隐藏时暂停的行为。
-
-### Don't:
-- **Don't** 把截图中的验证示例、数量或运行状态变成产品默认内容。
-- **Don't** 为工作伙伴另加独占正文高度的状态带，或同时挂载多个动画实例。
-- **Don't** 用装饰网格、霓虹或新增背景渐变覆盖安静的阅读工作面。
-- **Don't** 把 sidecar 的合成色阶、未使用变量或局部色差当成已统一的全局规范。
-- **Don't** 把当前操作界面的系统标题字体扩展为独立品牌展示字体规范。
+默认不用阴影。卡片靠 1px 边线与 surface-raised 区分；窄屏的侧栏与属性抽屉使用阴影与遮罩。

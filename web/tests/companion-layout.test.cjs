@@ -9,7 +9,7 @@ test('桌面伙伴与状态固定在侧栏顶部，手机布局保持不变，�
   let cursor = 0, resize
   const media = { matches: false, addEventListener: (_, listener) => { resize = listener }, removeEventListener: () => { resize = null } }
   const chat = { conversations: [], activeId: 'demo', timeline: [{}], messages: [], running: false,
-    loading: false, runningIds: new Set(), activity: { phase: 'tool', status: 'busy', label: '正在使用工具' } }
+    loading: false, runningIds: new Set(), unreadIds: new Set(), activity: { phase: 'tool', status: 'busy', label: '正在使用工具' } }
   const source = ts.transpileModule(readFileSync('src/app/App.tsx', 'utf8'), {
     compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX },
   }).outputText

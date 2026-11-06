@@ -8,7 +8,20 @@ import { Sidebar } from '../components/Sidebar'
 import { Topbar } from '../components/Topbar'
 import { MemoryWorkspace } from '../features/memory/MemoryPanel'
 import { AgentCompanion } from '../components/AgentCompanion'
+import { AgentAvatar } from '../components/AgentAvatar'
+import { InboxView } from '../features/inbox/InboxView'
 import { ArrowUpRight, Code2, ListTodo, BookOpen } from 'lucide-react'
+
+type ThemeMode = 'system' | 'light' | 'dark'
+const THEME_ORDER: ThemeMode[] = ['system', 'light', 'dark']
+
+/** 主题偏好只存在当前浏览器；存储不可用时跟随系统。 */
+function loadTheme(): ThemeMode {
+  try {
+    const saved = localStorage.getItem('qrclaw.theme')
+    return saved === 'light' || saved === 'dark' ? saved : 'system'
+  } catch { return 'system' }
+}
 
 /** 组合工作区视图，业务数据与任务状态仍由现有 ViewModel 提供。 */
 export function App() {
@@ -18,21 +31,34 @@ export function App() {
   const [inspectorOpen, setInspectorOpen] = useState(false)
   const [memoryOpen, setMemoryOpen] = useState(() => window.location.hash.startsWith('#/memory'))
   const [narrow, setNarrow] = useState(() => window.matchMedia('(max-width: 760px)').matches)
+  const [wide, setWide] = useState(() => window.matchMedia('(min-width: 1101px)').matches)
+  const [inboxOpen, setInboxOpen] = useState(() => window.location.hash.startsWith('#/inbox'))
+  const [theme, setTheme] = useState<ThemeMode>(loadTheme)
   useEffect(() => {
-    // 只挂载一个动画实例，手机保留现有布局，桌面放在侧栏顶部。
-    const media = window.matchMedia('(max-width: 760px)')
-    function resize() { setNarrow(media.matches) }
-    media.addEventListener('change', resize)
-    return () => media.removeEventListener('change', resize)
+    // 只挂载一个动画实例：桌面在侧栏顶部，手机在顶栏；宽屏常驻属性栏，窄屏改为抽屉。
+    const narrowMedia = window.matchMedia('(max-width: 760px)')
+    const wideMedia = window.matchMedia('(min-width: 1101px)')
+    function resize() { setNarrow(narrowMedia.matches); setWide(wideMedia.matches) }
+    narrowMedia.addEventListener('change', resize)
+    wideMedia.addEventListener('change', resize)
+    return () => { narrowMedia.removeEventListener('change', resize); wideMedia.removeEventListener('change', resize) }
   }, [])
   useEffect(() => {
-    /** 刷新和浏览器前进、后退均使用同一个记忆入口。 */
-    function navigate() { setMemoryOpen(window.location.hash.startsWith('#/memory')) }
+    /** 刷新和浏览器前进、后退均使用同一套页面入口。 */
+    function navigate() {
+      setMemoryOpen(window.location.hash.startsWith('#/memory'))
+      setInboxOpen(window.location.hash.startsWith('#/inbox'))
+    }
     window.addEventListener('hashchange', navigate)
     return () => window.removeEventListener('hashchange', navigate)
   }, [])
+  useEffect(() => {
+    if (theme === 'system') document.documentElement.removeAttribute('data-theme')
+    else document.documentElement.dataset.theme = theme
+    try { localStorage.setItem('qrclaw.theme', theme) } catch { /* 无法保存时本次页面仍按所选主题显示。 */ }
+  }, [theme])
   /** 切回聊天保留 ViewModel 中的草稿和正在执行的任务。 */
-  function showChat() { window.location.hash = ''; setMemoryOpen(false) }
+  function showChat() { window.location.hash = ''; setMemoryOpen(false); setInboxOpen(false) }
   useEffect(() => {
     function closePanels(event: KeyboardEvent) {
       if (event.key === 'Escape') { setSidebarOpen(false); setInspectorOpen(false) }
@@ -40,8 +66,10 @@ export function App() {
     window.addEventListener('keydown', closePanels)
     return () => window.removeEventListener('keydown', closePanels)
   }, [])
+  const chatView = !memoryOpen && !inboxOpen
+  const drawerInspector = inspectorOpen && chatView && !wide
   useEffect(() => {
-    const overlay = inspectorOpen && !memoryOpen && window.matchMedia('(max-width: 1100px)').matches ? 'run-inspector'
+    const overlay = drawerInspector ? 'run-inspector'
       : sidebarOpen && window.matchMedia('(max-width: 760px)').matches ? 'session-sidebar' : ''
     const panel = document.getElementById(overlay)
     if (!panel) return
@@ -68,41 +96,51 @@ export function App() {
       panel.removeAttribute('aria-modal')
       previous?.focus()
     }
-  }, [sidebarOpen, inspectorOpen, memoryOpen])
+  }, [sidebarOpen, drawerInspector])
   const title = chat.conversations.find(item => item.id === chat.activeId)?.title ?? '新对话'
   const empty = !chat.timeline.length && !chat.running && !chat.loading
-  const companion = !empty || memoryOpen ? <AgentCompanion activity={chat.activity} sessionId={chat.activeId} compact /> : null
+  const companion = !empty || !chatView ? <AgentCompanion activity={chat.activity} sessionId={chat.activeId} compact /> : null
+  const inboxCount = new Set([...chat.runningIds, ...chat.unreadIds]).size
 
   /** 快捷入口仅填写草稿，仍由用户确认并发送。 */
   function choosePrompt(prompt: string) {
     chat.setDraft(prompt)
     document.getElementById('message-input')?.focus()
   }
+  function openMemory() { window.location.hash = '/memory'; setMemoryOpen(true); setInboxOpen(false); setSidebarOpen(false); setInspectorOpen(false) }
+  function openInbox() { window.location.hash = '/inbox'; setInboxOpen(true); setMemoryOpen(false); setSidebarOpen(false); setInspectorOpen(false) }
 
   return (
-    <div className="app-shell" data-view={memoryOpen ? 'memory' : 'chat'}>
-      {(sidebarOpen || inspectorOpen && !memoryOpen) && <button className="panel-backdrop" aria-label="关闭面板" onClick={() => { setSidebarOpen(false); setInspectorOpen(false) }} />}
+    <div className="app-shell" data-view={memoryOpen ? 'memory' : inboxOpen ? 'inbox' : 'chat'}>
+      {(sidebarOpen || drawerInspector) && <button className="panel-backdrop" aria-label="关闭面板" onClick={() => { setSidebarOpen(false); setInspectorOpen(false) }} />}
         <Sidebar conversations={chat.conversations} activeId={chat.activeId} runningIds={chat.runningIds} unreadIds={chat.unreadIds} mutatingIds={chat.mutatingIds}
           open={sidebarOpen} creating={chat.creating || chat.loading && !chat.activeId} activity={narrow ? null : chat.activity}
+          inboxOpen={inboxOpen} inboxCount={inboxCount} onOpenInbox={openInbox}
+          theme={theme} onCycleTheme={() => setTheme(current => THEME_ORDER[(THEME_ORDER.indexOf(current) + 1) % THEME_ORDER.length])}
           onOpenChat={() => { showChat(); setSidebarOpen(false) }} onClose={() => setSidebarOpen(false)}
-          memoryOpen={memoryOpen} onOpenMemory={() => { window.location.hash = '/memory'; setMemoryOpen(true); setSidebarOpen(false); setInspectorOpen(false) }}
+          memoryOpen={memoryOpen} onOpenMemory={openMemory}
           onNewChat={() => { showChat(); setSidebarOpen(false); void chat.newConversation() }}
           onSelectConversation={id => { showChat(); setSidebarOpen(false); void chat.loadConversation(id) }}
           onRenameConversation={(id, title) => void chat.renameConversation(id, title)}
           onDeleteConversation={id => void chat.deleteConversation(id)} />
       <div className="work-surface">
-        <Topbar title={title} memoryOpen={memoryOpen} companion={narrow ? companion : null}
+        <Topbar title={title} memoryOpen={memoryOpen} inboxOpen={inboxOpen} companion={narrow ? companion : null}
           sidebarOpen={sidebarOpen} onToggleSidebar={() => { setSidebarOpen(value => !value); setInspectorOpen(false) }}
           inspectorOpen={inspectorOpen} onToggleInspector={() => { setInspectorOpen(value => !value); setSidebarOpen(false) }} />
-      <div className={`workspace ${inspectorOpen && !memoryOpen ? 'with-inspector' : ''}`}>
-        <div className={`chat-column ${empty && !memoryOpen ? 'is-empty' : ''}`}>
-          {empty && !memoryOpen && <AgentCompanion activity={chat.activity} sessionId={chat.activeId} compact={false} textOnly={!narrow} />}
+      <div className={`workspace ${chatView && (wide || inspectorOpen) ? 'with-inspector' : ''}`}>
+        <div className={`chat-column ${empty && chatView ? 'is-empty' : ''}`}>
+          {empty && chatView && <AgentCompanion activity={chat.activity} sessionId={chat.activeId} compact={false} textOnly={!narrow} />}
           <MemoryWorkspace api={api} visible={memoryOpen} activityKey={chat.runningIds.size}
             onOpenSession={id => { showChat(); void chat.loadConversation(id) }} />
-          <main className="chat-content" id="conversation" hidden={memoryOpen}>
-          <ChatPanel sessionId={chat.activeId} timeline={chat.timeline} streaming={chat.streaming} running={chat.running} queued={chat.queued}
-            visible={!memoryOpen && !sidebarOpen && !inspectorOpen} unreadReplyId={chat.unreadReplyId} onReplyRead={chat.markReplyRead}
+          {inboxOpen && <InboxView conversations={chat.conversations} activeId={chat.activeId} runningIds={chat.runningIds} unreadIds={chat.unreadIds}
+            onOpen={id => { showChat(); void chat.loadConversation(id) }} />}
+          <main className="chat-content" id="conversation" hidden={!chatView}>
+          <ChatPanel sessionId={chat.activeId} title={title} messageCount={chat.session?.message_count ?? 0}
+            timeline={chat.timeline} streaming={chat.streaming} running={chat.running} queued={chat.queued}
+            visible={chatView && !sidebarOpen && !drawerInspector} unreadReplyId={chat.unreadReplyId} onReplyRead={chat.markReplyRead}
             loading={chat.loading} mutating={chat.mutating} onSelectSubAgent={id => { chat.selectSubAgent(id); setInspectorOpen(true) }}
+            onOpenMemory={openMemory} assistantAvatar={<AgentAvatar size={36} />}
+            compressions={(chat.session?.events ?? []).filter(event => event?.kind === 'compression' && event.meta?.state === 'completed').length}
             latestUserMessageId={chat.messages.filter(message => message.role === 'user').at(-1)?.uuid}
             onEditLatestMessage={(id, content) => void chat.editLatestMessage(id, content)}
             onDeleteLatestMessage={id => void chat.deleteLatestMessage(id)} />
@@ -119,9 +157,11 @@ export function App() {
           </div>
           </main>
         </div>
-        {inspectorOpen && !memoryOpen && <InspectorPanel session={chat.session} status={chat.status} queued={chat.queued}
+        {chatView && (wide || inspectorOpen) && <InspectorPanel session={chat.session} status={chat.status} queued={chat.queued}
+          activity={chat.activity} planEnabled={chat.planEnabled} contextUsage={chat.contextUsage} cards={chat.cards}
           selectedCard={chat.selectedCard} childSession={chat.childSession} childMessages={chat.childMessages}
-          childStreaming={chat.childStreaming} onMainAgent={() => chat.selectSubAgent(null)} onClose={() => setInspectorOpen(false)} />}
+          childStreaming={chat.childStreaming} onSelectSubAgent={id => chat.selectSubAgent(id)} onMainAgent={() => chat.selectSubAgent(null)}
+          onOpenMemory={openMemory} onClose={() => setInspectorOpen(false)} />}
       </div>
       </div>
     </div>

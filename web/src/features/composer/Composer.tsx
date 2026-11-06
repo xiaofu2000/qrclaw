@@ -61,8 +61,8 @@ export function Composer({ value, onChange, onSend, disabled, loading, running, 
           <span>上下文 <strong>{contextUsage.percent}%</strong></span>
           <meter min={0} max={100} value={contextUsage.percent} aria-label="上下文占用比例" />
         </div>}
+        <span className="composer-hint">{running ? '任务处理中，可以先切换到其他会话' : 'Enter 发送 · Shift+Enter 换行'}</span>
       </div>
-      <div className="composer-hint">{running ? '任务处理中，切换会话可以继续查看其他对话。' : 'Enter 发送 · Shift+Enter 换行'}</div>
     </form>
   )
 }

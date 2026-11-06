@@ -28,7 +28,6 @@ function SpriteDots({ dots }: { dots: BotFrame['dots'] }) {
 export function AgentSprite({ phase }: { phase: AgentActivity['phase'] }) {
   const state = SPRITE_STATES[phase]
   const uid = useId()
-  const maskId = `${uid}-mask`
   const [engine] = useState(() => new BotEngine(RAYON))
   const [frame, setFrame] = useState(() => engine.sample(0))
 
@@ -74,6 +73,19 @@ export function AgentSprite({ phase }: { phase: AgentActivity['phase'] }) {
     }
   }, [engine, state])
 
+  return spriteSvg(frame, uid, state)
+}
+
+/** 聊天与属性栏里的 QRClaw 头像：只取空闲姿态的一帧，不启动逐帧动画；页面上的动画实例仍只有侧栏一个。 */
+export function AgentAvatar({ size = 36 }: { size?: number }) {
+  const uid = useId()
+  const [frame] = useState(() => new BotEngine(RAYON, 'idle').sample(POSES.idle))
+  return <span className="agent-avatar" style={{ width: size, height: size }} aria-hidden="true">{spriteSvg(frame, uid, 'idle')}</span>
+}
+
+/** 动画和静态头像共用同一套 SVG 结构，保证两处造型一致。 */
+function spriteSvg(frame: BotFrame, uid: string, state: StateId) {
+  const maskId = `${uid}-mask`
   return (
     <svg className="agent-sprite" viewBox={`${-DEMI_VIEWBOX} ${-DEMI_VIEWBOX} ${DEMI_VIEWBOX * 2} ${DEMI_VIEWBOX * 2}`}
       data-animation={state} aria-hidden="true" focusable="false">

@@ -1,6 +1,14 @@
 import { useState } from 'react'
-import { Check, LoaderCircle, Pencil, Trash2, X } from 'lucide-react'
+import { Check, CircleCheck, CircleDashed, CircleDot, LoaderCircle, Pencil, Trash2, X } from 'lucide-react'
 import type { Conversation } from '../../lib/types'
+
+/** 会话状态图标：运行中、未读回复、空白和已读各一种形状，并附读屏文字。 */
+export function SessionState({ running, unread, empty, label }: { running: boolean; unread: boolean; empty: boolean; label?: string }) {
+  if (running) return <LoaderCircle size={16} className="session-state running spin" aria-label={label ?? '任务处理中'} />
+  if (unread) return <CircleDot size={16} className="session-state unread" role="img" aria-label="有未读回复" />
+  if (empty) return <CircleDashed size={16} className="session-state" aria-hidden="true" />
+  return <CircleCheck size={16} className="session-state" aria-hidden="true" />
+}
 
 type ConversationListProps = {
   conversations: Conversation[]
@@ -39,10 +47,9 @@ export function ConversationList({ conversations, activeId, runningIds, unreadId
           </> : <>
             <button type="button" title={conversation.title} aria-current={conversation.id === activeId ? 'page' : undefined}
               className="conversation-item" onClick={() => onSelect(conversation.id)}>
+              <SessionState running={runningIds.has(conversation.id) || mutatingIds.has(conversation.id)} unread={unreadIds.has(conversation.id)}
+                empty={!conversation.messageCount} label={mutatingIds.has(conversation.id) ? '更新会话中' : undefined} />
               <span className="conversation-title">{conversation.title}</span>
-              {runningIds.has(conversation.id) && <LoaderCircle size={15} className="spin" aria-label="任务处理中" />}
-              {unreadIds.has(conversation.id) && !runningIds.has(conversation.id) && <span className="unread-dot" role="img" aria-label="有未读回复" title="有未读回复" />}
-              {mutatingIds.has(conversation.id) && <LoaderCircle size={15} className="spin" aria-label="更新会话中" />}
             </button>
             <button className="conversation-action" type="button" aria-label={`重命名会话 ${conversation.title}`}
               disabled={mutatingIds.has(conversation.id)}
