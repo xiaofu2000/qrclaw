@@ -107,7 +107,12 @@ export function App() {
     chat.setDraft(prompt)
     document.getElementById('message-input')?.focus()
   }
-  function openMemory() { window.location.hash = '/memory'; setMemoryOpen(true); setInboxOpen(false); setSidebarOpen(false); setInspectorOpen(false) }
+  /** 打开记忆库；传入页面名时同时选中那一页（地址为 #/memory/页面名，刷新后仍停在这页）。 */
+  function openMemory(page?: string) {
+    window.location.hash = page ? `/memory/${encodeURIComponent(page)}` : '/memory'
+    setMemoryOpen(true); setInboxOpen(false); setSidebarOpen(false); setInspectorOpen(false)
+  }
+  const memoryFocus = memoryOpen && window.location.hash.startsWith('#/memory/') ? decodeURIComponent(window.location.hash.slice('#/memory/'.length)) : undefined
   function openInbox() { window.location.hash = '/inbox'; setInboxOpen(true); setMemoryOpen(false); setSidebarOpen(false); setInspectorOpen(false) }
 
   return (
@@ -118,7 +123,7 @@ export function App() {
           inboxOpen={inboxOpen} inboxCount={inboxCount} onOpenInbox={openInbox}
           theme={theme} onCycleTheme={() => setTheme(current => THEME_ORDER[(THEME_ORDER.indexOf(current) + 1) % THEME_ORDER.length])}
           onOpenChat={() => { showChat(); setSidebarOpen(false) }} onClose={() => setSidebarOpen(false)}
-          memoryOpen={memoryOpen} onOpenMemory={openMemory}
+          memoryOpen={memoryOpen} onOpenMemory={() => openMemory()}
           onNewChat={() => { showChat(); setSidebarOpen(false); void chat.newConversation() }}
           onSelectConversation={id => { showChat(); setSidebarOpen(false); void chat.loadConversation(id) }}
           onRenameConversation={(id, title) => void chat.renameConversation(id, title)}
@@ -130,7 +135,7 @@ export function App() {
       <div className={`workspace ${chatView && (wide || inspectorOpen) ? 'with-inspector' : ''}`}>
         <div className={`chat-column ${empty && chatView ? 'is-empty' : ''}`}>
           {empty && chatView && <AgentCompanion activity={chat.activity} sessionId={chat.activeId} compact={false} textOnly={!narrow} />}
-          <MemoryWorkspace api={api} visible={memoryOpen} activityKey={chat.runningIds.size}
+          <MemoryWorkspace api={api} visible={memoryOpen} activityKey={chat.runningIds.size} focusPage={memoryFocus}
             onOpenSession={id => { showChat(); void chat.loadConversation(id) }} />
           {inboxOpen && <InboxView conversations={chat.conversations} activeId={chat.activeId} runningIds={chat.runningIds} unreadIds={chat.unreadIds}
             onOpen={id => { showChat(); void chat.loadConversation(id) }} />}
@@ -139,8 +144,7 @@ export function App() {
             timeline={chat.timeline} streaming={chat.streaming} running={chat.running} queued={chat.queued}
             visible={chatView && !sidebarOpen && !drawerInspector} unreadReplyId={chat.unreadReplyId} onReplyRead={chat.markReplyRead}
             loading={chat.loading} mutating={chat.mutating} onSelectSubAgent={id => { chat.selectSubAgent(id); setInspectorOpen(true) }}
-            onOpenMemory={openMemory} assistantAvatar={<AgentAvatar size={36} />}
-            compressions={(chat.session?.events ?? []).filter(event => event?.kind === 'compression' && event.meta?.state === 'completed').length}
+            onOpenMemory={openMemory} assistantAvatar={<AgentAvatar size={36} />} compressions={chat.stats.compressions.length}
             latestUserMessageId={chat.messages.filter(message => message.role === 'user').at(-1)?.uuid}
             onEditLatestMessage={(id, content) => void chat.editLatestMessage(id, content)}
             onDeleteLatestMessage={id => void chat.deleteLatestMessage(id)} />
@@ -158,7 +162,7 @@ export function App() {
           </main>
         </div>
         {chatView && (wide || inspectorOpen) && <InspectorPanel session={chat.session} status={chat.status} queued={chat.queued}
-          activity={chat.activity} planEnabled={chat.planEnabled} contextUsage={chat.contextUsage} cards={chat.cards}
+          activity={chat.activity} planEnabled={chat.planEnabled} contextUsage={chat.contextUsage} cards={chat.cards} stats={chat.stats}
           selectedCard={chat.selectedCard} childSession={chat.childSession} childMessages={chat.childMessages}
           childStreaming={chat.childStreaming} onSelectSubAgent={id => chat.selectSubAgent(id)} onMainAgent={() => chat.selectSubAgent(null)}
           onOpenMemory={openMemory} onClose={() => setInspectorOpen(false)} />}

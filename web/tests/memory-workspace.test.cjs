@@ -1,37 +1,26 @@
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
-const { readFileSync } = require('node:fs')
-const vm = require('node:vm')
-const ts = require('typescript')
-const compiled = ts.transpileModule(readFileSync('src/features/memory/useMemoryWorkspace.ts', 'utf8'), {
-  compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
-}).outputText
+const { loadModule, hookRuntime, deferred } = require('./helpers/load.cjs')
+
 const page = (name, revision = 1) => ({ name, revision, content: name, description: '', tags: [], related: [], sources: [], links: [], backlinks: [], status: 'ready' })
-function deferred() { let resolve, reject; const promise = new Promise((yes, no) => { resolve = yes; reject = no }); return { promise, resolve, reject } }
 
 // 驱动真实 Hook 的效果与网络完成顺序，验证响应竞态及后台轮询。
 function workspace(api) {
-  const slots = [], timers = new Map(), listeners = new Map()
-  let cursor = 0, effects = [], visible = true, timerId = 0
-  const changed = (before, after) => !before || after.some((value, index) => value !== before[index])
-  const react = {
-    useState(initial) { const i = cursor++; slots[i] ??= { value: typeof initial === 'function' ? initial() : initial }; return [slots[i].value, value => { slots[i].value = typeof value === 'function' ? value(slots[i].value) : value }] },
-    useRef(initial) { return (slots[cursor++] ??= { current: initial }) },
-    useCallback(fn, deps) { const i = cursor++; if (changed(slots[i]?.deps, deps)) slots[i] = { value: fn, deps }; return slots[i].value },
-    useEffect(fn, deps) { const i = cursor++; if (changed(slots[i]?.deps, deps)) effects.push(() => { slots[i]?.cleanup?.(); slots[i] = { deps, cleanup: fn() } }) },
-  }
+  const runtime = hookRuntime(), timers = new Map(), listeners = new Map()
+  let visible = true, timerId = 0
   const document = { hidden: false, addEventListener: (type, fn) => listeners.set(type, fn), removeEventListener: (type, fn) => { if (listeners.get(type) === fn) listeners.delete(type) } }
-  const exports = {}
-  vm.runInNewContext(compiled, { exports, require: () => react, document, AbortController,
-    setTimeout: (fn, delay) => { timers.set(++timerId, { fn, delay }); return timerId }, clearTimeout: id => timers.delete(id) })
-  function render() { cursor = 0; const view = exports.useMemoryWorkspace(api, visible); const pending = effects; effects = []; pending.forEach(fn => fn()); return view }
+  const { useMemoryWorkspace } = loadModule('src/features/memory/useMemoryWorkspace.ts', { mocks: { react: runtime.react }, globals: {
+    document, AbortController,
+    setTimeout: (fn, delay) => { timers.set(++timerId, { fn, delay }); return timerId }, clearTimeout: id => timers.delete(id),
+  } })
+  const render = () => runtime.render(() => useMemoryWorkspace(api, visible))
   render()
   return { render, timers,
     async flush() { let view; for (let i = 0; i < 4; i++) { await new Promise(resolve => setImmediate(resolve)); view = render() } return view },
     async poll() { const pending = [...timers.values()]; timers.clear(); pending.forEach(({ fn }) => fn()); return this.flush() },
     hideDocument(hidden) { document.hidden = hidden; listeners.get('visibilitychange')?.() },
     setVisible(value) { visible = value; return render() },
-    close() { slots.forEach(slot => slot?.cleanup?.()) },
+    close: runtime.close,
   }
 }
 function client() {

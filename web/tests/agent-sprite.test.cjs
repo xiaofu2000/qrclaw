@@ -1,24 +1,11 @@
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
-const { readFileSync } = require('node:fs')
-const path = require('node:path')
-const vm = require('node:vm')
-const ts = require('typescript')
+const { loadModule } = require('./helpers/load.cjs')
 
-/** 用现有 TypeScript 编译器加载真实引擎和组件，不安装测试专用运行时。 */
+/** 加载真实引擎和组件；传入 react 替身时只替换 react，其余相对导入加载真实源码。 */
 function loadSource(file, globals = {}, cache = new Map()) {
-  file = path.resolve(file)
-  if (cache.has(file)) return cache.get(file)
-  const exports = {}
-  cache.set(file, exports)
-  const compiled = ts.transpileModule(readFileSync(file, 'utf8'), {
-    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX },
-  }).outputText
-  vm.runInNewContext(compiled, { exports, ...globals, require: name => {
-    if (name === 'react' && globals.react) return globals.react
-    return name.startsWith('.') ? loadSource(path.resolve(path.dirname(file), `${name}.ts`), globals, cache) : require(name)
-  } }, { filename: file })
-  return exports
+  const { react, ...rest } = globals
+  return loadModule(file, { globals: rest, mocks: react ? { react } : {}, cache })
 }
 
 test('所有接入状态在连续运行和快速切换时输出有效、可重现的 SVG', () => {

@@ -11,7 +11,7 @@ import json
 from typing import Callable
 from rich.console import Console
 from qrclaw.providers.base import LLMResponse
-from qrclaw.memory.context.session import Session, SessionEvent
+from qrclaw.memory.context.session import Session, status_event
 from qrclaw.workspace import Workspace
 from qrclaw.logger import get_logger
 
@@ -303,7 +303,7 @@ def run_sub_agent(
         if child_session_id:
             try:
                 Session(workspace.sessions_dir, child_session_id).add_event(
-                    SessionEvent(kind="status", title="执行失败", content=str(exc)))
+                    status_event("run_failed", str(exc)))
             except Exception as save_exc:
                 logger.warning("子 Agent 失败事件保存失败: %s", save_exc)
         raise

@@ -46,6 +46,10 @@ class SessionDetail(BaseModel):
     context_tokens: int = 0
     context_limit: int = 0
     compression_threshold: int = 0
+    # 增量读取时 messages / events 只含偏移之后的部分；完整读取时偏移为 0。
+    event_count: int = 0
+    messages_offset: int = 0
+    events_offset: int = 0
     messages: list[dict[str, Any]] = Field(default_factory=list)
     events: list[dict[str, Any]] = Field(default_factory=list)
 

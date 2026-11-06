@@ -36,13 +36,19 @@ npm --prefix web run dev
 
 API 默认只监听 `127.0.0.1:8765`，提供 `/health`、`/v1/models`、`/v1/sessions`、`/v1/chat/completions`。聊天接口使用模型名 `qrclaw-agent`：默认返回完整 JSON，传入 `"stream": true` 时返回 OpenAI 风格的 SSE 片段。`GET /v1/sessions/{session_id}/events/stream?after=-1` 按序号推送计划和工具状态，断线后可用最后收到的事件序号续接。Web UI 开发服务器通过 `/api` 代理到本地 API。
 
-执行 `npm --prefix web run build` 会更新 `qrclaw/server/static` 中的发布资源；Python 包和开发模式共用 `web/src` 中的界面。任务运行状态与错误由后端维护，刷新页面会重新获取；草稿在当前页面按会话分别保留。执行过程可通过右上角展开查看。
+执行 `npm --prefix web run build` 会更新 `qrclaw/server/static` 中的发布资源；Python 包和开发模式共用 `web/src` 中的界面。任务运行状态与错误由后端维护，刷新页面会重新获取；草稿在当前页面按会话分别保留。宽屏右侧常驻会话属性（状态、上下文、工具统计、子 Agent、写入的记忆），窄屏点顶栏「属性」打开；收件箱（`#/inbox`）按运行中、等你查看分组列出会话。
 
 输入框上方提供 Plan 模式开关，默认关闭，选择保存在当前浏览器并用于下一次发送及编辑重跑。关闭时跳过路由判断、自动计划与重规划调用。CLI 和未指定开关的 API 使用 `~/.qrclaw/config.yaml` 的 `agent.plan_enabled`（默认 `false`），也可设置环境变量 `PLAN_ENABLED=true`；聊天请求可用 `plan_enabled` 覆盖该默认值。
 
-会话详情返回 `context_tokens`、`context_limit` 和 `compression_threshold`。界面显示当前上下文估算及窗口占比，首次执行后计入系统提示词和工具定义；这与累计消耗的 `total_tokens` 不同。默认窗口为 485,000 tokens，超过窗口的 90%（436,500 tokens）时尝试自动压缩，预留 10% 给后续消息和回复。压缩中、完成、失败或跳过状态由 `compression` 事件实时推送，顶部、输入区和执行面板都能看到；完成提示包含压缩前后用量，刷新后保留。用量依据本地分词器估算，窗口上限来自 `llm.max_tokens` 配置，触发比例来自 `compress.threshold_ratio`（可用环境变量 `MODEL_MAX_TOKENS`、`COMPRESS_THRESHOLD_RATIO` 覆盖）。配置窗口应与实际使用的模型容量一致。
+会话详情返回 `context_tokens`、`context_limit` 和 `compression_threshold`。界面显示当前上下文估算及窗口占比，首次执行后计入系统提示词和工具定义；这与累计消耗的 `total_tokens` 不同。默认窗口为 485,000 tokens，超过窗口的 90%（436,500 tokens）时尝试自动压缩，预留 10% 给后续消息和回复。压缩中、完成、失败或跳过状态由 `compression` 事件实时推送，顶部、输入区和属性栏都能看到；完成提示包含压缩前后用量，刷新后保留。用量依据本地分词器估算，窗口上限来自 `llm.max_tokens` 配置，触发比例来自 `compress.threshold_ratio`（可用环境变量 `MODEL_MAX_TOKENS`、`COMPRESS_THRESHOLD_RATIO` 覆盖）。配置窗口应与实际使用的模型容量一致。
 
-主聊天会话的 `events` 会记录每次子 Agent 启动及完成状态，事件 `meta.child_session_id` 指向独立保存的子会话。Web UI 在主聊天中显示可点击的子任务卡片，右侧执行面板读取该子会话的完整消息与工具结果；切换面板不会切换主聊天。会话详情的 `active_subagents` 标记后台是否仍有子任务；子会话也可通过现有会话详情与事件流接口读取，运行中的可见文字由事件流的 `live_text` 帧推送。删除父会话时会清理它关联的子会话。
+读取会话详情时可带上已缓存的 `history_version`、`messages_from` 和 `events_from`：历史版本相同时只返回这两个位置之后新增的消息和事件，响应里的 `messages_offset`、`events_offset` 说明从哪里拼接，`message_count`、`event_count` 是完整长度；版本不同（压缩、编辑或删除改写了历史）或位置越界时返回完整内容。Web UI 运行任务时每 1.2 秒只请求一次会话列表确认状态，详情按这种方式增量读取，不再整份下载。
+
+状态事件带固定代码 `meta.code`（如 `step_running`、`step_completed`、`replanning`、`run_failed`），界面和事件流按代码判断，标题只用于显示；旧会话读取时按原标题补齐代码。工具状态事件带模型给出的调用 ID `meta.call_id`，可与保存的工具结果消息对应；`write_wiki_page` 完成事件的 `meta.pages` 列出实际写入的记忆页。
+
+首轮对话完成后，服务端在后台用当前模型为没有标题的会话生成不超过 16 个字的标题；生成失败时沿用第一句话，用户改过的名字不会被覆盖。设置环境变量 `QRCLAW_AUTO_TITLE=0` 可关闭。
+
+主聊天会话的 `events` 会记录每次子 Agent 启动及完成状态，事件 `meta.child_session_id` 指向独立保存的子会话。Web UI 在主聊天中显示可点击的子任务卡片，右侧属性栏读取该子会话的完整消息与工具结果；切换面板不会切换主聊天。会话详情的 `active_subagents` 标记后台是否仍有子任务；子会话也可通过现有会话详情与事件流接口读取，运行中的可见文字由事件流的 `live_text` 帧推送。删除父会话时会清理它关联的子会话。
 
 修改 Python 后端代码后需要重启 `qrclaw serve`，更新前端发布资源后需要刷新浏览器页面；已运行的服务不会自动加载新代码。
 

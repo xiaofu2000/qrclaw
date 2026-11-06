@@ -122,7 +122,17 @@ class SessionService:
             wiki.repair_worker.resume()
 
     @staticmethod
-    def describe_session(session: Session) -> dict[str, Any]:
+    def describe_session(session: Session, *, messages_from: int = 0, events_from: int = 0,
+                         history_version: int | None = None) -> dict[str, Any]:
+        """返回会话详情；客户端已有同一历史版本的前段时，只返回新增的消息和事件。
+
+        版本不同（压缩、编辑或删除改写了历史）或偏移超出现有长度时返回完整内容，
+        由 messages_offset / events_offset 告诉客户端从哪里开始拼接。
+        """
+        incremental = history_version is not None and history_version == session.history_version \
+            and 0 <= messages_from <= len(session.messages) and 0 <= events_from <= len(session.events)
+        messages_offset = messages_from if incremental else 0
+        events_offset = events_from if incremental else 0
         path = session._path
         updated_at = datetime.fromtimestamp(path.stat().st_mtime).strftime("%Y-%m-%d %H:%M") if path.exists() else ""
         return {
@@ -140,7 +150,10 @@ class SessionService:
             "context_tokens": session.context_tokens,
             "context_limit": _MODEL_MAX_TOKENS,
             "compression_threshold": COMPRESS_THRESHOLD,
-            "messages": session.messages,
-            "events": session.events,
+            "event_count": len(session.events),
+            "messages_offset": messages_offset,
+            "events_offset": events_offset,
+            "messages": session.messages[messages_offset:],
+            "events": session.events[events_offset:],
         }
 

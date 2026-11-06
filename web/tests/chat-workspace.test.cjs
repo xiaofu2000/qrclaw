@@ -1,61 +1,25 @@
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
-const { readFileSync } = require('node:fs')
-const vm = require('node:vm')
-const ts = require('typescript')
+const { loadModule, hookRuntime, deferred } = require('./helpers/load.cjs')
 
-const compiled = ts.transpileModule(readFileSync('src/features/chat/useChatWorkspace.ts', 'utf8'), {
-  compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
-}).outputText
 const session = id => ({ id, title: id, history_version: 0, message_count: 0, updated_at: '', messages: [], events: [], total_tokens: 0, run_status: 'idle', run_error: null })
-function deferred() {
-  let resolve, reject
-  const promise = new Promise((yes, no) => { resolve = yes; reject = no })
-  return { promise, resolve, reject }
-}
 
 // Run the real hook with deterministic effects and manually controlled network completion.
 function workspace(api, preferences = new Map()) {
-  const slots = []
+  const runtime = hookRuntime()
   const timers = new Map()
-  let timerId = 0
-  let cursor = 0, effects = [], current
-  const changed = (before, after) => !before || after.some((value, index) => value !== before[index])
-  const react = {
-    useState(initial) {
-      const index = cursor++
-      slots[index] ??= { value: typeof initial === 'function' ? initial() : initial }
-      return [slots[index].value, value => { slots[index].value = typeof value === 'function' ? value(slots[index].value) : value }]
+  let timerId = 0, current
+  const { useChatWorkspace } = loadModule('src/features/chat/useChatWorkspace.ts', {
+    mocks: { react: runtime.react },
+    globals: {
+      setTimeout: fn => { timers.set(++timerId, fn); return timerId },
+      clearTimeout: id => timers.delete(id),
+      AbortController,
+      localStorage: { getItem: key => preferences.get(key) ?? null, setItem: (key, value) => preferences.set(key, value) },
     },
-    useRef(initial) { return (slots[cursor++] ??= { current: initial }) },
-    useMemo(fn, deps) {
-      const index = cursor++
-      if (changed(slots[index]?.deps, deps)) slots[index] = { value: fn(), deps }
-      return slots[index].value
-    },
-    useCallback(fn, deps) { return react.useMemo(() => fn, deps) },
-    useEffect(fn, deps) {
-      const index = cursor++
-      if (changed(slots[index]?.deps, deps)) effects.push(() => {
-        slots[index]?.cleanup?.()
-        slots[index] = { deps, cleanup: fn() }
-      })
-    },
-  }
-  const exports = {}
-  vm.runInNewContext(compiled, {
-    exports, require: () => react,
-    setTimeout: fn => { timers.set(++timerId, fn); return timerId },
-    clearTimeout: id => timers.delete(id),
-    AbortController,
-    localStorage: { getItem: key => preferences.get(key) ?? null, setItem: (key, value) => preferences.set(key, value) },
   })
   function render() {
-    cursor = 0
-    current = exports.useChatWorkspace(api)
-    const pending = effects
-    effects = []
-    pending.forEach(effect => effect())
+    current = runtime.render(() => useChatWorkspace(api))
     return current
   }
   render()
@@ -73,7 +37,7 @@ function workspace(api, preferences = new Map()) {
       pending.forEach(fn => fn())
       return this.flush()
     },
-    close() { slots.forEach(slot => slot?.cleanup?.()) },
+    close: runtime.close,
   }
 }
 
@@ -976,5 +940,90 @@ test('损坏或禁用的浏览器存储不阻断当前页面的已读确认', as
   assert.equal(view.unreadReplyId, 'legacy:0:1')
   view.markReplyRead('A', view.unreadReplyId)
   assert.equal(hook.render().activity.phase, 'idle')
+  hook.close()
+})
+
+/** 沙箱里创建的数组和对象原型不同，比较前转成普通数据。 */
+const plain = value => JSON.parse(JSON.stringify(value))
+
+test('后台运行的会话轮询只查列表，任务结束后才读取一次详情', async () => {
+  const api = client(), reads = []
+  api.sessions.B.run_status = 'running'
+  api.getSession = async id => { reads.push(id); return api.sessions[id] }
+  const hook = workspace(api)
+  let view = await hook.flush()
+  assert.equal(view.activeId, 'A')
+  assert.ok(view.runningIds.has('B'))
+  reads.length = 0
+  await hook.poll()
+  await hook.poll()
+  assert.equal(reads.length, 0, '运行中的后台会话不重复下载详情')
+  api.sessions.B = { ...api.sessions.B, run_status: 'idle', messages: [{ role: 'user', content: '问' }, { role: 'assistant', content: 'B 完成' }] }
+  view = await hook.poll()
+  assert.equal(view.runningIds.has('B'), false)
+  assert.deepEqual(reads, ['B'])
+  hook.close()
+})
+
+test('过程流保存消息时带游标只读取新增部分，并按顺序拼回完整历史', async () => {
+  const api = client(), pending = deferred(), process = deferred(), cursors = []
+  const saved = { kind: 'message_saved', title: '消息已保存' }
+  api.sessions.A = { ...api.sessions.A, messages: [{ role: 'user', content: '旧问题' }], events: [saved], event_count: 1 }
+  api.getSession = async (id, cursor) => {
+    cursors.push(cursor && plain(cursor))
+    const full = api.sessions[id]
+    if (!cursor) return full
+    return { ...full, messages_offset: cursor.messages, events_offset: cursor.events, event_count: full.events.length,
+      messages: full.messages.slice(cursor.messages), events: full.events.slice(cursor.events) }
+  }
+  let pushEvent
+  api.chatStream = (_id, _content, _delta, onReady) => { onReady(); return pending.promise }
+  api.streamEvents = (_id, _after, onEvent) => { pushEvent = onEvent; return process.promise }
+  const hook = workspace(api)
+  let view = await hook.flush()
+  const sending = view.send('新问题')
+  api.sessions.A = { ...api.sessions.A, run_status: 'running',
+    messages: [...api.sessions.A.messages, { role: 'user', content: '新问题' }, { role: 'assistant', content: '新回复' }],
+    events: [saved, saved, saved] }
+  pushEvent(2, saved)
+  view = await hook.flush()
+  assert.deepEqual(cursors.at(-1), { historyVersion: 0, messages: 1, events: 1 })
+  assert.deepEqual(plain(view.messages.map(message => message.content)), ['旧问题', '新问题', '新回复'])
+  api.sessions.A = { ...api.sessions.A, run_status: 'idle' }
+  pending.resolve()
+  process.resolve()
+  await sending
+  hook.close()
+})
+
+test('已有空白会话时「新对话」直接切过去，没有空白会话才新建', async () => {
+  const api = client()
+  let created = 0
+  api.sessions.A = { ...api.sessions.A, message_count: 1, messages: [{ role: 'user', content: '有内容' }] }
+  api.createSession = async () => { created++; api.sessions.C = session('C'); return api.sessions.C }
+  const hook = workspace(api)
+  let view = await hook.flush()
+  await view.newConversation()
+  view = await hook.flush()
+  assert.equal(view.activeId, 'B')
+  assert.equal(created, 0)
+  api.sessions.B = { ...api.sessions.B, message_count: 1, messages: [{ role: 'user', content: '也有内容' }] }
+  await view.refresh()
+  view = await hook.flush()
+  await view.newConversation()
+  view = await hook.flush()
+  assert.equal(created, 1)
+  assert.equal(view.activeId, 'C')
+  hook.close()
+})
+
+test('删除会话同时清掉它的已读记录，列表里消失的会话也不再保留', async () => {
+  const preferences = new Map([['qrclaw.readReplies', JSON.stringify({ A: ['r1'], B: ['r2'], gone: ['r3'] })]])
+  const api = client()
+  const hook = workspace(api, preferences)
+  let view = await hook.flush()
+  await view.deleteConversation('B')
+  view = await hook.flush()
+  assert.deepEqual(Object.keys(JSON.parse(preferences.get('qrclaw.readReplies'))), ['A'])
   hook.close()
 })

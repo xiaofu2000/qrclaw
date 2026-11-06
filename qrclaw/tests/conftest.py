@@ -21,3 +21,8 @@ def temp_file(temp_dir):
     file_path = temp_dir / "test.txt"
     file_path.write_text("hello world", encoding="utf-8")
     return file_path
+
+@pytest.fixture(autouse=True)
+def disable_auto_title(monkeypatch):
+    """自动标题会在后台调用模型；测试默认关闭，相关测试直接调用生成函数并注入假模型。"""
+    monkeypatch.setenv("QRCLAW_AUTO_TITLE", "0")

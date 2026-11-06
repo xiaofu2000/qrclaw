@@ -1,28 +1,16 @@
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
-const { readFileSync } = require('node:fs')
-const vm = require('node:vm')
-const ts = require('typescript')
+const { loadModule, collectNodes } = require('./helpers/load.cjs')
 
 /** 加载真实输入组件，可传入测量节点验证输入高度与键盘交互。 */
 function composer(overrides = {}, element = null) {
-  const exports = {}, sent = [], effects = []
-  const source = ts.transpileModule(readFileSync('src/features/composer/Composer.tsx', 'utf8'), {
-    compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX },
-  }).outputText
-  vm.runInNewContext(source, { exports, require: name => name === 'react'
-    ? { useRef: () => ({ current: element }), useLayoutEffect: effect => effects.push(effect) } : require(name) })
+  const sent = [], effects = []
+  const exports = loadModule('src/features/composer/Composer.tsx', { mocks: {
+    react: { useRef: () => ({ current: element }), useLayoutEffect: effect => effects.push(effect) } } })
   const tree = exports.Composer({ value: '  检查代码  ', onChange: () => {}, onSend: value => sent.push(value),
     disabled: false, loading: false, running: false, planEnabled: false, onTogglePlan: () => {},
     contextUsage: null, compressionNotice: null, ...overrides })
-  const nodes = []
-  function visit(node) {
-    if (!node || typeof node !== 'object') return
-    nodes.push(node)
-    const children = node.props?.children
-    for (const child of Array.isArray(children) ? children : [children]) visit(child)
-  }
-  visit(tree)
+  const nodes = collectNodes(tree)
   return { sent, form: tree, input: nodes.find(node => node.type === 'textarea'), send: nodes.find(node => node.props?.type === 'submit'), resize: () => effects.forEach(effect => effect()) }
 }
 

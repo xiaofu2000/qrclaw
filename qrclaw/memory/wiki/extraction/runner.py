@@ -56,6 +56,8 @@ class ExtractionRunner:
         self.wiki_memory = wiki_memory
         self.config = config or DEFAULT_CONFIG
         self.llm_analyzer = llm_analyzer
+        # 最近一次处理结果实际写入的页面名，供主动记忆把页面告诉界面。
+        self.last_written_pages: list[str] = []
 
     # ── 提取触发 ──────────────────────────────────────────────────────────────
 
@@ -272,6 +274,7 @@ class ExtractionRunner:
         Returns:
             int: 成功写入的数量
         """
+        self.last_written_pages = []
         if not extraction or not extraction.needs_update or not extraction.pages:
             return 0
 
@@ -386,6 +389,7 @@ class ExtractionRunner:
                 if not saved:
                     continue
                 success_count += 1
+                self.last_written_pages.append(page.name)
                 logger.info(f"[ExtractionRunner] 写入成功: [{action}] {page.name}")
 
             except Exception as e:

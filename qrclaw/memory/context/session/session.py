@@ -6,7 +6,7 @@ from pathlib import Path
 from filelock import FileLock
 
 from qrclaw.logger import get_logger
-from qrclaw.memory.context.session.events import SessionEvent
+from qrclaw.memory.context.session.events import SessionEvent, with_status_code
 from qrclaw.memory.token_utils import count_messages_tokens
 
 logger = get_logger("qrclaw.memory.session")
@@ -164,14 +164,17 @@ class Session:
             if not self._path.exists():
                 self._save()
 
-    def set_title(self, title: str) -> None:
-        """保存用户指定的会话标题。"""
+    def set_title(self, title: str, *, only_if_unset: bool = False) -> bool:
+        """保存会话标题；自动生成的标题用 only_if_unset，不覆盖用户在生成期间改好的名字。"""
         with FileLock(f"{self._path}.lock"):
             if not self._path.exists():
                 raise FileNotFoundError(self.session_id)
             self._load(strict=True)
+            if only_if_unset and self.title:
+                return False
             self.title = title
             self._save()
+            return True
 
     def rewrite_latest_user_turn(self, message_id: str, content: str | None, *, before_save: Callable[[str, set[str], set[str]], None] | None = None) -> set[str]:
         """原子替换或删除最后一轮用户消息，并返回需清理的子会话 ID。"""
@@ -301,7 +304,8 @@ class Session:
                 history_version = 0
                 context_overhead_tokens = 0
             self.messages = [_normalize_message(m) for m in messages if m.get("role") != "system"]
-            self.events = [dict(event) for event in events]
+            # 旧会话的状态事件没有代码，读取时按原标题补齐，后续逻辑只看代码。
+            self.events = [with_status_code(dict(event)) for event in events]
             self.title = title if isinstance(title, str) and title else None
             self.history_version = int(history_version)
             self.prompt_tokens = count_messages_tokens(self.messages)

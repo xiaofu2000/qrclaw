@@ -1,4 +1,5 @@
 import type { AgentActivity, Message, RunStatus, SessionDetail, SubAgentCard } from '../../lib/types'
+import { progressEvents, type SessionStats } from '../chat/chatModel'
 import { ArrowLeft, X } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -12,44 +13,25 @@ type InspectorPanelProps = {
   planEnabled: boolean
   contextUsage: { label: string; percent: number; description: string } | null
   cards: SubAgentCard[]
+  stats: SessionStats
   selectedCard: SubAgentCard | null
   childSession: SessionDetail | null
   childMessages: Message[]
   childStreaming: string
   onSelectSubAgent: (childSessionId: string) => void
   onMainAgent: () => void
-  onOpenMemory: () => void
+  onOpenMemory: (page?: string) => void
   onClose: () => void
 }
 
 const STATE_LABEL: Record<SubAgentCard['state'], string> = { running: '运行中', completed: '已完成', failed: '失败', interrupted: '已中断' }
 const fmt = (value: number) => value.toLocaleString('zh-CN')
 
-/** 从会话事件统计工具调用、上下文整理与写入记忆，只读取已有接口字段。 */
-function sessionStats(session?: SessionDetail | null) {
-  const events = session?.events ?? []
-  const tools = new Map<string, number>()
-  for (const event of events) {
-    if (event?.kind === 'tool_status' && event.meta?.state === 'started') {
-      const name = event.meta.tool ?? event.content ?? '工具'
-      tools.set(name, (tools.get(name) ?? 0) + 1)
-    }
-  }
-  const compressions = events.filter(event => event?.kind === 'compression' && event.meta?.state === 'completed')
-  const toolList = [...tools].sort((a, b) => b[1] - a[1])
-  return {
-    toolTotal: toolList.reduce((sum, [, count]) => sum + count, 0), toolList,
-    memoryWrites: tools.get('write_wiki_page') ?? 0, compressions,
-  }
-}
-
 /** 会话属性与所选子 Agent 的完整会话共用右侧面板；宽屏常驻，窄屏为抽屉。 */
-export function InspectorPanel({ session, status, queued, activity, planEnabled, contextUsage, cards, selectedCard, childSession, childMessages,
+export function InspectorPanel({ session, status, queued, activity, planEnabled, contextUsage, cards, stats, selectedCard, childSession, childMessages,
   childStreaming, onSelectSubAgent, onMainAgent, onOpenMemory, onClose }: InspectorPanelProps) {
-  const events = (session?.events ?? []).filter(event =>
-    event?.kind === 'tool_status' || event?.kind === 'compression' || (event?.kind === 'status' && ['执行中', '步骤完成', '步骤失败'].includes(event.title)))
-  const childEvents = (childSession?.events ?? []).filter(event => event?.kind === 'tool_status' || event?.kind === 'compression' || event?.title === '执行失败')
-  const stats = sessionStats(session)
+  const events = progressEvents(session)
+  const childEvents = progressEvents(childSession, true)
   const threshold = session?.context_limit && session.compression_threshold ? session.compression_threshold / session.context_limit * 100 : null
 
   return (
@@ -110,7 +92,8 @@ export function InspectorPanel({ session, status, queued, activity, planEnabled,
           {cards.length > 0 && <span className="prop-list">{cards.map(card => <button key={card.id} type="button" onClick={() => onSelectSubAgent(card.childSessionId)} title={card.task}>
             <span className={`subagent-state ${card.state}`}>{card.agentId}</span><span>{card.task}</span></button>)}</span>}</span></div>
         <div className="prop"><span>写入记忆</span><span className="prop-value">{stats.memoryWrites} 次
-          <span className="prop-list"><button type="button" onClick={onOpenMemory}><span>打开记忆库</span></button></span></span></div>
+          <span className="prop-list">{stats.memoryPages.map(page => <button key={page} type="button" onClick={() => onOpenMemory(page)}><span>{page}</span></button>)}
+            <button type="button" onClick={() => onOpenMemory()}><span>打开记忆库</span></button></span></span></div>
         <div className="prop-sep" />
         <section className="inspector-section">
           <div className="panel-title">最近记录</div>

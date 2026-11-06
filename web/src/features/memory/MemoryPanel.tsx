@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { ArrowUpRight, BookOpen, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, Clock3, FileText, Link2, Pencil, RefreshCw, RotateCcw, ScanLine, Search, Trash2 } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -20,10 +20,19 @@ function linkedMarkdown(content: string) {
 }
 
 /** 记忆工作区入口：ViewModel 保存逻辑，面板只负责交互展示。 */
-export function MemoryWorkspace({ api, visible, activityKey, onOpenSession }: {
-  api: ReturnType<typeof createApiClient>; visible: boolean; activityKey: number; onOpenSession: (id: string) => void
+export function MemoryWorkspace({ api, visible, activityKey, focusPage, onOpenSession }: {
+  api: ReturnType<typeof createApiClient>; visible: boolean; activityKey: number; focusPage?: string; onOpenSession: (id: string) => void
 }) {
   const model = useMemoryWorkspace(api, visible, activityKey)
+  // 从聊天或属性栏点开某页记忆时直接选中它；每次打开只选一次，之后用户可自由切换。
+  const focusedRef = useRef('')
+  useEffect(() => {
+    if (!visible) { focusedRef.current = ''; return }
+    if (focusPage && focusedRef.current !== focusPage) {
+      focusedRef.current = focusPage
+      model.selectPage(focusPage)
+    }
+  })
   return <div hidden={!visible} className="memory-workspace" role="main" aria-label="记忆管理"><MemoryPanel model={model} onOpenSession={onOpenSession} /></div>
 }
 

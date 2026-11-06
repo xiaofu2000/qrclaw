@@ -1,44 +1,17 @@
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
-const { readFileSync } = require('node:fs')
-const vm = require('node:vm')
-const ts = require('typescript')
+const { loadModule, collectNodes, textOf: text } = require('./helpers/load.cjs')
 
 /** 渲染真实聊天面板的元素树，不启动浏览器，只检查用户与 QRClaw 消息的分组和顺序。 */
 function render(timeline, overrides = {}) {
-  const exports = {}
-  const source = ts.transpileModule(readFileSync('src/features/chat/ChatPanel.tsx', 'utf8'), {
-    compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX },
-  }).outputText
-  vm.runInNewContext(source, { exports, require(name) {
-    if (name === 'react') return { useRef: initial => ({ current: initial }), useState: initial => [initial, () => {}], useLayoutEffect: () => {}, useEffect: () => {} }
-    if (name === 'react-markdown') return { default: 'Markdown' }
-    if (name === 'remark-gfm') return { default: {} }
-    if (name === './ExecutionReport') return { ExecutionReport: 'ExecutionReport' }
-    return require(name)
+  const exports = loadModule('src/features/chat/ChatPanel.tsx', { mocks: {
+    react: { useRef: initial => ({ current: initial }), useState: initial => [initial, () => {}], useLayoutEffect: () => {}, useEffect: () => {} },
+    'react-markdown': { default: 'Markdown' }, 'remark-gfm': { default: {} }, './ExecutionReport': { ExecutionReport: 'ExecutionReport' },
   } })
   const tree = exports.ChatPanel({ sessionId: 'A', title: '会话标题', messageCount: 5, timeline, streaming: '', running: false, queued: false,
     loading: false, mutating: false, visible: true, unreadReplyId: null, onReplyRead: () => {}, onSelectSubAgent: () => {},
     onEditLatestMessage: () => {}, onDeleteLatestMessage: () => {}, assistantAvatar: { type: 'Avatar', props: {} }, ...overrides })
-  const nodes = []
-  function visit(node) {
-    if (Array.isArray(node)) return node.forEach(visit)
-    if (!node || typeof node !== 'object' || !node.props) return
-    nodes.push(node)
-    visit(node.props.children)
-  }
-  visit(tree)
-  return nodes
-}
-
-const text = node => {
-  const parts = []
-  ;(function walk(value) {
-    if (Array.isArray(value)) return value.forEach(walk)
-    if (typeof value === 'string' || typeof value === 'number') parts.push(String(value))
-    else if (value && typeof value === 'object' && value.props) walk(value.props.children)
-  })(node)
-  return parts.join('')
+  return collectNodes(tree)
 }
 
 test('用户消息在右侧气泡，QRClaw 的回复、连续工具调用和子任务按顺序收进同一条左侧消息', () => {

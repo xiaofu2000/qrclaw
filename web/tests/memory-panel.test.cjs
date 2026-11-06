@@ -1,8 +1,6 @@
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
-const { readFileSync } = require('node:fs')
-const vm = require('node:vm')
-const ts = require('typescript')
+const { loadModule, collectNodes } = require('./helpers/load.cjs')
 
 /** 驱动真实面板的局部状态；数据操作仍通过传入的 ViewModel 执行。 */
 function panel() {
@@ -21,27 +19,14 @@ function panel() {
     cancelEdit() { assert.fail('返回列表不能取消草稿') },
     save() { assert.fail('导航不能提交草稿') },
   }
-  const exports = {}
-  const source = ts.transpileModule(readFileSync('src/features/memory/MemoryPanel.tsx', 'utf8'), {
-    compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX },
-  }).outputText
-  vm.runInNewContext(source, { exports, requestAnimationFrame: fn => fn(), require: name => {
-    if (name === 'react') return {
-      useState(initial) { const i = cursor++; slots[i] ??= { value: initial }; return [slots[i].value, value => { slots[i].value = value }] },
-      useRef(initial) { return (slots[cursor++] ??= { current: initial }) },
-    }
-    if (['./useMemoryWorkspace', './memory.css', 'react-markdown', 'remark-gfm'].includes(name)) return {}
-    return require(name)
-  } })
-  /** 遍历 JSX，保留真实控件事件供测试点击。 */
-  function visit(node) {
-    if (Array.isArray(node)) { node.forEach(visit); return }
-    if (!node || typeof node !== 'object') return
-    nodes.push(node)
-    visit(node.props?.children)
+  const react = {
+    useState(initial) { const i = cursor++; slots[i] ??= { value: initial }; return [slots[i].value, value => { slots[i].value = value }] },
+    useRef(initial) { return (slots[cursor++] ??= { current: initial }) },
   }
+  const exports = loadModule('src/features/memory/MemoryPanel.tsx', { globals: { requestAnimationFrame: fn => fn() },
+    mocks: { react, './useMemoryWorkspace': {}, 'react-markdown': {}, 'remark-gfm': {} } })
   return { model, selections, sessions,
-    render() { cursor = 0; nodes = []; visit(exports.MemoryPanel({ model, onOpenSession: id => sessions.push(id) })); return this },
+    render() { cursor = 0; nodes = collectNodes(exports.MemoryPanel({ model, onOpenSession: id => sessions.push(id) })); return this },
     find(match) { const node = nodes.find(match); assert.ok(node, '应找到指定控件'); return node },
     withClass(name) { return this.find(node => node.props?.className?.split(' ').includes(name)) },
   }.render()

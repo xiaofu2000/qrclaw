@@ -14,7 +14,7 @@ type ChatPanelProps = {
   assistantAvatar?: ReactNode
   timeline: ChatTimelineItem[]
   onSelectSubAgent: (childSessionId: string) => void
-  onOpenMemory?: () => void
+  onOpenMemory?: (page?: string) => void
   streaming: string
   running: boolean
   queued: boolean
@@ -146,16 +146,20 @@ export function ChatPanel({ sessionId, title, messageCount = 0, compressions = 0
         <span className={`subagent-state ${card.state}`}>{STATE_LABEL[card.state]}</span>
       </button>
     }
-    const memoryWrites = segment.tools.filter(tool => tool.toolName === 'write_wiki_page').length
+    const memoryWrites = segment.tools.filter(tool => tool.toolName === 'write_wiki_page')
+    const pages = [...new Set(memoryWrites.flatMap(tool => tool.toolPages ?? []))]
+    const failures = segment.tools.filter(tool => tool.toolState === 'failed').length
     return <div key={segment.id}>
       <details className="turn-run">
-        <summary><Wrench size={16} aria-hidden="true" /><span>调用了 {segment.tools.length} 次工具</span>
+        <summary><Wrench size={16} aria-hidden="true" /><span>调用了 {segment.tools.length} 次工具{failures > 0 ? `，${failures} 次失败` : ''}</span>
           <span className="tool-chips">{toolCounts(segment.tools).map(([name, count]) => <span key={name} className="chip">{name}{count > 1 ? ` ×${count}` : ''}</span>)}</span></summary>
-        <div className="turn-run-list">{segment.tools.map(tool => <details key={tool.id} className="tool-result">
-          <summary>{tool.toolName ?? '工具'}</summary><pre>{tool.content}</pre></details>)}</div>
+        <div className="turn-run-list">{segment.tools.map(tool => <details key={tool.id} className={`tool-result ${tool.toolState === 'failed' ? 'failed' : ''}`}>
+          <summary><span className="tool-name">{tool.toolName ?? '工具'}</span>{tool.toolSummary && <span className="tool-summary">{tool.toolSummary}</span>}
+            {tool.toolState === 'failed' && <span className="tool-failed">失败</span>}</summary><pre>{tool.content}</pre></details>)}</div>
       </details>
-      {memoryWrites > 0 && <div className="turn-note"><BookOpen size={16} aria-hidden="true" />写入记忆 {memoryWrites} 次
-        {onOpenMemory && <button type="button" onClick={onOpenMemory}>查看记忆库</button>}</div>}
+      {memoryWrites.length > 0 && <div className="turn-note"><BookOpen size={16} aria-hidden="true" />{pages.length ? '写入记忆' : `写入记忆 ${memoryWrites.length} 次`}
+        {onOpenMemory && (pages.length ? pages.map(page => <button key={page} type="button" onClick={() => onOpenMemory(page)}>{page}</button>)
+          : <button type="button" onClick={() => onOpenMemory()}>查看记忆库</button>)}</div>}
     </div>
   }
 

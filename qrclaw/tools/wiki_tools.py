@@ -4,6 +4,7 @@ import threading
 
 from pydantic import BaseModel, Field
 from qrclaw.tools.registry import register, AgentType
+from qrclaw.tools.call_context import report_tool_detail
 from qrclaw.logger import get_logger
 
 logger = get_logger("qrclaw.tools.wiki")
@@ -97,7 +98,12 @@ def write_wiki_page(content: str) -> str:
         if extractor is None:
             return "错误：记忆节点未初始化，无法写入记忆。"
         written = extractor.write_now(content)
-        return f"已写入 {written} 个 Wiki 页面。" if written else "未发现需要写入的长期记忆。"
+        pages = list(getattr(extractor, "last_written_pages", []) or [])
+        if pages:
+            report_tool_detail(pages=pages)
+        if not written:
+            return "未发现需要写入的长期记忆。"
+        return f"已写入 {written} 个 Wiki 页面：{'、'.join(pages)}。" if pages else f"已写入 {written} 个 Wiki 页面。"
     except Exception as exc:
         logger.error("主动记忆写入失败：%s", exc, exc_info=True)
         return f"错误：记忆写入失败 — {exc}"

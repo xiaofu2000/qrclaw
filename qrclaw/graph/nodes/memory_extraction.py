@@ -44,6 +44,7 @@ class MemoryExtractionNode:
         self._runner = None
         self._llm_analyzer = llm_analyzer
         self._flush_lock = threading.Lock()
+        self.last_written_pages: list[str] = []
         self.request_started_at = None
         self.request_order = None
 
@@ -142,6 +143,7 @@ class MemoryExtractionNode:
             if extraction is None:
                 raise RuntimeError("记忆分析失败")
             written = runner.process_extraction_result(extraction, sources=sources, explicit=True)
+            self.last_written_pages = list(runner.last_written_pages)
             if self.session is not None:
                 self._acknowledge_sources(sources)
             return written

@@ -1,18 +1,13 @@
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
-const { readFileSync } = require('node:fs')
-const vm = require('node:vm')
-const ts = require('typescript')
+const { loadModule, collectNodes } = require('./helpers/load.cjs')
 
 test('桌面伙伴与状态固定在侧栏顶部，手机布局保持不变，每种状态只有一个动画', () => {
-  const states = [], effects = [], exports = {}
+  const states = [], effects = []
   let cursor = 0, resize
   const media = { matches: false, addEventListener: (_, listener) => { resize = listener }, removeEventListener: () => { resize = null } }
   const chat = { conversations: [], activeId: 'demo', timeline: [{}], messages: [], running: false,
-    loading: false, runningIds: new Set(), unreadIds: new Set(), activity: { phase: 'tool', status: 'busy', label: '正在使用工具' } }
-  const source = ts.transpileModule(readFileSync('src/app/App.tsx', 'utf8'), {
-    compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX },
-  }).outputText
+    loading: false, runningIds: new Set(), unreadIds: new Set(), stats: { compressions: [], toolTotal: 0, toolList: [], memoryWrites: 0, memoryPages: [] }, activity: { phase: 'tool', status: 'busy', label: '正在使用工具' } }
   const react = {
     useState(initial) {
       const index = cursor++
@@ -21,7 +16,7 @@ test('桌面伙伴与状态固定在侧栏顶部，手机布局保持不变，�
     },
     useEffect: effect => effects.push(effect), useMemo: factory => factory(), useRef: () => ({ current: null }),
   }
-  vm.runInNewContext(source, { exports, window: { location: { hash: '' }, matchMedia: () => media }, require(name) {
+  const exports = loadModule('src/app/App.tsx', { globals: { window: { location: { hash: '' }, matchMedia: () => media } }, mocks(name) {
     if (name === 'react') return react
     if (name.includes('useChatWorkspace')) return { useChatWorkspace: () => chat }
     if (name.includes('/api')) return { createApiClient: () => ({}) }
@@ -29,20 +24,11 @@ test('桌面伙伴与状态固定在侧栏顶部，手机布局保持不变，�
       const component = name.split('/').at(-1)
       return { [component]: component, MemoryWorkspace: 'MemoryWorkspace' }
     }
-    return require(name)
   } })
   /** 同时遍历子元素和组件插槽，防止 CSS 隐藏的重复动画漏检。 */
   function render() {
     cursor = 0
-    const nodes = []
-    function visit(node) {
-      if (Array.isArray(node)) return node.forEach(visit)
-      if (!node || typeof node !== 'object' || !node.props) return
-      nodes.push(node)
-      visit(node.props.children)
-      visit(node.props.companion)
-    }
-    visit(exports.App())
+    const nodes = collectNodes(exports.App(), ['companion'])
     assert.equal(nodes.filter(node => node.type === 'Sidebar' && node.props.activity || node.type === 'AgentCompanion' && !node.props.textOnly).length, 1)
     return type => nodes.find(node => node.type === type)
   }
@@ -71,7 +57,7 @@ test('桌面伙伴与状态固定在侧栏顶部，手机布局保持不变，�
   view = render()
   assert.equal(view('AgentCompanion').props.textOnly, true)
   assert.equal(view('Sidebar').props.activity, chat.activity)
-  states[2] = true
+  view('Sidebar').props.onOpenMemory()
   view = render()
   assert.equal(view('AgentCompanion'), undefined)
   assert.equal(view('Sidebar').props.activity, chat.activity)
@@ -85,26 +71,13 @@ test('桌面伙伴与状态固定在侧栏顶部，手机布局保持不变，�
 })
 
 test('侧栏动画与相邻状态使用同一活动数据，手机抽屉不挂载重复动画', () => {
-  const exports = {}
-  const source = ts.transpileModule(readFileSync('src/components/Sidebar.tsx', 'utf8'), {
-    compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX },
-  }).outputText
-  vm.runInNewContext(source, { exports, require(name) {
+  const exports = loadModule('src/components/Sidebar.tsx', { mocks(name) {
     if (name.includes('ConversationList')) return { ConversationList: 'ConversationList' }
     if (name.includes('AgentSprite')) return { AgentSprite: 'AgentSprite' }
-    return require(name)
   } })
   /** 遍历真实侧栏树，检查状态不是只传到组件而未被渲染。 */
   function render(activity, memoryOpen = false) {
-    const nodes = []
-    function visit(node) {
-      if (Array.isArray(node)) return node.forEach(visit)
-      if (!node || typeof node !== 'object' || !node.props) return
-      nodes.push(node)
-      visit(node.props.children)
-    }
-    visit(exports.Sidebar({ conversations: [], activeId: 'demo', activity, memoryOpen }))
-    return nodes
+    return collectNodes(exports.Sidebar({ conversations: [], activeId: 'demo', activity, memoryOpen }))
   }
   for (const [phase, status, label] of [
     ['idle', 'idle', '可以开始'], ['thinking', 'busy', '正在思考'],

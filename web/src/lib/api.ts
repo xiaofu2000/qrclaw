@@ -1,4 +1,4 @@
-import type { SessionDetail, SessionSummary } from './types'
+import type { SessionDetail, SessionEvent, SessionSummary } from './types'
 import type { WikiDetail, WikiDraft, WikiLintReport, WikiPageList, WikiStatus } from '../features/memory/types'
 
 const baseUrl = import.meta.env.VITE_QRCLAW_API_BASE_URL ?? (import.meta.env.DEV ? '/api' : '')
@@ -45,12 +45,19 @@ async function responseError(response: Response) {
   catch { return `请求失败（${response.status}）` }
 }
 
-/** 记忆接口保留状态码，ViewModel 可识别 409 并保留用户草稿。 */
-async function wikiRequest<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${baseUrl}/v1/wiki${path}`, init)
+/** 所有 JSON 接口共用：失败时抛出服务端给出的中文原因，并保留状态码供调用方识别 409 等冲突。 */
+async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const response = await fetch(`${baseUrl}${path}`, init)
   if (!response.ok) throw Object.assign(new Error(await responseError(response)), { status: response.status })
   return response.json() as Promise<T>
 }
+
+const wikiRequest = <T>(path: string, init?: RequestInit) => request<T>(`/v1/wiki${path}`, init)
+const sessionPath = (sessionId: string) => `/v1/sessions/${encodeURIComponent(sessionId)}`
+const jsonBody = (method: string, body: unknown): RequestInit => ({ method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+
+/** 客户端已缓存的同一历史版本的长度；带上后服务端只返回新增的消息和事件。 */
+export type SessionCursor = { historyVersion: number; messages: number; events: number }
 
 export function createApiClient() {
   return {
@@ -65,9 +72,7 @@ export function createApiClient() {
     /** 使用用户打开草稿时的版本保存，只发送持久化字段。 */
     editWikiPage(name: string, draft: WikiDraft) {
       const { content, description, tags, related, revision } = draft
-      return wikiRequest<WikiDetail>(`/pages/${encodeURIComponent(name)}`, {
-        method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ content, description, tags, related, revision }),
-      })
+      return wikiRequest<WikiDetail>(`/pages/${encodeURIComponent(name)}`, jsonBody('PATCH', { content, description, tags, related, revision }))
     },
     /** 按版本删除页面，后台已更新时返回冲突。 */
     deleteWikiPage(name: string, revision: number) {
@@ -81,69 +86,26 @@ export function createApiClient() {
     repairWikiPage(name: string) {
       return wikiRequest<WikiDetail>(`/pages/${encodeURIComponent(name)}/repair`, { method: 'POST' })
     },
-    async health() {
-      const response = await fetch(`${baseUrl}/health`)
-      if (!response.ok) throw new Error('health check failed')
-      return response.json()
+    health() { return request<{ status: string }>('/health') },
+    listSessions() { return request<SessionSummary[]>('/v1/sessions') },
+    createSession(sessionId?: string) {
+      return request<SessionDetail>('/v1/sessions', jsonBody('POST', sessionId ? { session_id: sessionId } : {}))
     },
-    async listSessions() {
-      const response = await fetch(`${baseUrl}/v1/sessions`)
-      if (!response.ok) throw new Error('list sessions failed')
-      return (await response.json()) as SessionSummary[]
-    },
-    async createSession(sessionId?: string) {
-      const response = await fetch(`${baseUrl}/v1/sessions`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(sessionId ? { session_id: sessionId } : {}),
-      })
-      if (!response.ok) throw new Error('create session failed')
-      return (await response.json()) as SessionDetail
-    },
-    async getSession(sessionId: string) {
-      const response = await fetch(`${baseUrl}/v1/sessions/${encodeURIComponent(sessionId)}`)
-      if (!response.ok) throw new Error('get session failed')
-      return (await response.json()) as SessionDetail
+    /** 读取会话；传入已缓存的游标时只取新增部分，历史版本不同由服务端返回完整内容。 */
+    getSession(sessionId: string, cursor?: SessionCursor) {
+      const query = cursor ? `?history_version=${cursor.historyVersion}&messages_from=${cursor.messages}&events_from=${cursor.events}` : ''
+      return request<SessionDetail>(`${sessionPath(sessionId)}${query}`)
     },
     async deleteSession(sessionId: string) {
-      const response = await fetch(`${baseUrl}/v1/sessions/${encodeURIComponent(sessionId)}`, {
-        method: 'DELETE',
-      })
-      if (!response.ok) throw new Error('delete session failed')
+      await request<{ deleted: boolean }>(sessionPath(sessionId), { method: 'DELETE' })
     },
     /** 保存自定义会话标题。 */
-    async renameSession(sessionId: string, title: string) {
-      const response = await fetch(`${baseUrl}/v1/sessions/${encodeURIComponent(sessionId)}`, {
-        method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title }),
-      })
-      if (!response.ok) throw new Error(await responseError(response))
-      return (await response.json()) as SessionDetail
+    renameSession(sessionId: string, title: string) {
+      return request<SessionDetail>(sessionPath(sessionId), jsonBody('PATCH', { title }))
     },
     /** 删除最后一条用户消息及其所属轮次。 */
-    async deleteLatestUserMessage(sessionId: string, messageId: string) {
-      const response = await fetch(`${baseUrl}/v1/sessions/${encodeURIComponent(sessionId)}/messages/${encodeURIComponent(messageId)}`, {
-        method: 'DELETE',
-      })
-      if (!response.ok) throw new Error(await responseError(response))
-      return (await response.json()) as SessionDetail
-    },
-    async chat(sessionId: string, content: string, planEnabled = false) {
-      const response = await fetch(`${baseUrl}/v1/chat/completions`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: 'qrclaw-agent',
-          session_id: sessionId,
-          messages: [{ role: 'user', content }],
-          plan_enabled: planEnabled,
-        }),
-      })
-
-      const body = await response.json()
-      if (!response.ok) {
-        throw new Error(body.detail || 'chat request failed')
-      }
-      return body.choices?.[0]?.message?.content ?? ''
+    deleteLatestUserMessage(sessionId: string, messageId: string) {
+      return request<SessionDetail>(`${sessionPath(sessionId)}/messages/${encodeURIComponent(messageId)}`, { method: 'DELETE' })
     },
     /** 提交一次流式聊天；连接中断只报错，不重发可能已经执行的任务。 */
     async chatStream(sessionId: string, content: string, onDelta: (delta: string) => void, onReady?: () => void, editMessageId?: string, planEnabled = false) {
@@ -168,9 +130,9 @@ export function createApiClient() {
       if (!finished) throw new Error('聊天连接提前断开，请查看会话执行状态')
     },
     /** 从指定事件序号之后续接会话过程流。 */
-    async streamEvents(sessionId: string, after: number, onEvent: (index: number, event: NonNullable<SessionDetail['events']>[number]) => void,
+    async streamEvents(sessionId: string, after: number, onEvent: (index: number, event: SessionEvent) => void,
       signal?: AbortSignal, onLiveText?: (text: string) => void) {
-      const response = await fetch(`${baseUrl}/v1/sessions/${encodeURIComponent(sessionId)}/events/stream?after=${after}`, { signal })
+      const response = await fetch(`${baseUrl}${sessionPath(sessionId)}/events/stream?after=${after}`, { signal })
       if (!response.ok) throw new Error(await responseError(response))
       await readSse(response, message => {
         if (message.event === 'progress' && message.id) onEvent(Number(message.id), JSON.parse(message.data))

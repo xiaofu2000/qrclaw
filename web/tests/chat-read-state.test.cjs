@@ -1,8 +1,6 @@
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
-const { readFileSync } = require('node:fs')
-const vm = require('node:vm')
-const ts = require('typescript')
+const { loadModule } = require('./helpers/load.cjs')
 
 /** 用可控可见区域驱动真实面板的阅读观察器，不借助计时自动清除提示。 */
 function panel(overrides = {}) {
@@ -12,25 +10,22 @@ function panel(overrides = {}) {
   const marker = { getBoundingClientRect: () => ({ top: markerTop, bottom: markerTop + 1 }) }
   const document = { visibilityState: 'visible', focused: true, hasFocus: () => document.focused,
     addEventListener: (key, value) => listeners.set(key, value), removeEventListener: key => listeners.delete(key) }
-  const source = ts.transpileModule(readFileSync('src/features/chat/ChatPanel.tsx', 'utf8'), {
-    compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX },
-  }).outputText
-  vm.runInNewContext(source, { exports, document,
-    window: { addEventListener: document.addEventListener, removeEventListener: document.removeEventListener },
-    IntersectionObserver: class {
-      constructor(callback, options) { observer = callback; assert.equal(options.root, history) }
-      observe(node) { assert.equal(node, marker) }
-      disconnect() { disconnected = true }
-    },
-    require(name) {
-      if (name === 'react') return {
+  Object.assign(exports, loadModule('src/features/chat/ChatPanel.tsx', {
+    globals: { document,
+      window: { addEventListener: document.addEventListener, removeEventListener: document.removeEventListener },
+      IntersectionObserver: class {
+        constructor(callback, options) { observer = callback; assert.equal(options.root, history) }
+        observe(node) { assert.equal(node, marker) }
+        disconnect() { disconnected = true }
+      } },
+    mocks: {
+      react: {
         useRef: initial => ({ current: refIndex++ === 0 ? history : refIndex === 2 ? marker : initial }),
         useState: initial => [initial, () => {}], useLayoutEffect: () => {}, useEffect: fn => effects.push(fn),
-      }
-      if (['react-markdown', 'remark-gfm', './ExecutionReport'].includes(name)) return {}
-      return require(name)
+      },
+      'react-markdown': {}, 'remark-gfm': {}, './ExecutionReport': {},
     },
-  })
+  }))
   exports.ChatPanel({ sessionId: 'A', timeline: [], visible: true, unreadReplyId: 'reply-A',
     running: false, loading: false, mutating: false, onReplyRead: (...args) => acknowledgements.push(args), ...overrides })
   const cleanups = effects.map(fn => fn())
