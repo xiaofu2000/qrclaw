@@ -52,6 +52,8 @@ API 默认只监听 `127.0.0.1:8765`，提供 `/health`、`/v1/models`、`/v1/se
 
 修改 Python 后端代码后需要重启 `qrclaw serve`，更新前端发布资源后需要刷新浏览器页面；已运行的服务不会自动加载新代码。
 
+本机访问不需要 token，但只接受通过 `127.0.0.1`、`localhost` 或 `[::1]` 访问的请求，并拒绝其他网站页面发起的请求（`Origin` 不是这几个地址）。这样即使恶意网站把自己的域名解析到本机（DNS 重绑定），也不能借浏览器调用会自动执行工具的接口。通过其他域名或局域网地址访问时同样需要 token。
+
 如果需要让 API 监听非本机地址，先设置 `QRCLAW_API_TOKEN`；远程请求须携带 `Authorization: Bearer <token>`。API 聊天也会自动执行工具调用，应妥善保管 token。通过反向代理开放服务时，应在代理处设置访问控制。
 
 兼容旧的 OpenWebUI 启动方式：`uv run python api_server.py` 在 `127.0.0.1:8000` 提供同一 API，并继续使用 `api-server` Agent 的原有数据目录。将 OpenWebUI 的 OpenAI 兼容接口地址设置为 `http://127.0.0.1:8000/v1`，模型选择 `qrclaw-agent`。

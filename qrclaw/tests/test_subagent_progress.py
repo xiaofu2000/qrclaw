@@ -90,7 +90,7 @@ def test_child_progress_stream_and_parent_card_survive_refresh(temp_dir):
 
     worker = Thread(target=finish)
     worker.start()
-    with TestClient(create_app(workspace), client=("127.0.0.1", 50000)) as client:
+    with TestClient(create_app(workspace), base_url="http://127.0.0.1", client=("127.0.0.1", 50000)) as client:
         assert client.get(f"/v1/sessions/{parent.session_id}").json()["active_subagents"] is True
         assert client.delete(f"/v1/sessions/{parent.session_id}").status_code == 409
         live = client.get(f"/v1/sessions/{child_id}/events/stream")

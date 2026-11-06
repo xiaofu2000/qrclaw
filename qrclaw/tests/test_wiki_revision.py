@@ -84,7 +84,7 @@ def test_old_agent_request_cannot_restore_later_web_removal(wiki, tmp_path, monk
                 original_start()
                 accepted.set()
             monkeypatch.setattr(integration, "on_run_start", start)
-            client = TestClient(create_app(workspace), client=("127.0.0.1", 50000))
+            client = TestClient(create_app(workspace), base_url="http://127.0.0.1", client=("127.0.0.1", 50000))
             with ThreadPoolExecutor(max_workers=1) as pool:
                 routes._agent_run_lock.acquire()
                 try:
@@ -188,7 +188,7 @@ def test_persisted_chat_change_recovers_after_interruption(wiki, tmp_path, monke
     monkeypatch.setattr(wiki, "save_page", save)
     monkeypatch.setattr(wiki.provenance, "write", write)
     agent._runner.react_loop.stop_memory_extractions(service.workspace)
-    with TestClient(create_app(service.workspace), client=("127.0.0.1", 50000)):
+    with TestClient(create_app(service.workspace), base_url="http://127.0.0.1", client=("127.0.0.1", 50000)):
         assert wiki.provenance.read()["session_changes"] == {}
         if action == "delete":
             assert not session._path.exists()
@@ -448,7 +448,7 @@ def test_plan_selector_candidate_cap(wiki, monkeypatch):
 def test_web_api_search_edit_delete_and_conflict(wiki, tmp_path):
     page, _ = tracked(wiki)
     workspace = Workspace(_root=tmp_path)
-    with TestClient(create_app(workspace), client=("127.0.0.1", 50000)) as client:
+    with TestClient(create_app(workspace), base_url="http://127.0.0.1", client=("127.0.0.1", 50000)) as client:
         assert client.get("/v1/wiki/pages?q=中文&limit=1").json()["total"] == 1
         detail = client.get("/v1/wiki/pages/偏好").json()
         assert detail["sources"][0]["body"] == "喜欢中文"

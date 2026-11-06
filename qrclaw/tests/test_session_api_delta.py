@@ -13,7 +13,7 @@ from qrclaw.workspace import Workspace
 
 
 def _client(workspace):
-    return TestClient(create_app(workspace), client=("127.0.0.1", 50000))
+    return TestClient(create_app(workspace), base_url="http://127.0.0.1", client=("127.0.0.1", 50000))
 
 
 def test_detail_returns_only_new_messages_and_events_for_same_history(temp_dir):

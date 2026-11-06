@@ -75,7 +75,7 @@ def test_context_usage_includes_prompt_and_tools_without_cumulative_usage(temp_d
     session.update_tokens(900000, 100000, 1000000)
     restored = Session(workspace.sessions_dir, session.session_id)
     assert restored.context_tokens == before
-    with TestClient(create_app(workspace), client=("127.0.0.1", 50000)) as client:
+    with TestClient(create_app(workspace), base_url="http://127.0.0.1", client=("127.0.0.1", 50000)) as client:
         detail = client.get("/v1/sessions/usage").json()
     assert detail["context_tokens"] == before
     assert detail["total_tokens"] == 1000000
@@ -118,7 +118,7 @@ def test_compression_events_and_history_survive_reload(temp_dir, failed):
         assert progress[-1]["meta"]["after_tokens"] == saved.context_tokens
         assert progress[-1]["meta"]["after_tokens"] < progress[-1]["meta"]["before_tokens"]
         assert progress[-1]["meta"]["after_message_count"] == len(saved.messages)
-    with TestClient(create_app(workspace), client=("127.0.0.1", 50000)) as client:
+    with TestClient(create_app(workspace), base_url="http://127.0.0.1", client=("127.0.0.1", 50000)) as client:
         stream = client.get("/v1/sessions/compress/events/stream?after=-1").text
     assert '"kind": "compression"' in stream
     assert "旧任务细节" not in stream

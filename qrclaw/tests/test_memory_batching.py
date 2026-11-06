@@ -425,7 +425,7 @@ def test_server_startup_resumes_idle_pending_batch(tmp_path, virtual_time):
     result = _analyzer().analyze.return_value
     result.pages[0].source_ids = [s["id"] for s in node.memory.provenance.capture(session.messages, session.session_id) if s["role"] == "user"]
     with patch("qrclaw.memory.wiki.extraction.runner.ExtractionRunner.analyze_with_llm", return_value=result) as analyze:
-        with TestClient(create_app(workspace), client=("127.0.0.1", 50000)) as client:
+        with TestClient(create_app(workspace), base_url="http://127.0.0.1", client=("127.0.0.1", 50000)) as client:
             assert client.get("/health").status_code == 200
             timer = ManualTimer.timers[-1]
             assert timer.interval == 20
@@ -585,7 +585,7 @@ def test_queued_http_request_pauses_idle_extraction(tmp_path, virtual_time, monk
 
     monkeypatch.setattr(integration, "on_run_start", start)
     monkeypatch.setattr(routes, "run_agent", execute)
-    client = TestClient(create_app(workspace), client=("127.0.0.1", 50000))
+    client = TestClient(create_app(workspace), base_url="http://127.0.0.1", client=("127.0.0.1", 50000))
     routes._agent_run_lock.acquire()
     try:
         with ThreadPoolExecutor(max_workers=1) as pool:

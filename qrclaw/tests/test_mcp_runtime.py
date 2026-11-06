@@ -222,7 +222,7 @@ def test_server_shutdown_closes_mcp(temp_dir, monkeypatch):
 
     cleanup = Mock()
     monkeypatch.setattr(agent, '_cleanup_mcp', cleanup)
-    with TestClient(create_app(Workspace(_root=temp_dir)), client=('127.0.0.1', 50000)):
+    with TestClient(create_app(Workspace(_root=temp_dir)), base_url='http://127.0.0.1', client=('127.0.0.1', 50000)):
         cleanup.assert_not_called()
     cleanup.assert_called_once()
 
