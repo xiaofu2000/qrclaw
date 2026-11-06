@@ -1,25 +1,24 @@
 """
 配置管理模块
 
-统一管理用户配置，所有配置文件存放在 ~/.qrclaw/ 目录下：
-- ~/.qrclaw/config.yaml      用户配置（API Key 等）
-- ~/.qrclaw/permissions.yaml 权限配置
-- ~/.qrclaw/MEMORY.md        中期记忆
-- ~/.qrclaw/sessions/        会话历史
-- ~/.qrclaw/logs/            日志文件
+负责配置文件本身的读写；解析、校验和环境变量覆盖在 qrclaw.config。
+文件存放在 QRClaw 数据目录（默认 ~/.qrclaw，可用 QRCLAW_HOME 改）：
+- config.yaml      用户配置（API Key 等）
+- permissions.yaml 权限配置
+- agents/          各 Agent 的会话、记忆与工作空间
+- logs/            日志文件
 """
 
-import json
-import os
 import yaml
 from pathlib import Path
 from typing import Any
+from qrclaw.home import qrclaw_home
 from qrclaw.logger import get_logger
 
 logger = get_logger("qrclaw.config_manager")
 
 # 配置目录
-CONFIG_DIR = Path.home() / ".qrclaw"
+CONFIG_DIR = qrclaw_home()
 CONFIG_FILE = CONFIG_DIR / "config.yaml"
 
 # 默认配置
@@ -28,6 +27,7 @@ DEFAULT_CONFIG = {
         "name": "QRClaw",
         "max_iterations": 100,
         "plan_enabled": False,
+        "max_concurrent_runs": 4,
     },
     "llm": {
         "api_key": "",
@@ -63,6 +63,33 @@ DEFAULT_CONFIG = {
     },
 }
 
+# 可用环境变量覆盖的配置项（由 qrclaw.config 应用）：环境变量名 → (配置段, 键)。名字沿用旧版本，已有的部署脚本不用改。
+ENV_OVERRIDES: dict[str, tuple[str, str]] = {
+    "AGENT_NAME": ("agent", "name"),
+    "MAX_ITERATIONS": ("agent", "max_iterations"),
+    "PLAN_ENABLED": ("agent", "plan_enabled"),
+    "MAX_CONCURRENT_RUNS": ("agent", "max_concurrent_runs"),
+    "LLM_PROVIDER": ("llm", "provider"),
+    "LITELLM_API_KEY": ("llm", "api_key"),
+    "LITELLM_MODEL": ("llm", "model"),
+    "LITELLM_BASE_URL": ("llm", "base_url"),
+    "LITELLM_API_BASE": ("llm", "api_base"),
+    "LITELLM_PROXY_URL": ("llm", "proxy_url"),
+    "MODEL_MAX_TOKENS": ("llm", "max_tokens"),
+    "TAVILY_API_KEY": ("search", "tavily_api_key"),
+    "LOG_LEVEL": ("log", "level"),
+    "LOG_MAX_DAYS": ("log", "max_days"),
+    "LOG_TO_FILE": ("log", "to_file"),
+    "LOG_TO_CONSOLE": ("log", "to_console"),
+    "LOG_CONSOLE_LEVEL": ("log", "console_level"),
+    "HEARTBEAT_ENABLED": ("heartbeat", "enabled"),
+    "HEARTBEAT_INTERVAL": ("heartbeat", "interval"),
+    "COMPRESS_THRESHOLD_RATIO": ("compress", "threshold_ratio"),
+    "COMPRESS_SUMMARY_MAX_TOKENS": ("compress", "summary_max_tokens"),
+    "COMPRESS_RECENT_MAX_TOKENS": ("compress", "recent_max_tokens"),
+    "MCP_ENABLED": ("mcp", "enabled"),
+    "MCP_SERVERS": ("mcp", "servers"),  # JSON 数组
+}
 # 配置注释
 CONFIG_HEADER = """# ═══════════════════════════════════════════════════════════════
 # QRClaw 配置文件
@@ -112,69 +139,21 @@ def init_config():
     logger.info("请编辑配置文件，填入你的 API Key")
 
 
-def load_config():
-    """加载配置并注入到环境变量"""
+def read_config_file() -> dict:
+    """读取配置文件原始内容（不合并默认值）；文件不存在时先创建默认配置，内容损坏时记错误并按空配置处理。"""
     if not CONFIG_FILE.exists():
         init_config()
-
     try:
         with open(CONFIG_FILE, "r", encoding="utf-8") as f:
-            config = yaml.safe_load(f) or {}
-
-        config = _deep_merge(DEFAULT_CONFIG, config)
-        _inject_to_env(config)
-        logger.debug(f"已加载配置: {CONFIG_FILE}")
-
+            data = yaml.safe_load(f) or {}
     except Exception as e:
-        logger.error(f"加载配置失败: {e}", exc_info=True)
-
-
-def _inject_to_env(config: dict):
-    """将配置注入到环境变量"""
-    # Agent 配置
-    agent_config = config.get("agent", {})
-    os.environ.setdefault("AGENT_NAME", agent_config.get("name", "QRClaw"))
-    os.environ.setdefault("MAX_ITERATIONS", str(agent_config.get("max_iterations", 100)))
-    os.environ.setdefault("PLAN_ENABLED", str(agent_config.get("plan_enabled", False)).lower())
-
-    # LLM 配置
-    llm_config = config.get("llm", {})
-    os.environ.setdefault("LITELLM_API_KEY", llm_config.get("api_key", ""))
-    os.environ.setdefault("LITELLM_MODEL", llm_config.get("model", "gpt-4o"))
-    os.environ.setdefault("LITELLM_BASE_URL", llm_config.get("base_url", ""))
-    os.environ.setdefault("LITELLM_API_BASE", llm_config.get("api_base", ""))
-    os.environ.setdefault("LITELLM_PROXY_URL", llm_config.get("proxy_url", ""))
-    os.environ.setdefault("MODEL_MAX_TOKENS", str(llm_config.get("max_tokens", 485000)))
-
-    # 搜索配置
-    search_config = config.get("search", {})
-    os.environ.setdefault("TAVILY_API_KEY", search_config.get("tavily_api_key", ""))
-
-    # 日志配置
-    log_config = config.get("log", {})
-    os.environ.setdefault("LOG_LEVEL", log_config.get("level", "INFO"))
-    os.environ.setdefault("LOG_MAX_DAYS", str(log_config.get("max_days", 30)))
-    os.environ.setdefault("LOG_TO_FILE", str(log_config.get("to_file", True)).lower())
-    os.environ.setdefault("LOG_TO_CONSOLE", str(log_config.get("to_console", True)).lower())
-    os.environ.setdefault("LOG_CONSOLE_LEVEL", log_config.get("console_level", "WARNING"))
-
-    # 心跳配置
-    heartbeat_config = config.get("heartbeat", {})
-    os.environ.setdefault("HEARTBEAT_ENABLED", str(heartbeat_config.get("enabled", True)).lower())
-    os.environ.setdefault("HEARTBEAT_INTERVAL", str(heartbeat_config.get("interval", 3600)))
-
-    # 压缩配置
-    compress_config = config.get("compress", {})
-    os.environ.setdefault("COMPRESS_THRESHOLD_RATIO", str(compress_config.get("threshold_ratio", 0.9)))
-    os.environ.setdefault("COMPRESS_SUMMARY_MAX_TOKENS", str(compress_config.get("summary_max_tokens", 2560)))
-    os.environ.setdefault("COMPRESS_RECENT_MAX_TOKENS", str(compress_config.get("recent_max_tokens", 1536)))
-
-    # MCP 配置
-    mcp_config = config.get("mcp", {})
-    servers = mcp_config.get("servers", [])
-    os.environ.setdefault("MCP_SERVERS", json.dumps(servers, ensure_ascii=False))
-    if servers:
-        os.environ.setdefault("MCP_ENABLED", "true")
+        logger.error(f"读取配置文件失败，使用默认配置: {e}", exc_info=True)
+        return {}
+    if not isinstance(data, dict):
+        logger.error(f"配置文件顶层必须是映射，已忽略: {CONFIG_FILE}")
+        return {}
+    logger.debug(f"已读取配置: {CONFIG_FILE}")
+    return data
 
 
 def get_config() -> dict:

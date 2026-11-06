@@ -1,0 +1,99 @@
+"""配置加载：类型校验、环境变量覆盖规则、不再写回环境变量、数据目录隔离。"""
+
+import logging
+import os
+
+import pytest
+
+from qrclaw import config_manager
+from qrclaw.config import load_settings
+from qrclaw.home import qrclaw_home
+
+
+def test_file_values_are_typed_and_defaults_fill_the_rest():
+    settings = load_settings({"llm": {"model": "deepseek/chat", "max_tokens": 64000},
+                              "agent": {"plan_enabled": True}, "unknown": {"x": 1}}, env={})
+    assert settings.llm.model == "deepseek/chat"
+    assert settings.llm.max_tokens == 64000
+    assert settings.agent.plan_enabled is True
+    assert settings.agent.max_iterations == 100
+    assert settings.compress.threshold_ratio == 0.9
+
+
+def test_env_overrides_file_and_warns_without_leaking_secrets(caplog):
+    caplog.set_level(logging.WARNING, logger="qrclaw.config")
+    settings = load_settings(
+        {"llm": {"model": "file-model", "api_key": "file-secret"}, "log": {"to_file": True}},
+        env={"LITELLM_MODEL": "env-model", "LITELLM_API_KEY": "env-secret", "LOG_TO_FILE": "false",
+             "MODEL_MAX_TOKENS": "20000", "UNRELATED": "1"},
+    )
+    assert (settings.llm.model, settings.llm.api_key, settings.llm.max_tokens) == ("env-model", "env-secret", 20000)
+    assert settings.log.to_file is False
+    text = caplog.text
+    assert "LITELLM_MODEL" in text and "file-model" in text and "env-model" in text
+    assert "LITELLM_API_KEY" in text and "secret" not in text
+    # 配置文件没写的项被环境变量设置时不算覆盖，不报警。
+    assert "MODEL_MAX_TOKENS" not in text
+
+
+def test_mcp_servers_from_file_or_env_json():
+    servers = [{"label": "a", "transport": "stdio", "command": "x"}]
+    assert load_settings({"mcp": {"servers": servers}}, env={}).mcp.active
+    assert not load_settings({}, env={}).mcp.active
+    assert not load_settings({"mcp": {"servers": servers}}, env={"MCP_ENABLED": "false"}).mcp.active
+    from_env = load_settings({}, env={"MCP_SERVERS": '[{"label": "b", "command": "y"}]'})
+    assert from_env.mcp.active and from_env.mcp.servers[0]["label"] == "b"
+
+
+@pytest.mark.parametrize("data, env", [
+    ({"agent": {"max_iterations": "很多"}}, {}),
+    ({}, {"HEARTBEAT_INTERVAL": "一小时"}),
+    ({"compress": {"threshold_ratio": 1.5}}, {}),
+])
+def test_invalid_values_are_rejected(data, env):
+    with pytest.raises(ValueError):
+        load_settings(data, env=env)
+
+
+def test_loading_config_does_not_write_environment(monkeypatch):
+    monkeypatch.delenv("LITELLM_API_KEY", raising=False)
+    monkeypatch.delenv("MCP_SERVERS", raising=False)
+    load_settings({"llm": {"api_key": "sk-test"}, "mcp": {"servers": [{"command": "x"}]}}, env={})
+    assert "LITELLM_API_KEY" not in os.environ
+    assert "MCP_SERVERS" not in os.environ
+
+
+def test_tests_run_against_isolated_home():
+    """测试进程的配置与数据目录在临时目录，不会读写本机 ~/.qrclaw。"""
+    home = qrclaw_home()
+    assert home != os.path.expanduser("~/.qrclaw")
+    assert config_manager.CONFIG_FILE.parent == home
+
+
+def test_broken_config_file_falls_back_to_defaults(temp_dir, monkeypatch):
+    broken = temp_dir / "config.yaml"
+    broken.write_text("llm: [这不是映射", encoding="utf-8")
+    monkeypatch.setattr(config_manager, "CONFIG_FILE", broken)
+    assert config_manager.read_config_file() == {}
+    assert load_settings(env={}).llm.model == "gpt-4o"
+
+
+def test_yaml_nulls_numbers_and_bad_sections_do_not_break_startup():
+    """留空的配置项、纯数字密钥、写错类型的配置段不应让程序起不来。"""
+    settings = load_settings({"mcp": None, "search": {"tavily_api_key": None}, "agent": {"name": None},
+                              "llm": {"api_key": 12345}, "log": ["错的"]}, env={})
+    assert settings.llm.api_key == "12345"
+    assert settings.mcp.servers == [] and not settings.mcp.active
+    assert settings.search.tavily_api_key == "" and settings.agent.name == "QRClaw"
+    assert settings.log.level == "INFO"
+    assert load_settings({"mcp": {"servers": None}}, env={}).mcp.servers == []
+
+
+def test_override_warning_compares_validated_values_and_hides_urls(caplog):
+    caplog.set_level(logging.WARNING, logger="qrclaw.config")
+    load_settings({"agent": {"max_iterations": 100}, "log": {"to_file": True}}, env={"MAX_ITERATIONS": "100", "LOG_TO_FILE": "true"})
+    assert caplog.text == ""
+    load_settings({"llm": {"proxy_url": "http://user:old@proxy"}}, env={"LITELLM_PROXY_URL": "http://user:new@proxy"})
+    assert "LITELLM_PROXY_URL" in caplog.text and "user:" not in caplog.text
+    # 文件里的值无效、由环境变量纠正时照常启动
+    assert load_settings({"compress": {"threshold_ratio": 1.5}}, env={"COMPRESS_THRESHOLD_RATIO": "0.8"}).compress.threshold_ratio == 0.8

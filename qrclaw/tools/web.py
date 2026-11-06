@@ -421,10 +421,17 @@ def _synthesize_summaries(summaries: list, context_str: str) -> str:
 
 # ─── 多后端获取 ──────────────────────────────────────────────────────────────
 
+def _api_key(name: str) -> str:
+    """读取抓取后端的 API Key：Tavily 来自 QRClaw 配置（含环境变量覆盖），其他后端只认环境变量。"""
+    if name == "TAVILY_API_KEY":
+        from qrclaw.config import TAVILY_API_KEY
+        return (TAVILY_API_KEY or "").strip()
+    return os.getenv(name, "").strip()
+
+
 def _has_api_key(name: str) -> bool:
-    """检查环境变量是否有非空值"""
-    val = os.getenv(name, "").strip()
-    return bool(val)
+    """检查后端 API Key 是否已配置"""
+    return bool(_api_key(name))
 
 
 def _get_fetch_backend() -> str:
@@ -481,7 +488,7 @@ async def _fetch_with_firecrawl(url: str) -> Tuple[str, str]:
 async def _fetch_with_tavily(url: str) -> Tuple[str, str]:
     """使用 Tavily 获取内容"""
     try:
-        api_key = os.getenv("TAVILY_API_KEY")
+        api_key = _api_key("TAVILY_API_KEY")
         if not api_key:
             raise ValueError("TAVILY_API_KEY not set")
 
@@ -659,7 +666,7 @@ def _multi_backend_fetch_sync(url: str) -> str:
         try:
             resp = requests.post(
                 "https://api.tavily.com/extract",
-                json={"urls": [url], "api_key": os.getenv("TAVILY_API_KEY")},
+                json={"urls": [url], "api_key": _api_key("TAVILY_API_KEY")},
                 timeout=60,
             )
             if resp.status_code == 200:
@@ -928,7 +935,7 @@ def web_crawl(url: str, instructions: str = "", max_pages: int = 10, use_compres
                 payload["instructions"] = instructions
             resp = requests.post(
                 "https://api.tavily.com/crawl",
-                json={**payload, "api_key": os.getenv("TAVILY_API_KEY")},
+                json={**payload, "api_key": _api_key("TAVILY_API_KEY")},
                 timeout=120,
             )
             if resp.status_code == 200:

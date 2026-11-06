@@ -586,7 +586,8 @@ def test_queued_http_request_pauses_idle_extraction(tmp_path, virtual_time, monk
     monkeypatch.setattr(integration, "on_run_start", start)
     monkeypatch.setattr(routes, "run_agent", execute)
     client = TestClient(create_app(workspace), base_url="http://127.0.0.1", client=("127.0.0.1", 50000))
-    routes._agent_run_lock.acquire()
+    monkeypatch.setattr(routes, "_run_slots", threading.BoundedSemaphore(1))
+    routes._run_slots.acquire()
     try:
         with ThreadPoolExecutor(max_workers=1) as pool:
             future = pool.submit(client.post, "/v1/chat/completions", json={
@@ -599,7 +600,7 @@ def test_queued_http_request_pauses_idle_extraction(tmp_path, virtual_time, monk
                 integration._start_worker(old_timer)
                 analyzer.analyze.assert_not_called()
             finally:
-                routes._agent_run_lock.release()
+                routes._run_slots.release()
             assert future.result(timeout=5).status_code == 200
         assert not integration._busy
         assert integration._timer is not None

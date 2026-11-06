@@ -134,6 +134,8 @@ class Session:
         self.total_tokens = 0
         self.usage = dict.fromkeys(USAGE_KEYS, 0)
         self.run_usage = dict.fromkeys(USAGE_KEYS, 0)
+        # 最近一次由本对象读取或写入的文件状态；文件未变时 _load 直接复用内存内容，不再整份解析。
+        self._disk_signature: tuple[int, ...] | None = None
 
         sessions_dir.mkdir(parents=True, exist_ok=True)
         self._path = _session_path(sessions_dir, self.session_id)
@@ -141,7 +143,7 @@ class Session:
 
     def add(self, message: dict):
         with FileLock(f"{self._path}.lock"):
-            self._load(strict=True)
+            self._load_for_update()
             message = _normalize_message(dict(message))
             if "uuid" not in message:
                 message["uuid"] = uuid.uuid4().hex[:12]
@@ -153,7 +155,7 @@ class Session:
 
     def add_event(self, event: SessionEvent | dict):
         with FileLock(f"{self._path}.lock"):
-            self._load(strict=True)
+            self._load_for_update()
             payload = event.__dict__ if isinstance(event, SessionEvent) else dict(event)
             payload.setdefault("created_at", datetime.now().isoformat())
             self.events.append(payload)
@@ -169,7 +171,7 @@ class Session:
         with FileLock(f"{self._path}.lock"):
             if not self._path.exists():
                 raise FileNotFoundError(self.session_id)
-            self._load(strict=True)
+            self._load_for_update()
             if only_if_unset and self.title:
                 return False
             self.title = title
@@ -181,7 +183,7 @@ class Session:
         with FileLock(f"{self._path}.lock"):
             if not self._path.exists():
                 raise FileNotFoundError(self.session_id)
-            self._load(strict=True)
+            self._load_for_update()
             index = next((i for i in range(len(self.messages) - 1, -1, -1)
                           if self.messages[i].get("role") == "user"), -1)
             if index < 0 or self.messages[index].get("uuid") != message_id:
@@ -228,14 +230,14 @@ class Session:
     def set_context_overhead(self, tokens: int) -> None:
         """保存本次执行的提示词和工具开销，供会话查询复用。"""
         with FileLock(f"{self._path}.lock"):
-            self._load(strict=True)
+            self._load_for_update()
             self.context_overhead_tokens = max(0, tokens)
             self._save()
 
     def update_tokens(self, prompt_tokens: int, completion_tokens: int, total_tokens: int):
         values = (prompt_tokens, completion_tokens, total_tokens)
         with FileLock(f"{self._path}.lock"):
-            self._load(strict=True)
+            self._load_for_update()
             for key, value in zip(USAGE_KEYS, values):
                 self.usage[key] += value
                 self.run_usage[key] += value
@@ -255,6 +257,7 @@ class Session:
             self.events = []
             self.title = None
             self.history_version = 0
+            self._disk_signature = None
             if self._path.exists():
                 self._path.unlink()
 
@@ -269,14 +272,37 @@ class Session:
             if before_replace is not None:
                 before_replace(text)
             temp_path.replace(self._path)
+            self._disk_signature = self._stat_signature()
         except Exception as e:
+            # 内存可能含未落盘的改动，下次读取必须重新解析文件。
+            self._disk_signature = None
             logger.error(f"会话保存失败: {e}", exc_info=True)
             raise
         finally:
             temp_path.unlink(missing_ok=True)
 
+    def _stat_signature(self) -> tuple[int, ...] | None:
+        """文件身份与状态。写入都经原子替换，每次换成新文件（新 inode、新 ctime），
+        时间戳精度粗的文件系统上也能分辨出另一个对象刚写过的同样大小的内容。"""
+        try:
+            stat = self._path.stat()
+        except FileNotFoundError:
+            return None
+        return stat.st_ino, stat.st_mtime_ns, stat.st_ctime_ns, stat.st_size
+
+    def _load_for_update(self) -> None:
+        """修改前读取最新内容，并在保存成功前作废签名：改到一半抛异常时，
+        内存里的残缺状态不会被下次写入当成「与文件一致」而落盘。"""
+        self._load(strict=True)
+        self._disk_signature = None
+
     def _load(self, strict: bool = False):
-        if not self._path.exists():
+        signature = self._stat_signature()
+        if signature is not None and signature == self._disk_signature:
+            # 文件自上次读写后未被任何人改过，内存内容与文件一致。
+            return
+        self._disk_signature = None
+        if signature is None:
             self.messages = []
             self.events = []
             self.title = None
@@ -313,6 +339,7 @@ class Session:
             self.usage = {key: int(usage.get(key, 0)) for key in USAGE_KEYS}
             self.completion_tokens = self.usage["completion_tokens"]
             self.total_tokens = self.usage["total_tokens"]
+            self._disk_signature = signature
         except Exception as e:
             logger.error(f"加载会话失败: {e}", exc_info=True)
             if strict:

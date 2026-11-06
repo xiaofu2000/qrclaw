@@ -86,14 +86,15 @@ def test_old_agent_request_cannot_restore_later_web_removal(wiki, tmp_path, monk
             monkeypatch.setattr(integration, "on_run_start", start)
             client = TestClient(create_app(workspace), base_url="http://127.0.0.1", client=("127.0.0.1", 50000))
             with ThreadPoolExecutor(max_workers=1) as pool:
-                routes._agent_run_lock.acquire()
+                monkeypatch.setattr(routes, "_run_slots", threading.BoundedSemaphore(1))
+                routes._run_slots.acquire()
                 try:
                     future = pool.submit(client.post, "/v1/chat/completions", json={
                         "session_id": session.session_id, "messages": [{"role": "user", "content": "记住旧邮箱"}]})
                     assert accepted.wait(5)
                     remove_fact()
                 finally:
-                    routes._agent_run_lock.release()
+                    routes._run_slots.release()
                 assert future.result(timeout=5).status_code == 200
             client.close()
         else:

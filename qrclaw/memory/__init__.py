@@ -3,8 +3,7 @@ QRClaw 记忆系统模块
 
 提供多层次的记忆管理能力：
 - Session: 短期会话记忆
-- LongTermMemory: 中期持久化记忆
-- MemoryManager: 完整的记忆管理系统（参考 Claude Code 设计）
+- WikiMemory / WikiMemoryManager: 长期记忆（LLM Wiki 页面）
 
 目录结构：
 - wiki/: Wiki 记忆管理器（提供持久化、索引、提取能力）
@@ -14,7 +13,7 @@ QRClaw 记忆系统模块
 - compression/: 压缩工具
 """
 
-# Wiki 记忆组件（替代旧的 core/ 模块）
+# Wiki 记忆组件
 from qrclaw.memory.wiki import WikiMemoryManager, WikiMemory
 
 # 存储层

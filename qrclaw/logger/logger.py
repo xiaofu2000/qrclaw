@@ -13,6 +13,7 @@ import logging
 import re
 from logging.handlers import TimedRotatingFileHandler
 from pathlib import Path
+from qrclaw.home import qrclaw_home
 from typing import Optional
 
 from rich.console import Console
@@ -107,7 +108,7 @@ class QRClawLogger:
 
         # 日志目录：优先用传入的，否则用默认
         if log_dir is None:
-            log_dir = Path.home() / ".qrclaw" / "logs"
+            log_dir = qrclaw_home() / "logs"
         log_dir.mkdir(parents=True, exist_ok=True)
 
         # 获取 root logger

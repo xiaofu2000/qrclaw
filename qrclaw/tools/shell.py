@@ -62,14 +62,12 @@ def _exec_in_sandbox(command: str, cwd: str, timeout: int = 1800) -> str:
     from pathlib import Path
     workspace = Path(cwd).resolve() if cwd else None
 
-    handle = sandbox_manager.get_sandbox(agent_id)
-    if not handle or handle.workspace.resolve() != workspace or handle.config != config:
-        try:
-            sandbox_manager.create_sandbox(agent_id, workspace=workspace, config=config)
-            logger.info(f"已为 Agent {agent_id} 创建沙箱")
-        except Exception as e:
-            logger.error(f"创建沙箱失败: {e}")
-            return f"错误：沙箱创建失败，命令未执行: {e}"
+    try:
+        # 多个会话同时执行时由 ensure_sandbox 保证只建一个容器，不会互相销毁。
+        sandbox_manager.ensure_sandbox(agent_id, workspace, config)
+    except Exception as e:
+        logger.error(f"创建沙箱失败: {e}")
+        return f"错误：沙箱创建失败，命令未执行: {e}"
 
     # 在沙箱中执行
     try:

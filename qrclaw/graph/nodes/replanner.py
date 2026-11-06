@@ -14,7 +14,7 @@ from qrclaw.prompts import REPLANNER_INSTRUCTION
 from qrclaw.providers.litellm_provider import LiteLLMProvider
 from qrclaw.llm_service import get_llm_service
 from qrclaw.graph.nodes.router import PlanStep
-from qrclaw.memory.context.context_manager import get_context_manager
+from qrclaw.memory.context.runtime.manager import get_context_manager
 from qrclaw.logger import get_logger
 
 logger = get_logger("qrclaw.graph.nodes.replanner")

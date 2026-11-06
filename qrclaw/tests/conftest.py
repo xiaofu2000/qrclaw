@@ -3,8 +3,10 @@ pytest 配置文件
 
 提供测试 fixtures 和通用配置。
 """
-import pytest
 import tempfile
+
+# 本机数据隔离在仓库根目录的 conftest.py 中完成。
+import pytest
 from pathlib import Path
 
 
@@ -21,6 +23,7 @@ def temp_file(temp_dir):
     file_path = temp_dir / "test.txt"
     file_path.write_text("hello world", encoding="utf-8")
     return file_path
+
 
 @pytest.fixture(autouse=True)
 def disable_auto_title(monkeypatch):

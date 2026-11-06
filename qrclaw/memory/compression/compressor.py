@@ -168,7 +168,7 @@ def summarize(session) -> bool:
 
         # 重建 session.messages
         with FileLock(f"{session._path}.lock"):
-            session._load(strict=True)
+            session._load_for_update()
             if session.messages != original_messages:
                 raise RuntimeError("压缩期间会话内容发生变化，请稍后重试")
             session.messages = [

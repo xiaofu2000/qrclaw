@@ -20,6 +20,8 @@ llm:
   base_url: "https://api.deepseek.com"
 ```
 
+配置在进程启动时读取一次并校验类型，填错类型（如 `max_iterations: 很多`）会直接报错；修改后需重启。可用环境变量临时覆盖部分配置项（如 `LITELLM_MODEL`、`MODEL_MAX_TOKENS`、`PLAN_ENABLED`，完整列表见 `qrclaw/config_manager.py` 的 `ENV_OVERRIDES`），覆盖配置文件里已写的值时日志会记一条警告。开关类变量接受 `true/false`、`1/0`、`yes/no`、`on/off`（旧版本只认 `true`），其他写法会报错。配置文件里留空的项按默认值处理。配置不会写入进程环境变量，Agent 执行的 Shell 命令和沙箱读不到这些 API Key。设置 `QRCLAW_HOME` 可把配置、会话、记忆和日志整体放到其他目录（测试即用它隔离本机数据）。
+
 CLI 使用 `/agent`、`/session`、`/skill` 管理对应资源，输入 `exit` 退出。CLI 默认自动执行工具调用，包括 Shell 与文件写入，请仅在信任任务来源的环境中运行。
 
 ## Web UI 和 API
@@ -36,7 +38,7 @@ npm --prefix web run dev
 
 API 默认只监听 `127.0.0.1:8765`，提供 `/health`、`/v1/models`、`/v1/sessions`、`/v1/chat/completions`。聊天接口使用模型名 `qrclaw-agent`：默认返回完整 JSON，传入 `"stream": true` 时返回 OpenAI 风格的 SSE 片段。`GET /v1/sessions/{session_id}/events/stream?after=-1` 按序号推送计划和工具状态，断线后可用最后收到的事件序号续接。Web UI 开发服务器通过 `/api` 代理到本地 API。
 
-执行 `npm --prefix web run build` 会更新 `qrclaw/server/static` 中的发布资源；Python 包和开发模式共用 `web/src` 中的界面。任务运行状态与错误由后端维护，刷新页面会重新获取；草稿在当前页面按会话分别保留。宽屏右侧常驻会话属性（状态、上下文、工具统计、子 Agent、写入的记忆），窄屏点顶栏「属性」打开；收件箱（`#/inbox`）按运行中、等你查看分组列出会话。
+执行 `npm --prefix web run build` 会更新 `qrclaw/server/static` 中的发布资源；Python 包和开发模式共用 `web/src` 中的界面。任务运行状态与错误由后端维护，刷新页面会重新获取；草稿在当前页面按会话分别保留。宽屏右侧常驻会话属性（状态、上下文、工具统计、子 Agent、写入的记忆），窄屏点顶栏「属性」打开；收件箱（`#/inbox`）按运行中、等你查看分组列出会话。不同会话的任务可以同时执行，默认最多 4 个（`agent.max_concurrent_runs`，环境变量 `MAX_CONCURRENT_RUNS`），超出的显示「等待执行」；同一会话同一时间只能有一个任务。
 
 输入框上方提供 Plan 模式开关，默认关闭，选择保存在当前浏览器并用于下一次发送及编辑重跑。关闭时跳过路由判断、自动计划与重规划调用。CLI 和未指定开关的 API 使用 `~/.qrclaw/config.yaml` 的 `agent.plan_enabled`（默认 `false`），也可设置环境变量 `PLAN_ENABLED=true`；聊天请求可用 `plan_enabled` 覆盖该默认值。
 

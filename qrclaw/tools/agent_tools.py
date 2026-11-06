@@ -2,6 +2,7 @@
 Agent 管理工具
 """
 from pathlib import Path
+from qrclaw.home import qrclaw_home
 import shutil
 import yaml
 from pydantic import BaseModel, Field
@@ -12,7 +13,7 @@ from qrclaw.logger import get_logger
 logger = get_logger("qrclaw.tools.agent_tools")
 
 # 权限配置文件路径
-PERMISSIONS_FILE = Path.home() / ".qrclaw" / "permissions.yaml"
+PERMISSIONS_FILE = qrclaw_home() / "permissions.yaml"
 
 
 class CreateAgentArgs(BaseModel):

@@ -7,6 +7,7 @@ WikiMemoryManager —— Wiki 记忆系统管理器
 
 from __future__ import annotations
 
+import threading
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional
 
@@ -16,6 +17,8 @@ logger = get_logger("qrclaw.memory.wiki.manager")
 
 # 全局单例缓存
 _instances: dict[Path, "WikiMemoryManager"] = {}
+# 多个会话可能同时第一次访问同一目录；不加锁会各建一个实例，实例上的锁就互相看不见。
+_instances_lock = threading.RLock()
 
 
 class WikiMemoryManager:
@@ -37,9 +40,10 @@ class WikiMemoryManager:
     def for_workspace(cls, memory_dir: Path) -> "WikiMemoryManager":
         """按 memory_dir 返回缓存实例，同一目录永远返回同一个对象"""
         key = Path(memory_dir).resolve()
-        if key not in _instances:
-            _instances[key] = cls(memory_dir)
-        return _instances[key]
+        with _instances_lock:
+            if key not in _instances:
+                _instances[key] = cls(memory_dir)
+            return _instances[key]
 
     def __init__(self, memory_dir: Path = None):
         from qrclaw.memory.wiki.wiki_memory import WikiMemory
@@ -105,9 +109,4 @@ class WikiMemoryManager:
         return self.wiki.stats()
 
 
-# ── 别名兼容层 ───────────────────────────────────────────────────────────────
-
-# 兼容旧 LongTermMemory 导入
-LongTermMemory = WikiMemoryManager
-
-__all__ = ["WikiMemoryManager", "LongTermMemory"]
+__all__ = ["WikiMemoryManager"]

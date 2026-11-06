@@ -1,7 +1,7 @@
 """
 WikiMemory —— LLM Wiki 记忆管理器
 
-替代原有的 LongTermMemory，采用 LLM Wiki 架构：
+采用 LLM Wiki 架构的长期记忆：
 - 所有页面平铺在 pages/ 目录
 - index.json 作为结构化索引（代码用）
 - index.md 作为人类可读目录（注入 system prompt）
@@ -19,7 +19,9 @@ WikiMemory —— LLM Wiki 记忆管理器
 from __future__ import annotations
 
 from datetime import datetime
+import threading
 from pathlib import Path
+from qrclaw.home import qrclaw_home
 from typing import Optional
 from filelock import FileLock
 
@@ -29,10 +31,12 @@ from qrclaw.memory.wiki.page import WikiPage, wiki_links
 
 logger = get_logger("qrclaw.memory.wiki.wiki_memory")
 
-AGENTS_ROOT = Path.home() / ".qrclaw" / "agents"
+AGENTS_ROOT = qrclaw_home() / "agents"
 
 # 按 memory_dir 缓存实例，同一目录永远返回同一个实例
 _instances: dict[Path, "WikiMemory"] = {}
+# 多个会话可能同时第一次访问同一目录；不加锁会各建一个实例，实例上的锁就互相看不见。
+_instances_lock = threading.RLock()
 
 
 class WikiMemory:
@@ -51,9 +55,10 @@ class WikiMemory:
     def for_workspace(cls, memory_dir: Path) -> "WikiMemory":
         """按 memory_dir 返回缓存实例，同一目录永远返回同一个对象"""
         key = Path(memory_dir).resolve()
-        if key not in _instances:
-            _instances[key] = cls(memory_dir)
-        return _instances[key]
+        with _instances_lock:
+            if key not in _instances:
+                _instances[key] = cls(memory_dir)
+            return _instances[key]
 
     def __init__(self, memory_dir: Path = None):
         if memory_dir:
@@ -416,7 +421,7 @@ class WikiMemory:
 
     def invalidate_cache(self) -> None:
         """记忆变化后使下一轮系统提示读取新索引。"""
-        from qrclaw.memory.context.context_manager import get_context_manager
+        from qrclaw.memory.context.runtime.manager import get_context_manager
         try:
             get_context_manager().invalidate_cache()
         except RuntimeError:

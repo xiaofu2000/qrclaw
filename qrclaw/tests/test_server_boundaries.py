@@ -1,7 +1,7 @@
 """本机 API 的访问和输入边界。"""
 
 from concurrent.futures import ThreadPoolExecutor
-from threading import Event, Lock, Thread
+from threading import Barrier, Event, Lock, Thread
 from time import sleep
 import re
 import json
@@ -187,8 +187,12 @@ def test_edit_latest_user_message_reruns_once_without_old_reply(temp_dir):
     assert saved["history_version"] == 1
 
 
-def test_api_serializes_agent_runs(temp_dir, monkeypatch):
+def test_api_limits_concurrent_agent_runs(temp_dir, monkeypatch):
+    """不同会话可以同时执行，但同时执行的数量不超过并发上限。"""
+    import threading
+    from qrclaw.server import routes
     monkeypatch.setattr(workspace_module, "AGENTS_ROOT", temp_dir / "agents")
+    monkeypatch.setattr(routes, "_run_slots", threading.BoundedSemaphore(2))
     active = 0
     peak = 0
     guard = Lock()
@@ -198,20 +202,20 @@ def test_api_serializes_agent_runs(temp_dir, monkeypatch):
         with guard:
             active += 1
             peak = max(peak, active)
-        sleep(0.05)
+        sleep(0.2)
         with guard:
             active -= 1
         return "完成"
 
     with patch("qrclaw.server.routes.run_agent", side_effect=fake_run), \
          TestClient(create_app(), base_url="http://127.0.0.1", client=("127.0.0.1", 50000)) as client:
-        with ThreadPoolExecutor(max_workers=2) as pool:
+        with ThreadPoolExecutor(max_workers=3) as pool:
             results = list(pool.map(lambda _: client.post("/v1/chat/completions", json={
                 "messages": [{"role": "user", "content": "你好"}],
-            }), range(2)))
+            }), range(3)))
 
     assert all(response.status_code == 200 for response in results)
-    assert peak == 1
+    assert peak == 2
 
 
 def test_running_session_is_visible_and_cannot_be_submitted_or_deleted(temp_dir):
@@ -415,3 +419,135 @@ def test_stream_disconnect_does_not_stop_agent(temp_dir):
             release.set()
             server.should_exit = True
             thread.join(timeout=3)
+
+
+def test_different_sessions_run_concurrently_with_isolated_state(temp_dir):
+    """两个会话的任务同时执行，各自线程里的当前会话互不串用；同一会话仍不能并发。"""
+    from qrclaw import agent
+    workspace = Workspace(_root=temp_dir)
+    both_running = Barrier(2, timeout=5)
+    seen = {}
+    release = Event()
+
+    def fake_run(*, session, user_input, **_kwargs):
+        agent.set_session(session)
+        both_running.wait()  # 两个任务都进入执行才继续；串行执行会在这里超时
+        release.wait(5)
+        seen[session.session_id] = agent.get_session().session_id
+        session.add({"role": "assistant", "content": f"回复 {user_input}"})
+        return "完成"
+
+    with patch("qrclaw.server.routes.run_agent", side_effect=fake_run), \
+         TestClient(create_app(workspace), base_url="http://127.0.0.1", client=("127.0.0.1", 50000)) as client, \
+         ThreadPoolExecutor(max_workers=3) as pool:
+        for session_id in ("left", "right"):
+            client.post("/v1/sessions", json={"session_id": session_id})
+        futures = [pool.submit(client.post, "/v1/chat/completions", json={
+            "session_id": session_id, "messages": [{"role": "user", "content": session_id}]}) for session_id in ("left", "right")]
+        for _ in range(100):
+            statuses = {item["id"]: item["run_status"] for item in client.get("/v1/sessions").json()}
+            if statuses.get("left") == statuses.get("right") == "running":
+                break
+            sleep(0.05)
+        assert statuses["left"] == statuses["right"] == "running"
+        duplicate = client.post("/v1/chat/completions", json={
+            "session_id": "left", "messages": [{"role": "user", "content": "再来"}]})
+        assert duplicate.status_code == 409
+        release.set()
+        assert [future.result(timeout=5).status_code for future in futures] == [200, 200]
+    assert seen == {"left": "left", "right": "right"}
+
+
+def test_runs_beyond_the_limit_wait_in_queue(temp_dir, monkeypatch):
+    """超过并发上限的任务显示「等待执行」，前一个结束后再开始。"""
+    import threading
+    from qrclaw.server import routes
+    monkeypatch.setattr(routes, "_run_slots", threading.BoundedSemaphore(1))
+    workspace = Workspace(_root=temp_dir)
+    started, release = [], Event()
+
+    def fake_run(*, session, **_kwargs):
+        started.append(session.session_id)
+        release.wait(5)
+        return "完成"
+
+    with patch("qrclaw.server.routes.run_agent", side_effect=fake_run), \
+         TestClient(create_app(workspace), base_url="http://127.0.0.1", client=("127.0.0.1", 50000)) as client, \
+         ThreadPoolExecutor(max_workers=2) as pool:
+        for session_id in ("first", "second"):
+            client.post("/v1/sessions", json={"session_id": session_id})
+        first = pool.submit(client.post, "/v1/chat/completions", json={
+            "session_id": "first", "messages": [{"role": "user", "content": "一"}]})
+        for _ in range(100):
+            if started:
+                break
+            sleep(0.05)
+        second = pool.submit(client.post, "/v1/chat/completions", json={
+            "session_id": "second", "messages": [{"role": "user", "content": "二"}]})
+        for _ in range(100):
+            statuses = {item["id"]: item["run_status"] for item in client.get("/v1/sessions").json()}
+            if statuses.get("second") == "queued":
+                break
+            sleep(0.05)
+        assert statuses == {"first": "running", "second": "queued"}
+        assert started == ["first"]
+        release.set()
+        assert first.result(timeout=5).status_code == second.result(timeout=5).status_code == 200
+    assert started == ["first", "second"]
+
+
+def test_file_read_dedup_is_scoped_to_the_current_session(temp_dir):
+    """一个会话读过的文件，在另一个会话里仍返回完整内容，不会只得到「未变更」。"""
+    from qrclaw import agent
+    from qrclaw.tools.filesystem import read_file
+    target = temp_dir / "notes.txt"
+    target.write_text("真正的内容", encoding="utf-8")
+    first = Session(temp_dir / "sessions", session_id="reader-a", resume=False)
+    second = Session(temp_dir / "sessions", session_id="reader-b", resume=False)
+    agent.set_session(first)
+    try:
+        assert "真正的内容" in read_file(str(target))
+        assert "未变更" in read_file(str(target))
+        agent.set_session(second)
+        assert "真正的内容" in read_file(str(target))
+    finally:
+        agent.set_session(None)
+
+
+def test_read_tracker_keeps_only_recent_sessions(monkeypatch):
+    from qrclaw.tools import filesystem
+    monkeypatch.setattr(filesystem, "_read_tracker", {})
+    monkeypatch.setattr(filesystem, "_READ_TRACKER_LIMIT", 3)
+    for index in range(5):
+        filesystem._get_task_tracker(f"session:{index}")
+    assert list(filesystem._read_tracker) == ["session:2", "session:3", "session:4"]
+
+
+def test_sandbox_is_created_once_when_sessions_start_shell_together(monkeypatch, temp_dir):
+    """两个会话同时第一次执行 Shell，只创建一个容器，不会互相销毁。"""
+    import threading
+    from qrclaw.sandbox.manager import SandboxManager, SandboxHandle
+    from qrclaw.sandbox import SandboxConfig
+    manager = SandboxManager()
+    monkeypatch.setattr(SandboxManager, "_containers", {})
+    created, start = [], threading.Barrier(2, timeout=5)
+    config = SandboxConfig(enabled=True)
+
+    def fake_create(self, agent_id, workspace, mounts, config):
+        created.append(agent_id)
+        sleep(0.05)
+        handle = SandboxHandle(agent_id=agent_id, container_id="c1", container_name="n", workspace=workspace,
+                               mounts=[], config=config)
+        self._containers[agent_id] = handle
+        return handle
+
+    monkeypatch.setattr(SandboxManager, "_create_sandbox", fake_create)
+
+    def worker():
+        start.wait()
+        manager.ensure_sandbox("default", temp_dir.resolve(), config)  # shell.py 传入的是 resolve 后的路径
+
+    threads = [threading.Thread(target=worker) for _ in range(2)]
+    [thread.start() for thread in threads]
+    [thread.join(5) for thread in threads]
+    assert created == ["default"]

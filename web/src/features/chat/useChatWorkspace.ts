@@ -40,6 +40,8 @@ export function useChatWorkspace(api: ApiClient) {
   // 选择会话时立即更新，避免删除响应赶在重渲染前覆盖新的选择。
   const activeIdRef = useRef('')
   const requestsRef = useRef(new Set<string>())
+  /** 聊天请求已被接收、需要过程流的会话；只有正在查看的那个会真正连接，切回来时再连。 */
+  const streamWantedRef = useRef(new Set<string>())
   const creatingRef = useRef(false)
   const eventCursorsRef = useRef(new Map<string, number>())
   const eventStreamsRef = useRef(new Map<string, AbortController>())
@@ -291,7 +293,11 @@ export function useChatWorkspace(api: ApiClient) {
         setStreaming(current => ({ ...current, [id]: (current[id] ?? '') + delta }))
       }, () => {
         accepted = true
-        if (!editMessageId) startEventStream(id)
+        if (!editMessageId) {
+          streamWantedRef.current.add(id)
+          // 后台会话只保留聊天流：每个运行中的会话再占一条过程流，几个会话同时运行就会占满浏览器对同一地址的 6 条连接。
+          if (id === activeIdRef.current) startEventStream(id)
+        }
       }, editMessageId, planEnabled)
       completed = true
       storeSession(await readSession(id))
@@ -330,6 +336,7 @@ export function useChatWorkspace(api: ApiClient) {
       }
     } finally {
       requestsRef.current.delete(id)
+      streamWantedRef.current.delete(id)
       try { await refreshConversations() } catch { setConnectionError('会话列表刷新失败，请稍后重试。') }
       // 首轮完成后服务端在后台生成标题，稍后再刷新一次列表。
       if (completed && firstTurn && !editMessageId) setTimeout(() => { void refreshConversations().catch(() => { /* 下次刷新再取标题。 */ }) }, TITLE_REFRESH_DELAY)
@@ -408,9 +415,21 @@ export function useChatWorkspace(api: ApiClient) {
   const cards = useMemo(() => activeSession ? subAgentCards(activeSession, sessions) : [], [activeSession, sessions])
   const selectedChildId = selectedChildren[activeId] ?? ''
 
+  // 切换会话时关闭其他会话的过程流（子任务详情流由下方选中子任务的 effect 管理），切回来后按游标续接。
+  useEffect(() => {
+    for (const [id, controller] of [...eventStreamsRef.current]) {
+      if (id === activeId || id === selectedChildId) continue
+      eventStreamsRef.current.delete(id)
+      controller.abort()
+      const timer = streamRetryRef.current.get(id)
+      if (timer) clearTimeout(timer)
+      streamRetryRef.current.delete(id)
+    }
+  }, [activeId, selectedChildId])
+
   useEffect(() => {
     if (!activeSession) return
-    if (!requestsRef.current.has(activeId) &&
+    if ((!requestsRef.current.has(activeId) || streamWantedRef.current.has(activeId)) &&
       (activeSession.run_status !== 'idle' || activeSession.active_subagents)) startEventStream(activeId)
     for (const card of cards) {
       if (card.state !== 'running' || sessions[card.childSessionId] || loadingChildrenRef.current.has(card.childSessionId)) continue
@@ -460,7 +479,7 @@ export function useChatWorkspace(api: ApiClient) {
           const summary = byId.get(id)
           const busy = summary && (summary.run_status !== 'idle' || summary.active_subagents)
           if (requestsRef.current.has(id)) {
-            if (busy) startEventStream(id)
+            if (busy && id === activeIdRef.current) startEventStream(id)
             return
           }
           if (busy && (id !== activeIdRef.current || eventStreamsRef.current.has(id))) return

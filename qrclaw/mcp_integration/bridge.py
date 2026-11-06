@@ -1,7 +1,8 @@
-"""MCP → QRClaw tool registry bridge.
+"""MCP → QRClaw 工具注册表桥接。
 
-Bridges MCP tools discovered by :class:`MCPManager` into QRClaw's internal
-tool registry so they become available in the ReAct loop automatically.
+模型只看到两个入口：``mcp__search_tools`` 按需搜索允许的 MCP 工具目录，
+``mcp__call_tool`` 按搜索返回的完整名称（``服务名__工具名``）调用。
+完整目录留在 :class:`MCPManager` 内，不逐个注册到工具表。
 
 Usage::
 
@@ -110,13 +111,10 @@ def _make_sync_handler(tool_name: str, manager: MCPManager, loop: asyncio.Abstra
 
 
 async def register_mcp_tools(manager: MCPManager) -> list[str]:
-    """仅注册 FastMCP 的搜索和调用入口，复用现有同步执行桥。
-
-    Each MCP tool is registered under the name ``mcp__<original_name>`` to
-    avoid collisions with built-in tools.
+    """仅注册 FastMCP 的搜索和调用入口（``mcp__search_tools``、``mcp__call_tool``），复用现有同步执行桥。
 
     Returns:
-        A list of the fully-qualified tool names that were registered.
+        实际注册到工具表的入口名称。
     """
     import qrclaw.tools.registry as reg
 
@@ -182,9 +180,9 @@ async def unregister_mcp_tools() -> None:
     """Remove all ``mcp__*`` tools from QRClaw's registry."""
     import qrclaw.tools.registry as reg
 
-    to_remove = [name for name in reg._tools if name.startswith("mcp__")]
+    to_remove = [name for name in list(reg._tools) if name.startswith("mcp__")]
     for name in to_remove:
-        del reg._tools[name]
+        reg._tools.pop(name, None)
     global _active_manager
     _active_manager = None
     logger.info("已注销 %d 个 MCP 入口", len(to_remove))

@@ -3,6 +3,7 @@
 
 提供高层 API，管理 Agent 沙箱的完整生命周期。
 """
+import threading
 from pathlib import Path
 from typing import Optional
 from dataclasses import dataclass, field
@@ -47,6 +48,9 @@ class SandboxManager:
     _instance = None
     _containers: dict[str, SandboxHandle] = {}
     _container_mgr: ContainerManager = None
+    # 主 Agent 的各会话共用同一个按 agent_id 命名的容器；多个会话同时执行时，
+    # 创建、重建和销毁必须串行，否则会撞容器重名，或销毁别的会话正在用的容器。
+    _lock = threading.RLock()
     
     def __new__(cls):
         if cls._instance is None:
@@ -59,6 +63,14 @@ class SandboxManager:
             self._container_mgr = ContainerManager()
         return self._container_mgr
     
+    def ensure_sandbox(self, agent_id: str, workspace: Optional[Path], config: SandboxConfig) -> SandboxHandle:
+        """取得与工作空间和配置一致的沙箱；已有且一致时直接复用，检查和创建在同一把锁内完成。"""
+        with self._lock:
+            handle = self._containers.get(agent_id)
+            if handle and handle.workspace.resolve() == workspace and handle.config == config:
+                return handle
+            return self.create_sandbox(agent_id, workspace=workspace, config=config)
+
     def create_sandbox(
         self,
         agent_id: str,
@@ -67,6 +79,16 @@ class SandboxManager:
         config: Optional[SandboxConfig] = None,
     ) -> SandboxHandle:
         """创建沙箱"""
+        with self._lock:
+            return self._create_sandbox(agent_id, workspace, mounts, config)
+
+    def _create_sandbox(
+        self,
+        agent_id: str,
+        workspace: Optional[Path],
+        mounts: Optional[list[MountConfig]],
+        config: Optional[SandboxConfig],
+    ) -> SandboxHandle:
         # 如果已存在，先销毁
         if agent_id in self._containers:
             logger.warning(f"沙箱已存在，将重新创建: {agent_id}")
@@ -225,6 +247,10 @@ class SandboxManager:
             raise ContainerError(f"命令执行超时（{timeout}s）: {command[:100]}")
     
     def destroy_sandbox(self, agent_id: str, force: bool = False) -> bool:
+        with self._lock:
+            return self._destroy_sandbox(agent_id, force)
+
+    def _destroy_sandbox(self, agent_id: str, force: bool = False) -> bool:
         """销毁沙箱"""
         handle = self._containers.get(agent_id)
         
@@ -262,6 +288,10 @@ class SandboxManager:
     
     def cleanup(self) -> int:
         """清理已退出的容器"""
+        with self._lock:
+            return self._cleanup()
+
+    def _cleanup(self) -> int:
         if self._container_mgr is None:
             return 0
         cleaned = self._container_mgr.cleanup_exited()

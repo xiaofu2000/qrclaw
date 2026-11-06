@@ -5,7 +5,7 @@ import uuid
 import json
 from queue import Empty, Full, Queue
 from threading import Event, Thread
-from threading import Lock, RLock
+from threading import BoundedSemaphore, RLock
 from io import StringIO
 from typing import Any
 
@@ -14,6 +14,7 @@ from fastapi.responses import StreamingResponse
 from rich.console import Console
 
 from qrclaw.agent import run as run_agent
+from qrclaw.config import MAX_CONCURRENT_RUNS
 from qrclaw.memory.context.session.events import STREAMED_STATUS_CODES, status_code
 from qrclaw.subagent_progress import has_active_sub_agents, sub_agent_snapshot
 from qrclaw.workspace import Workspace
@@ -32,7 +33,9 @@ from .session_titles import schedule_title
 
 MODEL_ID = "qrclaw-agent"
 logger = get_logger("qrclaw.server.routes")
-_agent_run_lock = Lock()
+# 同时执行的对话数上限，超出的请求显示「等待执行」。每次运行的会话、工作空间、上下文和记忆节点都按线程隔离，
+# 同一会话不会并发（见 chat_completions 里的 runs 检查），上限只用来避免同时向模型发出过多请求。
+_run_slots = BoundedSemaphore(MAX_CONCURRENT_RUNS)
 
 
 def build_router(workspace: Workspace) -> APIRouter:
@@ -204,8 +207,7 @@ def build_router(workspace: Workspace) -> APIRouter:
         def execute(on_delta=None):
             """统一维护非流式和流式运行状态。"""
             try:
-                # MCP 工具注册表和后台 Agent 状态是进程级的。
-                with _agent_run_lock:
+                with _run_slots:
                     with status_lock:
                         runs[session.session_id] = "running"
                     if request.edit_message_id is not None:

@@ -123,7 +123,8 @@ def get_schemas(agent_type: str = AgentType.MAIN) -> list[dict]:
     """返回指定 Agent 类型可见的工具 schema 列表"""
     whitelist = _AGENT_TOOL_WHITELIST.get(agent_type)
     schemas = []
-    for name, item in _tools.items():
+    # 取快照：MCP 运行时在后台线程注册或注销入口，其他会话可能正同时列出工具。
+    for name, item in list(_tools.items()):
         tool_agents = item.get("agents")
         # 工具级过滤：tool 指定了 agents，且当前 agent_type 不在其中
         if tool_agents is not None and agent_type not in tool_agents:
