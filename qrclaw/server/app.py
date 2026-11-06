@@ -1,6 +1,7 @@
 """OpenAI-compatible local server adapter."""
 from __future__ import annotations
 
+import asyncio
 import hmac
 import ipaddress
 import os
@@ -21,8 +22,8 @@ def create_app(workspace: Workspace | None = None) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(app):
-        """恢复持久化的记忆批次，退出时取消尚未到期的闲置计时。"""
-        from qrclaw.agent import _runner
+        """恢复持久化的记忆批次，退出时取消尚未到期的闲置计时并关闭常驻 MCP 连接。"""
+        from qrclaw.agent import _cleanup_mcp, _runner
         from qrclaw.server.session_service import SessionService
         SessionService(workspace).recover_session_changes()
         _runner.react_loop.resume_memory_extractions(workspace)
@@ -36,6 +37,8 @@ def create_app(workspace: Workspace | None = None) -> FastAPI:
         finally:
             _runner.react_loop.stop_memory_extractions(workspace)
             wiki.repair_worker.close()
+            # MCP 连接随服务常驻，服务退出时断开；等待线程结束不阻塞事件循环。
+            await asyncio.to_thread(_cleanup_mcp)
 
     app = FastAPI(title="QRClaw Local API", version="0.1.0", lifespan=lifespan)
     static_dir = Path(__file__).with_name("static")

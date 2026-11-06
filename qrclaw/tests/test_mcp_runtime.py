@@ -1,4 +1,4 @@
-"""验证 MCP 按需发现、真实 stdio 调用和连接清理。"""
+"""验证 MCP 按需发现、真实 stdio 调用、常驻连接和连接清理。"""
 
 import json
 import sys
@@ -145,6 +145,86 @@ def test_react_loop_keeps_only_mcp_entry_points_in_every_request(stdio_mcp):
     )
     assert result == '完成'
     assert requests == [['mcp__search_tools', 'mcp__call_tool']] * 3
+
+
+def test_connection_persists_across_agent_runs(stdio_mcp, temp_dir, monkeypatch):
+    """连接在进程内常驻：多轮运行复用同一个服务会话，运行结束不断开。"""
+    from io import StringIO
+    from rich.console import Console
+    from qrclaw import agent
+    from qrclaw.memory.context.session import Session
+    from qrclaw.workspace import Workspace
+
+    session_before = stdio_mcp._connections['server-0'].session
+    thread_before = agent._mcp_thread
+    workspace = Workspace(_root=temp_dir)
+    session = Session(workspace.sessions_dir, resume=False)
+    monkeypatch.setattr(agent._runner.react_loop, '_get_memory_integration', lambda *_args: Mock())
+    monkeypatch.setattr(agent._runner, 'run', lambda **_kwargs: execute('mcp__call_tool', json.dumps({
+        'name': 'server-0__echo', 'arguments': {'text': 'hi'},
+    })))
+
+    for _ in range(2):
+        assert agent.run('回显', session, Console(file=StringIO()), workspace) == 'echo:hi'
+        assert get_active_manager() is stdio_mcp
+        assert stdio_mcp._connections['server-0'].session is session_before
+        assert agent._mcp_thread is thread_before and thread_before.is_alive()
+        assert 'mcp__call_tool' in _tools
+    assert _init_mcp()  # 已连接时直接复用
+    assert agent._mcp_thread is thread_before
+
+
+def test_failed_start_is_not_retried_until_cleanup(monkeypatch):
+    """启动失败后同一进程不再重试，避免每条消息都等待；清理后可以重新连接。"""
+    from qrclaw import agent
+
+    attempts = []
+
+    async def broken_connect(self, servers):
+        attempts.append(servers)
+        raise RuntimeError('服务无法启动')
+
+    monkeypatch.setattr(config, 'MCP_ENABLED', True)
+    monkeypatch.setattr(config, 'MCP_SERVERS', [{'transport': 'stdio', 'command': 'missing'}])
+    monkeypatch.setattr(MCPManager, 'connect_all', broken_connect)
+    try:
+        assert not _init_mcp()
+        assert not _init_mcp()
+        assert len(attempts) == 1
+        assert agent._mcp_thread is None
+        _cleanup_mcp()
+        assert not _init_mcp()
+        assert len(attempts) == 2
+    finally:
+        _cleanup_mcp()
+    assert not any(name.startswith('mcp__') for name in _tools)
+
+
+@pytest.mark.asyncio
+async def test_disconnect_closes_servers_in_reverse_order():
+    """多个 stdio 服务按建立的相反顺序关闭，anyio 取消作用域才能正常退出。"""
+    closed = []
+    manager = MCPManager()
+    for label in ('first', 'second', 'third'):
+        stack = AsyncExitStack()
+        stack.push_async_callback(AsyncMock(side_effect=lambda label=label: closed.append(label)))
+        manager._connections[label] = _MCPConnection(label=label, exit_stack=stack, session=Mock())
+    await manager.disconnect_all()
+    assert closed == ['third', 'second', 'first']
+
+
+def test_server_shutdown_closes_mcp(temp_dir, monkeypatch):
+    """本地服务退出时关闭常驻 MCP 连接。"""
+    from fastapi.testclient import TestClient
+    from qrclaw import agent
+    from qrclaw.server.app import create_app
+    from qrclaw.workspace import Workspace
+
+    cleanup = Mock()
+    monkeypatch.setattr(agent, '_cleanup_mcp', cleanup)
+    with TestClient(create_app(Workspace(_root=temp_dir)), client=('127.0.0.1', 50000)):
+        cleanup.assert_not_called()
+    cleanup.assert_called_once()
 
 
 def test_ordinary_chat_does_not_search_mcp(stdio_mcp):

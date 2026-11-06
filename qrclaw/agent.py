@@ -7,6 +7,7 @@ agent.py —— agent 入口 + 工具函数
 - run_sub_agent()：启动子 agent
 """
 import asyncio
+import atexit
 import json
 from typing import Callable
 from rich.console import Console
@@ -89,10 +90,15 @@ _runner = GraphRunner()
 
 
 # ── MCP 全局状态 ──────────────────────────────────────────────────────
+# 连接在进程内常驻：第一次主 agent 运行时建立，进程退出时关闭。
+# 每轮重连会让有状态的服务（如已打开的二进制、索引）丢失状态，也会拖慢每条消息。
 _mcp_manager = None
 _mcp_loop = None
 _mcp_stop = None
 _mcp_thread = None
+_mcp_lock = threading.Lock()
+_mcp_failed = False  # 启动失败后本进程不再重试，避免每条消息都等待超时
+_mcp_atexit_registered = False
 
 
 # ── 对外接口 ──────────────────────────────────────────────────────────
@@ -100,16 +106,25 @@ _mcp_thread = None
 # ── MCP 初始化/清理辅助函数 ──────────────────────────────────────────
 
 def _init_mcp() -> bool:
-    """初始化 MCP 连接并注册工具。仅在主 agent 且 MCP 启用时执行。
+    """确保 MCP 已连接并注册工具；已连接时直接复用，不重复启动服务。
 
     Returns:
-        True 表示本次调用初始化了 MCP（调用方应在 finally 中清理）。
+        True 表示当前有可用的常驻 MCP 连接。
     """
-    global _mcp_manager, _mcp_loop, _mcp_stop, _mcp_thread
-
     from qrclaw import config
     if not config.MCP_ENABLED or not config.MCP_SERVERS:
         return False
+    with _mcp_lock:
+        if _mcp_thread is not None and _mcp_thread.is_alive():
+            return True
+        if _mcp_failed:
+            return False
+        return _start_mcp(config.MCP_SERVERS)
+
+
+def _start_mcp(servers: list) -> bool:
+    """在后台线程的事件循环里连接全部服务，连接保持到 _cleanup_mcp。调用方持有 _mcp_lock。"""
+    global _mcp_manager, _mcp_loop, _mcp_stop, _mcp_thread, _mcp_failed, _mcp_atexit_registered
 
     try:
         from concurrent.futures import Future
@@ -123,7 +138,7 @@ def _init_mcp() -> bool:
 
         async def lifecycle():
             try:
-                await manager.connect_all(config.MCP_SERVERS)
+                await manager.connect_all(servers)
                 registered = await register_mcp_tools(manager)
                 ready.set_result(registered)
                 await stop.wait()
@@ -153,32 +168,38 @@ def _init_mcp() -> bool:
             raise
 
         _mcp_manager, _mcp_loop, _mcp_stop, _mcp_thread = manager, loop, stop, thread
-        logger.info("MCP 初始化完成，已注册 %d 个工具: %s", len(registered), registered)
+        if not _mcp_atexit_registered:
+            # 解释器退出时守护线程会被直接终止，先关闭连接，stdio 子进程才不会遗留。
+            atexit.register(_cleanup_mcp)
+            _mcp_atexit_registered = True
+        logger.info("MCP 初始化完成，连接常驻，已注册 %d 个工具: %s", len(registered), registered)
         return True
     except Exception as e:
-        logger.error("MCP 初始化失败: %s", e, exc_info=True)
+        _mcp_failed = True
+        logger.error("MCP 初始化失败，本进程不再重试（重启后重新连接）: %s", e, exc_info=True)
         return False
 
 
 def _cleanup_mcp():
-    """安全关闭 MCP 连接并注销工具。"""
-    global _mcp_manager, _mcp_loop, _mcp_stop, _mcp_thread
+    """关闭常驻 MCP 连接并注销工具；服务退出或进程结束时调用，之后可重新初始化。"""
+    global _mcp_manager, _mcp_loop, _mcp_stop, _mcp_thread, _mcp_failed
 
-    if _mcp_thread is None:
-        return
-
-    try:
-        _mcp_loop.call_soon_threadsafe(_mcp_stop.set)
-        _mcp_thread.join(timeout=30)
-        if _mcp_thread.is_alive():
-            logger.warning("MCP 清理超时，后台线程仍在运行")
+    with _mcp_lock:
+        _mcp_failed = False
+        if _mcp_thread is None:
             return
-        logger.info("MCP 连接已关闭，工具已注销")
-    except Exception as e:
-        logger.warning("MCP 清理时出错: %s", e)
-    finally:
-        if not _mcp_thread.is_alive():
-            _mcp_manager = _mcp_loop = _mcp_stop = _mcp_thread = None
+        try:
+            _mcp_loop.call_soon_threadsafe(_mcp_stop.set)
+            _mcp_thread.join(timeout=30)
+            if _mcp_thread.is_alive():
+                logger.warning("MCP 清理超时，后台线程仍在运行")
+                return
+            logger.info("MCP 连接已关闭，工具已注销")
+        except Exception as e:
+            logger.warning("MCP 清理时出错: %s", e)
+        finally:
+            if not _mcp_thread.is_alive():
+                _mcp_manager = _mcp_loop = _mcp_stop = _mcp_thread = None
 
 
 
@@ -205,7 +226,6 @@ def run(
     if not is_sub_agent():
         memory_integration = _runner.react_loop._get_memory_integration(workspace, session)
         register_extractor(memory_integration.extractor)
-    _mcp_initialized_this_run = False
     try:
         if memory_integration:
             memory_integration.on_run_start()
@@ -217,7 +237,8 @@ def run(
         from qrclaw.memory.context.context_manager import init_context_manager
         init_context_manager(session, workspace, is_sub_agent=is_sub_agent())
         if not is_sub_agent():
-            _mcp_initialized_this_run = _init_mcp()
+            # 首次运行建立连接，之后各轮复用；不在本轮结束时断开。
+            _init_mcp()
         return _runner.run(
             user_input=user_input,
             session=session,
@@ -235,9 +256,6 @@ def run(
                 memory_integration.on_react_loop_end(session)
             except Exception as exc:
                 logger.warning("记忆提取任务保存失败：%s", exc, exc_info=True)
-        # 清理：仅当本次 run 初始化了 MCP 时才关闭
-        if _mcp_initialized_this_run:
-            _cleanup_mcp()
 
 
 def run_sub_agent(

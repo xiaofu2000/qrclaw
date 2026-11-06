@@ -369,7 +369,8 @@ class MCPManager:
 
     async def disconnect_all(self) -> None:
         """Close all MCP server connections and clear internal state."""
-        for label, conn in list(self._connections.items()):
+        # 按建立的相反顺序关闭：anyio 的取消作用域必须后进先出，正序关闭多个 stdio 服务会报错。
+        for label, conn in reversed(list(self._connections.items())):
             try:
                 await conn.exit_stack.aclose()
                 logger.info("MCP 服务已断开：%s", label)
