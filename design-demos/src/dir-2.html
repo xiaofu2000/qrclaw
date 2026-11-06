@@ -1,0 +1,389 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>QRClaw 工作项</title>
+<!--
+方向 C · Linear「工作项」
+- 来源：linear.app 的 issue 详情页（参考板 refs/board-1.jpg）
+- 借的：深色中性底 + 1px 分隔、中间 Activity 流把系统事件压成一行灰字、只有人写的内容放大、右侧属性栏放状态与数值、首页是收件箱
+- 主角：会话本身作为一个「工作项」，状态、规模、写入的记忆、压缩次数都是属性
+- form 来自内容：这个用户同时开着几个持续数天的长任务（99、298 条消息），管理的是任务不是消息
+- 数据：全部来自本机会话与 Wiki；标题保持现有「第一句话」，自动摘要标题需新增后端能力
+-->
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;600&family=JetBrains+Mono:wght@400&display=swap" rel="stylesheet">
+<script src="data.js"></script>
+<style>
+:root{
+  /* 深色：近黑中性底，面板之间只用 1px 线分隔 */
+  --bg:#0f0f11; --side:#0a0a0b; --raise:#16161a; --hover:#1c1c21; --line:#232327; --line2:#2e2e34;
+  --text:#e6e6e8; --text2:#c4c4ca; --muted:#8e8e96; --faint:#86868e;
+  --accent:#6d8bff; --accent-bg:#1d2445; --green:#4cb782; --amber:#e2a336; --strong:#fff; --sprite-bg:#e9e9ec;
+  --send:#4a63e0; color-scheme:dark;
+  --sans:Inter,"Noto Sans SC","PingFang SC",sans-serif; --mono:"JetBrains Mono",ui-monospace,monospace;
+}
+/* 浅色：近白底、白色卡片，同一套结构和间距；默认跟随系统，也可手动切换 */
+@media (prefers-color-scheme: light){:root:not([data-theme="dark"]){--bg:#fcfcfd;--side:#f5f5f7;--raise:#fff;--hover:#eeeef2;--line:#e5e5ea;--line2:#d7d7de;--text:#18181b;--text2:#3a3a42;--muted:#5f5f68;--faint:#696972;--accent:#3d5ee8;--accent-bg:#e9edff;--green:#23895a;--amber:#b06e0a;--strong:#000;--sprite-bg:#fff;color-scheme:light}}
+:root[data-theme="light"]{--bg:#fcfcfd;--side:#f5f5f7;--raise:#fff;--hover:#eeeef2;--line:#e5e5ea;--line2:#d7d7de;--text:#18181b;--text2:#3a3a42;--muted:#5f5f68;--faint:#696972;--accent:#3d5ee8;--accent-bg:#e9edff;--green:#23895a;--amber:#b06e0a;--strong:#000;--sprite-bg:#fff;color-scheme:light}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--text);font:15px/1.6 var(--sans)}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+.app{display:grid;grid-template-columns:272px minmax(0,1fr);height:100dvh}
+
+/* 侧栏：顶部是小精灵本身，比普通图标大一档，状态跟着它 */
+.side{background:var(--side);border-right:1px solid var(--line);display:flex;flex-direction:column;padding:14px 12px;min-height:0}
+.ws{display:flex;align-items:center;gap:12px;padding:6px 6px 10px}
+.ws img{width:56px;height:56px;border-radius:14px;background:var(--sprite-bg);padding:4px;box-shadow:inset 0 0 0 1px var(--line);flex:none}
+.ws b{font-weight:600;font-size:17px;display:block;line-height:1.3}
+.ws span{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--muted);margin-top:2px}
+.ws span:before{content:"";width:7px;height:7px;border-radius:50%;background:var(--green)}
+.search{display:flex;justify-content:space-between;align-items:center;margin:10px 0 6px;padding:9px 11px;border:1px solid var(--line);border-radius:8px;color:var(--muted);background:var(--raise)}
+.search kbd{font:12px var(--mono)}
+.newtask{display:flex;gap:10px;align-items:center;padding:9px 11px;border-radius:8px;color:var(--text2);margin-bottom:12px;width:100%}
+.newtask:hover,.navi:hover,.row:hover{background:var(--hover)}
+.navi{display:flex;align-items:center;gap:10px;width:100%;padding:9px 11px;border-radius:8px;color:var(--text2)}
+.navi[aria-current]{background:var(--hover);color:var(--text)}
+.navi .n{margin-left:auto;color:var(--muted);font-size:13px}
+.grp{font-size:13px;color:var(--muted);padding:18px 11px 8px;display:flex;justify-content:space-between}
+.side .list{overflow:auto;min-height:0;flex:1}
+.row{display:flex;gap:10px;align-items:center;width:100%;padding:9px 11px;border-radius:8px;text-align:left;color:var(--text2)}
+.row[aria-current]{background:var(--hover);color:var(--text)}
+.row .tt{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1}
+.ico{width:16px;height:16px;flex:none}
+.foot{border-top:1px solid var(--line);padding:12px 11px 2px;color:var(--muted);font-size:13px;display:flex;justify-content:space-between;align-items:center;gap:8px}
+.theme{border:1px solid var(--line2);border-radius:6px;padding:4px 10px;color:var(--text2);white-space:nowrap}
+.theme:hover{background:var(--hover)}
+
+/* 主区 */
+.main{display:grid;grid-template-columns:minmax(0,1fr) 340px;min-height:0}
+[data-view=inbox] .main{display:none}
+.inbox{display:none;min-height:0}
+[data-view=inbox] .inbox{display:grid;grid-template-columns:minmax(0,1fr) 380px}
+.center{display:flex;flex-direction:column;min-height:0}
+.head{height:54px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px;padding:0 24px;color:var(--muted);flex:none}
+.head b{color:var(--text);font-weight:500}
+.head .sp{flex:1}
+.head button{padding:6px 12px;border-radius:7px;border:1px solid var(--line)}
+.scroll{overflow:auto;flex:1;min-height:0}
+.wrap{max-width:840px;margin:0 auto;padding:36px 48px 28px}
+h1{font-size:26px;line-height:1.45;font-weight:600;margin:0 0 8px;letter-spacing:-.01em}
+.sub{color:var(--muted)}
+.tabs{display:flex;gap:6px;margin:28px 0 18px;border-bottom:1px solid var(--line)}
+.tabs button{padding:9px 12px;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-1px}
+.tabs button[aria-selected=true]{color:var(--text);border-color:var(--accent)}
+
+/* 聊天：你的消息在右侧蓝色气泡，QRClaw 在左侧带头像的卡片；系统提示居中成分隔线 */
+.thread{display:flex;flex-direction:column}
+.sys{display:flex;align-items:center;gap:12px;color:var(--muted);font-size:13.5px;margin:6px 0 10px;text-align:center}
+.sys:before,.sys:after{content:"";flex:1;height:1px;background:var(--line)}
+.sys b{color:var(--text2);font-weight:500}
+.sys button{color:var(--accent);margin-left:6px}
+.msg{display:flex;gap:12px;align-items:flex-start;margin:14px 0}
+.msg.me{justify-content:flex-end}
+.msg .body{min-width:0}
+.msg.me .body{max-width:76%;display:flex;flex-direction:column;align-items:flex-end}
+.msg.bot .body{flex:1;max-width:calc(100% - 48px)}
+.meta{display:flex;gap:8px;align-items:baseline;font-size:13px;color:var(--muted);margin:6px 0 6px}
+.meta b{color:var(--text);font-weight:600;font-size:14.5px}
+.av{width:36px;height:36px;border-radius:50%;display:grid;place-items:center;font-size:15px;font-weight:600;background:#3b3b44;color:#fff;flex:none}
+.av.bot{background:var(--sprite-bg);padding:2px;box-shadow:inset 0 0 0 1px var(--line2)}
+.av.bot img{width:32px;height:32px}
+.bubble{border-radius:18px;padding:11px 16px;font-size:15.5px;line-height:1.7;overflow-wrap:anywhere}
+.msg.me .bubble{background:var(--send);color:#fff;border-top-right-radius:6px;white-space:pre-wrap}
+.msg.bot .bubble{background:var(--raise);border:1px solid var(--line);border-top-left-radius:6px;padding:14px 18px 4px}
+.wrote{display:flex;flex-wrap:wrap;gap:6px;align-items:center;color:var(--muted);font-size:14px;margin:0 0 10px}
+.run{margin:0 0 8px;border:1px solid var(--line);border-radius:12px;overflow:hidden;background:var(--bg)}
+.run summary > span:nth-child(2){white-space:nowrap}
+.run summary{list-style:none;display:flex;align-items:center;gap:12px;padding:12px 16px;cursor:pointer;color:var(--text2)}
+.run summary::-webkit-details-marker{display:none}
+.run summary .chips{display:flex;gap:6px;flex-wrap:wrap}
+.chip{font:13px var(--mono);color:var(--text2);background:var(--hover);border:1px solid var(--line2);border-radius:5px;padding:1px 7px}
+.run summary .dur{margin-left:auto;color:var(--muted);white-space:nowrap}
+.run[open] summary{border-bottom:1px solid var(--line)}
+.run ol{list-style:none;margin:0;padding:8px 0}
+.run li{display:grid;grid-template-columns:76px 1fr auto;gap:12px;padding:5px 16px;font:14px var(--mono);color:var(--text2)}
+.run li span:first-child,.run li span:last-child{color:var(--muted)}
+.run li.live{color:var(--accent)}
+.run li.wait{opacity:.35}
+.mem{display:inline-flex;align-items:center;gap:6px;color:var(--text);background:var(--accent-bg);border-radius:6px;padding:2px 9px;font-size:14px}
+.mem:hover{outline:1px solid var(--accent)}
+.reply{font-size:16px;line-height:1.85;color:var(--text)}
+.reply p{margin:0 0 1em}
+.reply code{font:14.5px var(--mono);background:var(--hover);border:1px solid var(--line2);border-radius:5px;padding:0 5px}
+.reply ul{padding-left:1.2em;margin:0 0 1em}
+.reply blockquote{margin:0 0 1em;border-left:3px solid var(--line2);padding-left:14px;color:var(--text2)}
+.reply strong{font-weight:600;color:var(--strong)}
+.acts{display:flex;gap:16px;color:var(--muted);font-size:13.5px;margin-top:6px;padding:0 4px}
+.acts button:hover{color:var(--text)}
+/* 输入框：默认只有一行，发送按钮在同一行；随文字撑高，最多约 8 行后内部滚动 */
+.composer{border-top:1px solid var(--line);padding:12px 48px 12px;flex:none}
+.box{max-width:744px;margin:0 auto;border:1px solid var(--line2);border-radius:14px;background:var(--raise);padding:6px 6px 6px 16px;display:flex;align-items:flex-end;gap:10px}
+.box:focus-within{border-color:var(--accent)}
+.box textarea{flex:1;min-width:0;border:0;outline:0;background:transparent;color:var(--text);font:15.5px/1.6 var(--sans);resize:none;padding:6px 0;height:37px;max-height:216px;overflow-y:hidden}
+.box textarea::placeholder{color:var(--faint)}
+.bar{display:flex;align-items:center;gap:8px;max-width:744px;margin:8px auto 0}
+.pill{display:flex;align-items:center;gap:6px;border:1px solid var(--line2);border-radius:7px;padding:2px 9px;color:var(--text2);font-size:13px}
+.pill[aria-checked=true]{border-color:var(--accent);color:var(--accent)}
+.bar .sp{flex:1}
+.pill,.send,.bar .small{white-space:nowrap}
+.send{background:var(--send);color:#fff;border-radius:10px;padding:0 16px;height:37px;font-weight:500;flex:none}
+.send:disabled{background:var(--hover);color:var(--muted);cursor:default}
+
+/* 属性栏 */
+.props{border-left:1px solid var(--line);overflow:auto;padding:22px 22px 32px}
+.props h3{font-size:13px;font-weight:500;color:var(--muted);margin:0 0 10px}
+.prop{display:grid;grid-template-columns:96px 1fr;gap:10px;padding:8px 0;align-items:start}
+.prop > span:first-child{color:var(--muted)}
+.prop .v{color:var(--text)}
+.prop .av{width:30px;height:30px;outline:0;margin:0}
+.prop .av.bot img{width:26px;height:26px}
+.state{display:inline-flex;align-items:center;gap:8px}
+.meter{height:7px;background:var(--hover);border-radius:4px;position:relative;margin:8px 0 6px}
+.meter i{position:absolute;inset:0 auto 0 0;border-radius:4px;background:var(--accent)}
+.meter b{position:absolute;top:-3px;bottom:-3px;width:2px;background:var(--amber)}
+.small{font-size:13px;color:var(--muted)}
+.breakdown{display:grid;grid-template-columns:1fr 34px;gap:5px 8px;font:13px var(--mono);margin-top:8px;color:var(--text2)}
+.breakdown div{position:relative;padding-left:4px}
+.breakdown div i{position:absolute;left:0;top:2px;bottom:2px;background:var(--hover);z-index:-1;border-radius:3px}
+.breakdown span{text-align:right;color:var(--muted)}
+.sublist button{display:block;text-align:left;width:100%;padding:6px 0;color:var(--text2);line-height:1.55}
+.sublist button:hover{color:var(--text)}
+.sep{height:1px;background:var(--line);margin:16px 0}
+
+/* 收件箱 */
+.ilist{overflow:auto;min-height:0}
+.igrp{display:flex;gap:8px;align-items:center;padding:20px 28px 8px;color:var(--muted);font-size:13px}
+.irow{display:grid;grid-template-columns:20px minmax(0,1fr) auto;gap:12px;align-items:center;width:100%;padding:15px 28px;text-align:left;border-bottom:1px solid var(--line)}
+.irow:hover,.irow[aria-current]{background:var(--hover)}
+.irow .tt{font-size:15.5px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.irow .meta{display:flex;gap:6px;align-items:center;color:var(--muted);font-size:13px;white-space:nowrap}
+.preview{border-left:1px solid var(--line);overflow:auto;padding:26px 26px 32px}
+.preview h2{font-size:18px;font-weight:600;line-height:1.5;margin:0 0 6px}
+.preview .reply{margin:14px 0 0;font-size:15px;line-height:1.8;max-height:300px;overflow:hidden;-webkit-mask-image:linear-gradient(#000 70%,transparent)}
+.empty{padding:10px 28px 16px;color:var(--faint)}
+.memrow{display:block;width:100%;text-align:left;padding:10px 0;border-bottom:1px solid var(--line)}
+.memrow b{font-weight:500;display:block}
+.memrow span{font-size:13px;color:var(--muted)}
+
+.mob{display:none}
+@media (max-width:1100px){.main{grid-template-columns:minmax(0,1fr)}.props{display:none}[data-view=inbox] .inbox{grid-template-columns:minmax(0,1fr)}.preview{display:none}}
+@media (max-width:760px){
+  .app{grid-template-columns:minmax(0,1fr)}
+  .side{display:none}
+  .mob{display:flex;align-items:center;gap:10px;height:64px;padding:0 12px;border-bottom:1px solid var(--line)}
+  .mob button{width:44px;height:44px;font-size:20px}
+  .mob img{width:44px;height:44px;border-radius:12px;background:var(--sprite-bg);padding:3px;box-shadow:inset 0 0 0 1px var(--line)}
+  .mob b{font-size:17px}
+  .app{grid-template-rows:auto 1fr}
+  .head{display:none}
+  .wrap{padding:20px 16px}
+  h1{font-size:20px}
+  .av{width:30px;height:30px;font-size:13px}.av.bot img{width:26px;height:26px}
+  .msg{gap:8px}
+  .msg.me .body{max-width:84%}
+  .msg.bot .body{max-width:calc(100% - 38px)}
+  .msg.bot .bubble{padding:12px 14px 2px}
+  .reply{font-size:15.5px}
+  .composer{padding:10px 12px 14px}
+  .run summary .chips{display:none}
+  .bar .small{display:none}
+}
+.mstat{display:none}
+@media (max-width:1100px){.mstat{display:flex;gap:6px;flex-wrap:wrap;margin-top:12px}}
+</style></head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-unread" viewBox="0 0 14 14"><circle cx="7" cy="7" r="5.5" fill="none" style="stroke:var(--accent)" stroke-width="1.5"/><circle cx="7" cy="7" r="2.6" style="fill:var(--accent)"/></symbol>
+  <symbol id="i-done" viewBox="0 0 14 14"><circle cx="7" cy="7" r="6" style="fill:var(--green)"/><path d="M4.3 7.2l1.8 1.8 3.6-3.8" fill="none" style="stroke:var(--bg)" stroke-width="1.6"/></symbol>
+  <symbol id="i-empty" viewBox="0 0 14 14"><circle cx="7" cy="7" r="5.5" fill="none" style="stroke:var(--faint)" stroke-width="1.5" stroke-dasharray="2.4 2.2"/></symbol>
+  <symbol id="i-run" viewBox="0 0 14 14"><circle cx="7" cy="7" r="5.5" fill="none" style="stroke:var(--amber)" stroke-width="1.5"/><path d="M7 1.5a5.5 5.5 0 0 1 5.5 5.5H7z" style="fill:var(--amber)"/></symbol>
+  <symbol id="i-tool" viewBox="0 0 14 14"><path d="M3 11l4-4m1.5-4.5a2.5 2.5 0 0 0 3 3L9.6 7.4 6.6 4.4z" fill="none" stroke="currentColor" stroke-width="1.3"/></symbol>
+  <symbol id="i-squeeze" viewBox="0 0 14 14"><path d="M2 4h10M2 10h10M7 1v3M7 13v-3M5 2.6L7 4l2-1.4M5 11.4L7 10l2 1.4" fill="none" stroke="currentColor" stroke-width="1.2"/></symbol>
+  <symbol id="i-book" viewBox="0 0 14 14"><path d="M2.5 2.5h4a1 1 0 0 1 1 1v8a1 1 0 0 0-1-1h-4zM11.5 2.5h-4v9h4z" fill="none" stroke="currentColor" stroke-width="1.2"/></symbol>
+  <symbol id="i-branch" viewBox="0 0 14 14"><circle cx="4" cy="3" r="1.5" fill="none" stroke="currentColor"/><circle cx="4" cy="11" r="1.5" fill="none" stroke="currentColor"/><circle cx="10" cy="5" r="1.5" fill="none" stroke="currentColor"/><path d="M4 4.5v5M10 6.5c0 2-6 1.5-6 3" fill="none" stroke="currentColor"/></symbol>
+  <symbol id="i-inbox" viewBox="0 0 14 14"><path d="M1.5 8l2-5.5h7l2 5.5v3.5h-11zM1.5 8h3.2l.8 1.5h3l.8-1.5h3.2" fill="none" stroke="currentColor" stroke-width="1.2"/></symbol>
+  <symbol id="i-chat" viewBox="0 0 14 14"><path d="M2 2.5h10v7H6l-3 2.5v-2.5H2z" fill="none" stroke="currentColor" stroke-width="1.2"/></symbol>
+</svg>
+<div class="app" id="app" data-view="session">
+  <header class="mob"><button aria-label="打开导航">≡</button><img src="assets/bloub.svg" alt=""><b id="mobTitle">QRClaw</b><button class="theme" type="button" data-theme-toggle aria-label="切换主题" style="margin-left:auto;width:auto;height:32px;font-size:13px">跟随系统</button></header>
+  <aside class="side" aria-label="导航">
+    <div class="ws"><img src="assets/bloub.svg" alt="QRClaw 小精灵"><div><b>QRClaw</b><span id="wsState">空闲 · 本机</span></div></div>
+    <div class="search"><span>搜索或跳转…</span><kbd>⌘K</kbd></div>
+    <button class="newtask" type="button"><svg class="ico" viewBox="0 0 14 14"><path d="M7 2v10M2 7h10" stroke="currentColor" stroke-width="1.5"/></svg>新任务<span style="margin-left:auto;color:var(--muted);font:12px var(--mono)">⌘N</span></button>
+    <button class="navi" type="button" data-go="inbox"><svg class="ico"><use href="#i-inbox"/></svg>收件箱<span class="n">3</span></button>
+    <button class="navi" type="button" data-go="memory"><svg class="ico"><use href="#i-book"/></svg>记忆库<span class="n">15</span></button>
+    <div class="grp"><span>会话</span><span>4</span></div>
+    <nav class="list" id="sideList" aria-label="会话"></nav>
+    <div class="foot"><span>记忆待整理 1 项</span><button class="theme" type="button" data-theme-toggle aria-label="切换主题">跟随系统</button></div>
+  </aside>
+
+  <div class="main" aria-label="会话详情">
+    <section class="center">
+      <div class="head"><span>会话</span><span>›</span><b>20261012-0fbd13e0</b><span class="sp"></span><button type="button">改名</button><button type="button">删除</button></div>
+      <div class="scroll" id="scroll"><div class="wrap">
+        <h1 id="title"></h1>
+        <div class="sub">创建于 10月12日 · 默认 Agent · 99 条消息</div>
+        <div class="mstat" id="mstat"></div>
+        <div class="tabs" role="tablist"><button role="tab" aria-selected="true" data-f="all">全部</button><button role="tab" aria-selected="false" data-f="talk">只看对话</button><button role="tab" aria-selected="false" data-f="work">只看过程</button></div>
+        <div class="thread" id="thread"></div>
+      </div></div>
+      <form class="composer" id="composer" onsubmit="event.preventDefault()">
+        <div class="box"><textarea rows="1" id="input" aria-label="消息" placeholder="继续这个任务…"></textarea><button class="send" id="sendBtn" type="submit" disabled>发送</button></div>
+        <div class="bar"><button type="button" class="pill" role="switch" aria-checked="false" id="plan">Plan 模式</button><span class="pill" title="144,571 / 485,000 tokens">上下文 29.8%</span><span class="sp"></span><span class="small">Enter 发送 · Shift+Enter 换行</span></div>
+      </form>
+    </section>
+    <aside class="props" id="props" aria-label="属性"></aside>
+  </div>
+
+  <div class="inbox" aria-label="收件箱">
+    <section class="center">
+      <div class="head"><b>收件箱</b><span class="sp"></span><button type="button">全部标为已读</button></div>
+      <div class="ilist" id="ilist"></div>
+    </section>
+    <aside class="preview" id="preview"></aside>
+  </div>
+</div>
+
+<script>
+const Q = window.QR, $ = id => document.getElementById(id), fmt = n => n.toLocaleString('en-US')
+const icon = s => `<svg class="ico"><use href="#i-${s.messages === 0 ? 'empty' : s.unread ? 'unread' : 'done'}"/></svg>`
+$('sideList').innerHTML = Q.sessions.map((s, i) => `<button class="row" type="button" data-go="session" ${i === 0 ? 'aria-current="page"' : ''}>${icon(s)}<span class="tt">${s.title}</span></button>`).join('')
+$('title').textContent = Q.session.title
+$('mstat').innerHTML = `<span class="chip">等你查看</span><span class="chip">上下文 29.8%</span><span class="chip">107 次调用</span><span class="chip">记忆 +2</span>`
+
+const counts = {}
+Q.turn.tools.forEach(t => counts[t.t] = (counts[t.t] || 0) + 1)
+const chips = Object.entries(counts).map(([t, n]) => `<span class="chip">${t}${n > 1 ? ' ×' + n : ''}</span>`).join('')
+
+function thread(done = Q.turn.tools.length, live = -1, replyHTML = md(Q.turn.reply)) {
+  const finished = done >= Q.turn.tools.length
+  const wroteNow = Q.turn.wrote.filter(name => Q.turn.tools.findIndex(c => c.page === name) < done)
+  return `
+  <div class="sys" data-k="work"><span>更早 7 轮对话 · 4 个子 Agent<button type="button">展开</button></span></div>
+  <div class="sys" data-k="work"><span>上下文已整理 <b>84,557 → 23,143</b> tokens</span></div>
+  <div class="msg me" data-k="talk">
+    <div class="body"><div class="meta">${Q.turn.at}</div><div class="bubble">${Q.turn.user}</div>
+      <div class="acts"><button type="button">编辑</button><button type="button">删除</button></div></div>
+    <span class="av" aria-hidden="true">你</span>
+  </div>
+  <div class="msg bot">
+    <span class="av bot" aria-hidden="true"><img src="assets/bloub.svg" alt=""></span>
+    <div class="body">
+      <div class="meta"><b>QRClaw</b><span>${replyHTML && finished ? '10月16日 16:38' : finished ? '正在写回复…' : '正在工作…'}</span></div>
+      <details class="run" data-k="work" ${live >= 0 ? 'open' : ''}><summary><svg class="ico"><use href="#i-tool"/></svg><span>${finished ? '调用了 ' + Q.turn.tools.length + ' 次工具' : '正在调用工具 ' + done + '/' + Q.turn.tools.length}</span><span class="chips">${chips}</span><span class="dur">${finished ? Q.turn.duration : '进行中'}</span></summary>
+        <ol>${Q.turn.tools.map((c, i) => `<li class="${i < done ? '' : i === live ? 'live' : 'wait'}"><span>${c.at}</span><span>${c.t}${c.page ? ' → ' + c.page : ''}</span><span>${i < done ? c.d : i === live ? '进行中' : ''}</span></li>`).join('')}</ol></details>
+      ${wroteNow.length ? `<div class="wrote" data-k="work"><svg class="ico"><use href="#i-book"/></svg>写入记忆 ${wroteNow.map(n => `<button type="button" class="mem" data-go="memory">${n}</button>`).join('')}</div>` : ''}
+      ${replyHTML ? `<div class="bubble reply" data-k="talk">${replyHTML}</div>
+      <div class="acts" data-k="talk"><button type="button">复制</button><button type="button" id="replay">回放这一轮</button></div>` : ''}
+    </div>
+  </div>`
+}
+$('thread').innerHTML = thread()
+
+const topTools = Q.toolTotals.slice(0, 5)
+$('props').innerHTML = `
+  <h3>属性</h3>
+  <div class="prop"><span>状态</span><span class="v state" id="pState"><svg class="ico"><use href="#i-unread"/></svg>等你查看回复</span></div>
+  <div class="prop"><span>执行者</span><span class="v state"><span class="av bot"><img src="assets/bloub.svg" alt=""></span>QRClaw · 默认 Agent</span></div>
+  <div class="prop"><span>Plan 模式</span><span class="v">关闭 · 下次发送生效</span></div>
+  <div class="sep"></div>
+  <div class="prop"><span>上下文</span><span class="v">29.8%<div class="meter"><i style="width:29.8%"></i><b style="left:90%"></b></div><span class="small">144,571 / 485,000</span><span class="small" style="display:block">90% 时自动整理</span></span></div>
+  <div class="prop"><span>已整理</span><span class="v">2 次<div class="small">78,572 → 15,987<br>84,557 → 23,143</div></span></div>
+  <div class="prop"><span>累计用量</span><span class="v">${fmt(Q.session.tokens)} tokens</span></div>
+  <div class="sep"></div>
+  <div class="prop"><span>工具调用</span><span class="v">107 次<div class="breakdown">${topTools.map(([t, n]) => `<div><i style="width:${n / 65 * 100}%"></i>${t}</div><span>${n}</span>`).join('')}</div></span></div>
+  <div class="prop"><span>子 Agent</span><span class="v">4 个 · 全部完成<div class="sublist">${Q.subagents.map(s => `<button type="button" title="${s.task}">${s.id}　${s.task.slice(0, 13)}…</button>`).join('')}</div></span></div>
+  <div class="sep"></div>
+  <h3>留下的经验</h3>
+  <div class="prop"><span>本轮写入</span><span class="v">${Q.turn.wrote.map(n => `<button type="button" class="mem" data-go="memory" style="margin:0 4px 4px 0">${n}</button>`).join('')}</span></div>
+  <div class="prop"><span>本会话</span><span class="v">write_wiki_page 5 次</span></div>
+  <div class="prop"><span>待提取</span><span class="v">2 条正文 · 已完成 5 批<div class="small">闲置 2 分钟后批量提取</div></span></div>`
+
+/* 收件箱 */
+function inbox() {
+  const unread = Q.sessions.filter(s => s.unread), blank = Q.sessions.filter(s => !s.messages)
+  const row = (s, i) => `<button class="irow" type="button" data-pick="${s.id}" ${i === 0 ? 'aria-current="true"' : ''}>${icon(s)}<span class="tt">${s.title}</span><span class="meta">${s.messages ? `<span class="chip">${s.tools} 次调用</span>${s.subagents ? `<span class="chip">${s.subagents} 子 Agent</span>` : ''}<span class="chip">上下文 ${s.pct}%</span>` : ''}<span>${s.updated}</span></span></button>`
+  $('ilist').innerHTML = `<div class="igrp"><svg class="ico"><use href="#i-run"/></svg>运行中 · 0</div><div class="empty">没有正在执行的任务。</div>
+    <div class="igrp"><svg class="ico"><use href="#i-unread"/></svg>等你查看 · ${unread.length}</div>${unread.map(row).join('')}
+    <div class="igrp"><svg class="ico"><use href="#i-empty"/></svg>还没开始 · ${blank.length}</div>${blank.map((s) => row(s, 1)).join('')}`
+  $('preview').innerHTML = `<h2>${Q.session.title}</h2><div class="small">QRClaw 回复于 10月16日 16:38 · 107 次调用 · 写入 2 页记忆</div>
+    <div class="reply">${md(Q.turn.reply)}</div>
+    <button type="button" class="send" data-go="session" style="margin-top:14px">打开会话</button>
+    <div class="sep" style="margin:24px 0 10px"></div>
+    <h3 style="font-size:12px;color:var(--muted);font-weight:500;margin:0 0 4px">最近留下的记忆</h3>
+    ${Q.memory.slice(0, 4).map(m => `<button type="button" class="memrow" data-go="memory"><b>${m.name}</b><span>${m.updated} · ${m.sources} 个来源</span></button>`).join('')}
+    <div class="small" style="margin-top:10px">1 项待整理 · 共 15 页</div>`
+}
+inbox()
+
+function go(view) {
+  app.dataset.view = view === 'inbox' ? 'inbox' : 'session'
+  document.querySelectorAll('.navi').forEach(b => b.toggleAttribute('aria-current', b.dataset.go === view))
+  if (view === 'memory') toast('记忆库沿用同一套三栏：列表、正文、属性（来源、关联、版本）。这版原型只做了会话和收件箱。')
+}
+function toast(text) {
+  let el = document.getElementById('toast')
+  if (!el) { el = document.createElement('div'); el.id = 'toast'; el.setAttribute('role', 'status'); el.style.cssText = 'position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--raise);border:1px solid var(--line2);border-radius:8px;padding:10px 14px;color:var(--text);max-width:90vw;z-index:9'; document.body.append(el) }
+  el.textContent = text; el.hidden = false; clearTimeout(el.t); el.t = setTimeout(() => el.hidden = true, 3200)
+}
+document.addEventListener('click', e => {
+  const t = e.target.closest('[data-go]'); if (t) go(t.dataset.go)
+  if (e.target.closest('[data-pick]')) go('session')
+  if (e.target.id === 'plan') e.target.setAttribute('aria-checked', e.target.getAttribute('aria-checked') !== 'true')
+  const tab = e.target.closest('[data-f]')
+  if (tab) {
+    document.querySelectorAll('[data-f]').forEach(b => b.setAttribute('aria-selected', b === tab))
+    document.querySelectorAll('#thread [data-k]').forEach(el => el.hidden = tab.dataset.f !== 'all' && el.dataset.k !== tab.dataset.f)
+  }
+  if (e.target.id === 'replay') replay()
+})
+
+let timer
+function replay() {
+  clearInterval(timer); let step = 0
+  const setState = (txt, ico) => { $('pState').innerHTML = `<svg class="ico"><use href="#i-${ico}"/></svg>${txt}`; $('wsState').textContent = txt }
+  setState('正在调用 ' + Q.turn.tools[0].t, 'run')
+  $('thread').innerHTML = thread(0, 0, '')
+  timer = setInterval(() => {
+    step++
+    if (step < Q.turn.tools.length) { $('thread').innerHTML = thread(step, step, ''); setState('正在调用 ' + Q.turn.tools[step].t, 'run'); return }
+    clearInterval(timer); let n = 0; setState('正在写回复', 'run')
+    timer = setInterval(() => {
+      n += 16; $('thread').innerHTML = thread(8, -1, md(Q.turn.reply.slice(0, n)))
+      if (n >= Q.turn.reply.length) { clearInterval(timer); $('thread').innerHTML = thread(); setState('等你查看回复', 'unread'); $('wsState').textContent = '空闲 · 本机' }
+    }, 40)
+  }, 650)
+}
+
+/* 主题：跟随系统 → 浅色 → 深色，记在本机浏览器 */
+const THEMES = ['system', 'light', 'dark'], THEME_LABEL = { system: '跟随系统', light: '浅色', dark: '深色' }
+function applyTheme(mode) {
+  if (mode === 'system') document.documentElement.removeAttribute('data-theme')
+  else document.documentElement.dataset.theme = mode
+  document.querySelectorAll('[data-theme-toggle]').forEach(b => b.textContent = THEME_LABEL[mode])
+  try { localStorage.setItem('qrclaw-theme', mode) } catch {}
+}
+let themeMode = 'system'
+try { themeMode = new URLSearchParams(location.search).get('theme') || localStorage.getItem('qrclaw-theme') || 'system' } catch {}
+applyTheme(THEMES.includes(themeMode) ? themeMode : 'system')
+document.addEventListener('click', e => {
+  if (!e.target.closest('[data-theme-toggle]')) return
+  themeMode = THEMES[(THEMES.indexOf(themeMode) + 1) % THEMES.length]; applyTheme(themeMode)
+})
+/* 输入框随内容长高：先归零再取 scrollHeight，超过上限才出现内部滚动 */
+const input = $('input')
+function grow() {
+  input.style.height = 'auto'
+  const max = 216
+  input.style.height = Math.min(input.scrollHeight, max) + 'px'
+  input.style.overflowY = input.scrollHeight > max ? 'auto' : 'hidden'
+  $('sendBtn').disabled = !input.value.trim()
+}
+input.addEventListener('input', grow)
+input.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.shiftKey && !e.isComposing && e.keyCode !== 229) { e.preventDefault(); if (input.value.trim()) { input.value = ''; grow() } }
+})
+grow()
+if (location.hash === '#inbox') go('inbox')
+requestAnimationFrame(() => { if (innerWidth > 760) { const c = document.querySelector('#thread .msg.me'); $('scroll').scrollTop = c.offsetTop - 120 } })
+</script>
+</body></html>

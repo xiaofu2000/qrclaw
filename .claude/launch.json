@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "qrclaw",
+      "runtimeExecutable": "uv",
+      "runtimeArgs": ["run", "--no-sync", "qrclaw", "serve", "--host", "127.0.0.1", "--port", "8766"],
+      "port": 8766
+    }
+  ]
+}

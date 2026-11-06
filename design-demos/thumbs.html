@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>QRClaw 六个候选</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;600;900&family=Noto+Sans+SC:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500&family=JetBrains+Mono:wght@400;700&family=Inter:wght@400;500;600&family=Press+Start+2P&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#d9d9d6;--ink:#1b1b1b}
+body{margin:0;background:var(--bg);font-family:"Noto Sans SC",sans-serif;color:var(--ink);padding:28px}
+h1{font-size:18px;font-weight:500;margin:0 0 18px}
+.grid{display:grid;grid-template-columns:repeat(3,480px);gap:26px 22px}
+figure{margin:0}
+figcaption{font-size:13px;margin-top:8px;line-height:1.5}
+figcaption b{font-weight:700}
+.cell{width:480px;height:300px;overflow:hidden;position:relative;outline:1px solid rgba(0,0,0,.15)}
+.mini{width:960px;height:600px;transform:scale(.5);transform-origin:0 0;position:absolute;inset:0}
+img.bl{display:block}
+
+/* A iA 工作文档 */
+.a{background:#fbfbfa;color:#1d1d1f;display:grid;grid-template-columns:150px 1fr 190px}
+.a .idx{border-right:1px solid #e7e7e4;padding:26px 18px;font:12px/1.9 "IBM Plex Mono",monospace;color:#8a8a86}
+.a .idx b{display:block;color:#1d1d1f;font-weight:500;margin-bottom:10px}
+.a .idx .on{color:#1d1d1f}
+.a .doc{padding:40px 46px 0;font-family:"Noto Serif SC",serif}
+.a .old{color:#b9b9b4;font-size:16px;line-height:1.9}
+.a .q{font:500 13px/1.6 "IBM Plex Mono",monospace;color:#0a84c6;margin:22px 0 8px}
+.a .now{font-size:17px;line-height:1.95}
+.a .cur{display:inline-block;width:2px;height:20px;background:#00a3ff;vertical-align:-4px}
+.a .margin{padding:118px 16px 0 0;font:11.5px/1.8 "IBM Plex Mono",monospace;color:#6d6d69}
+.a .margin p{margin:0 0 14px;border-left:2px solid #00a3ff;padding-left:8px}
+
+/* B TE 仪器 */
+.b{background:#e3e3df;color:#111;font-family:"Noto Sans SC",sans-serif}
+.b .bar{display:grid;grid-template-columns:180px 1fr 130px;border-bottom:2px solid #111;height:190px}
+.b .screen{background:#151515;margin:16px;border-radius:6px;display:grid;place-items:center;position:relative}
+.b .screen span{position:absolute;bottom:8px;left:10px;font:11px "JetBrains Mono",monospace;color:#ff4f00}
+.b .seq{padding:18px 10px;border-left:1px solid #111;border-right:1px solid #111}
+.b .lbl{font:10px "JetBrains Mono",monospace;letter-spacing:.06em}
+.b .steps{display:grid;grid-template-columns:repeat(36,1fr);gap:3px;margin-top:10px}
+.b .steps i{height:22px;border-radius:2px;background:#c9c9c4}
+.b .steps i.s{background:#111}.b .steps i.r{background:#3f6bd8}.b .steps i.w{background:#ffc800}.b .steps i.m{background:#2a9d6f}.b .steps i.now{background:#ff4f00}
+.b .dial{display:grid;place-items:center}
+.b .dial div{width:86px;height:86px;border-radius:50%;background:conic-gradient(#111 0 30%,#c9c9c4 0);display:grid;place-items:center}
+.b .dial div b{width:64px;height:64px;border-radius:50%;background:#e3e3df;display:grid;place-items:center;font:700 16px "JetBrains Mono",monospace}
+.b .tracks{display:grid;grid-template-columns:1fr 300px;height:410px}
+.b .talk{padding:24px 30px;font-size:15px;line-height:1.85}
+.b .talk h3{font:700 22px/1.4 "Noto Sans SC";margin:6px 0 12px}
+.b .subs{border-left:1px solid #111;padding:18px}
+.b .sub{border:1px solid #111;padding:8px 10px;margin-bottom:8px;font-size:12px;line-height:1.6;background:#ececE8}
+.b .sub b{font-family:"JetBrains Mono";color:#ff4f00}
+
+/* C Linear 工作项 */
+.c{background:#101012;color:#e4e4e6;font-family:Inter,"Noto Sans SC",sans-serif;display:grid;grid-template-columns:210px 1fr 230px}
+.c .nav{background:#0b0b0d;border-right:1px solid #232326;padding:18px 12px;font-size:13px;color:#9d9da3}
+.c .nav .grp{margin:18px 0 6px;font-size:11.5px;color:#6e6e75}
+.c .nav .it{padding:6px 8px;border-radius:6px;display:flex;justify-content:space-between}
+.c .nav .it.on{background:#1d1d21;color:#ededf0}
+.c .dot{width:8px;height:8px;border-radius:50%;display:inline-block;margin-right:7px;background:#4f6ef7}
+.c .main{padding:26px 34px}
+.c .main h2{font-size:21px;font-weight:600;margin:0 0 6px;line-height:1.4}
+.c .sys{font-size:12.5px;color:#7c7c84;margin:10px 0;display:flex;gap:8px;align-items:center}
+.c .sys:before{content:"";width:6px;height:6px;border-radius:50%;background:#55555c}
+.c .msg{background:#17171a;border:1px solid #232326;border-radius:8px;padding:14px 16px;font-size:14.5px;line-height:1.8;margin:12px 0}
+.c .props{border-left:1px solid #232326;padding:22px 18px;font-size:12.5px}
+.c .props .k{color:#6e6e75;margin-top:14px}
+.c .props .v{color:#e4e4e6;margin-top:4px}
+
+/* D Warp 点阵 */
+.d{background:#fff;color:#111;font-family:"JetBrains Mono",monospace}
+.d .head{padding:30px 40px 10px;font-size:30px;line-height:1.25;font-family:"JetBrains Mono","Noto Sans SC";letter-spacing:-.02em}
+.d .blk{margin:10px 40px;border:1px solid #d9d9e3;display:grid;grid-template-columns:1fr 330px}
+.d .blk .t{padding:16px 18px;font:14px/1.8 "Noto Sans SC";border-right:1px solid #d9d9e3}
+.d .blk .t code{font-family:"JetBrains Mono";background:#f1f1f6;padding:1px 4px}
+.d .dots{padding:14px;display:grid;grid-template-columns:repeat(18,1fr);gap:6px;align-content:start}
+.d .dots i{width:9px;height:9px;background:#dcdce4}
+.d .dots i.on{background:#2b2bd9}.d .dots i.y{background:#e9f75c;outline:1px solid #111}
+.d .cap{font-size:11px;color:#777;padding:0 14px 10px;grid-column:2}
+.d .btn{position:absolute;right:40px;top:34px;background:#e9f75c;border:1px solid #111;padding:8px 14px;font-size:13px}
+
+/* E 像素 */
+.e{background:#2c2a4a;color:#fff;font-family:"Noto Sans SC"}
+.e .scene{height:260px;background:linear-gradient(#5dadE2 0 62%,#4caf50 62% 78%,#3b8a3e 78%);position:relative;image-rendering:pixelated;border-bottom:6px solid #111}
+.e .hud{position:absolute;top:12px;left:16px;right:16px;display:flex;justify-content:space-between;font:10px/1.6 "Press Start 2P";color:#fff;text-shadow:2px 2px 0 #111}
+.e .blocks{position:absolute;bottom:62px;left:260px;display:flex;gap:26px}
+.e .blocks i{width:26px;height:26px;background:#e8743b;box-shadow:inset -4px -4px 0 #a54d22,inset 4px 4px 0 #f6a26f}
+.e .blocks i.q{background:#ffd23f;box-shadow:inset -4px -4px 0 #b88d0e,inset 4px 4px 0 #fff2a6}
+.e .hero{position:absolute;bottom:56px;left:120px}
+.e .talk{padding:22px 34px;font-size:15px;line-height:1.85;background:#1d1b33;height:340px}
+.e .talk b{font:11px "Press Start 2P";color:#1abc9c}
+
+/* F 田中一光 */
+.f{background:#efe9dc;color:#161616;display:grid;grid-template-columns:600px 1fr;font-family:"Noto Sans SC"}
+.f .comp{padding:40px;display:grid;grid-template-columns:repeat(7,70px);grid-template-rows:repeat(7,70px)}
+.f .comp i{display:block}
+.f .r{background:#d9381e}.f .k{background:#161616}.f .y{background:#e2b23a}.f .bl{background:#2f5d8a}
+.f .circle{border-radius:50%}.f .q1{border-radius:70px 0 0 0}.f .q2{border-radius:0 70px 0 0}.f .q3{border-radius:0 0 70px 0}
+.f .side{padding:44px 34px 0 0;border-left:0}
+.f .side h2{font:900 48px/1.15 "Noto Serif SC",serif;writing-mode:vertical-rl;height:260px;margin:0 0 0 auto}
+.f .tag{display:inline-block;background:#d9381e;color:#fff;font-size:11px;padding:1px 6px;margin:14px 0 4px}
+.f .side p{margin:0;font-size:13px;line-height:1.7}
+</style></head>
+<body>
+<h1>QRClaw 工作台 · 六个候选（主屏缩略图，数据取自本机真实会话）</h1>
+<div class="grid">
+
+<figure><div class="cell"><div class="mini a">
+  <div class="idx"><b>QRClaw</b><div class="on">● codegraph 与 skill</div><div>记忆系统 vs codex</div><div>ai_remind 语音链路</div><div style="margin-top:22px">记忆 · 15 页</div></div>
+  <div class="doc">
+    <div class="old">那条命令是 skills.sh 的 CLI，只往它认识的 client 目录写——Claude Code / Codex / Cursor。它名单里没有 QRClaw……</div>
+    <div class="q">你 · 16:33　npx skills add morluto/rea --skill reverse-engineer-anything，现在的 qrclaw 没适配这样的功能是吧</div>
+    <div class="now">对，<b>没适配</b>——而且比你以为的还少一截。QRClaw 其实自带一套 skill 系统，格式是 SKILL.md + YAML frontmatter，加载的地方是 ~/.qrclaw/agents/default/skills/，这个目录现在是空的<span class="cur"></span></div>
+  </div>
+  <div class="margin"><p>run_shell ×3 · grep_code<br>read_file ×2 · 4 分 46 秒</p><p>写入记忆<br>代码分析工具偏好</p><p>上下文 29.8%<br>已压缩 2 次</p></div>
+</div></div><figcaption><b>A · iA「工作文档」</b>（最佳设计师）安静 · 浅色 · 回复是产品</figcaption></figure>
+
+<figure><div class="cell"><div class="mini b">
+  <div class="bar">
+    <div class="screen"><img class="bl" src="assets/bloub.svg" width="110" height="110" alt=""><span>TOOL · run_shell</span></div>
+    <div class="seq"><div class="lbl">SEQ · 本轮 8 步 / 会话 107 次调用</div>
+      <div class="steps"><i class="s"></i><i class="s"></i><i class="r"></i><i class="m"></i><i class="r"></i><i class="r"></i><i class="s"></i><i class="w"></i><i class="now"></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+      <div class="lbl" style="margin-top:14px">■ SHELL　<span style="color:#3f6bd8">■</span> 读取　<span style="color:#2a9d6f">■</span> MCP/搜索　<span style="color:#c99a00">■</span> 记忆</div></div>
+    <div class="dial"><div><b>30%</b></div></div>
+  </div>
+  <div class="tracks"><div class="talk"><div class="lbl">01 · 你</div>现在的 qrclaw 没适配这样的功能是吧　你先不要改代码<h3>对，没适配——而且比你以为的还少一截。</h3>QRClaw 其实自带一套 skill 系统……</div>
+  <div class="subs"><div class="lbl">SUB-AGENTS · 4</div><div class="sub"><b>step-1</b> 调研 codegraph 的 MCP 服务</div><div class="sub"><b>step-2</b> 探测 MCP 配置文件位置</div></div></div>
+</div></div><figcaption><b>B · Teenage Engineering「仪器」</b>（最佳设计师）大胆 · 铝灰橙 · 过程是主角</figcaption></figure>
+
+<figure><div class="cell"><div class="mini c">
+  <div class="nav"><div style="color:#ededf0;font-weight:600">QRClaw</div><div class="grp">收件箱</div><div class="it on"><span><span class="dot"></span>codegraph 与 skill</span><span>●</span></div><div class="it"><span><span class="dot" style="background:#3dbb7f"></span>记忆系统 vs codex</span></div><div class="it"><span><span class="dot" style="background:#3dbb7f"></span>ai_remind 语音链路</span></div><div class="grp">记忆库</div><div class="it">15 页 · 1 项待处理</div></div>
+  <div class="main"><h2>QRClaw 能不能装 REA 的 skill</h2><div class="sys">压缩上下文 84,557 → 23,143 · 10月16日</div>
+    <div class="msg">npx skills add morluto/rea --skill reverse-engineer-anything　现在的 qrclaw 没适配这样的功能是吧</div>
+    <div class="sys">调用 run_shell、grep_code、read_file 等 8 次 · 4 分 46 秒</div><div class="sys">写入记忆「代码分析工具偏好」</div>
+    <div class="msg" style="background:none;border:0;padding:0">对，<b>没适配</b>——而且比你以为的还少一截……</div></div>
+  <div class="props"><div class="k">状态</div><div class="v">● 等待你回复</div><div class="k">上下文</div><div class="v">144,571 / 485,000 · 29.8%</div><div class="k">工具调用</div><div class="v">107 次</div><div class="k">子 Agent</div><div class="v">4 个 · 全部完成</div><div class="k">留下的记忆</div><div class="v">QRClaw Skill 机制<br>代码分析工具偏好</div></div>
+</div></div><figcaption><b>C · Linear「工作项」</b>（现实参照）中性 · 深色 · 会话是任务</figcaption></figure>
+
+<figure><div class="cell"><div class="mini d">
+  <div class="head">qrclaw ~ 本地 Agent<br>codegraph 与 skill</div><div class="btn">新任务</div>
+  <div class="blk"><div class="t">› <code>npx skills add morluto/rea</code> 现在的 qrclaw 没适配这样的功能是吧<br><br>对，<b>没适配</b>——而且比你以为的还少一截。QRClaw 其实自带一套 skill 系统……</div>
+  <div><div class="dots">
+  <i class="on"></i><i></i><i class="on"></i><i></i><i></i><i class="y"></i><i></i><i></i><i class="on"></i><i></i><i></i><i></i><i class="on"></i><i></i><i></i><i></i><i></i><i></i>
+  <i></i><i></i><i class="on"></i><i></i><i></i><i></i><i class="on"></i><i></i><i></i><i></i><i></i><i class="on"></i><i></i><i></i><i></i><i></i><i class="y"></i><i></i>
+  <i></i><i class="on"></i><i></i><i></i><i></i><i></i><i></i><i class="on"></i><i></i><i></i><i></i><i></i><i></i><i></i><i class="on"></i><i></i><i></i><i></i>
+  <i></i><i></i><i></i><i class="on"></i><i></i><i></i><i></i><i></i><i></i><i></i><i class="on"></i><i></i><i></i><i></i><i></i><i></i><i></i><i class="on"></i>
+  <i></i><i class="on"></i><i></i><i></i><i></i><i></i><i class="on"></i><i></i><i></i><i></i><i></i><i></i><i class="y"></i><i></i><i></i><i></i><i></i><i></i>
+  </div><div class="cap">[ fig. 1 — 本会话 107 次工具调用 · ■ 正在 ■ 记忆 ]</div></div></div>
+</div></div><figcaption><b>D · Warp「工厂点阵」</b>（现实参照）中性 · 白底等宽 · 备选</figcaption></figure>
+
+<figure><div class="cell"><div class="mini e">
+  <div class="scene"><div class="hud"><span>LV.6 SKILL 适配</span><span>CTX ▮▮▮▯▯▯▯▯▯▯ 30%</span><span>TOOLS 107</span></div>
+  <div class="hero"><img class="bl" src="assets/bloub.svg" width="90" height="90" alt=""></div>
+  <div class="blocks"><i></i><i></i><i class="q"></i><i></i><i></i></div></div>
+  <div class="talk"><b>QRCLAW ›</b><br>对，没适配——而且比你以为的还少一截。QRClaw 其实自带一套 skill 系统，格式是 SKILL.md + YAML frontmatter……</div>
+</div></div><figcaption><b>E · 像素横版</b>（秒数轮盘 web-09）大胆 · 用力过头 · 备选</figcaption></figure>
+
+<figure><div class="cell"><div class="mini f">
+  <div class="comp">
+    <i class="r circle" style="grid-column:1/4;grid-row:1/4"></i><i class="k q2" style="grid-column:4/6;grid-row:1/3"></i><i class="y" style="grid-column:6/8;grid-row:1/2"></i>
+    <i class="bl q3" style="grid-column:6/8;grid-row:2/4"></i><i class="k" style="grid-column:4/5;grid-row:3/5"></i><i class="y q1" style="grid-column:1/3;grid-row:4/6"></i>
+    <i class="r" style="grid-column:5/8;grid-row:4/5"></i><i class="k circle" style="grid-column:3/5;grid-row:5/7"></i><i class="bl" style="grid-column:5/6;grid-row:5/8"></i>
+    <i class="y circle" style="grid-column:6/7;grid-row:6/7"></i>
+  </div>
+  <div class="side"><h2>三个会话</h2><span class="tag">运行</span><p>codegraph 与 skill · 107 次调用</p><span class="tag">完成</span><p>记忆系统 vs codex · 155 次调用</p><span class="tag">记忆</span><p>15 页 · 1 项待处理</p></div>
+</div></div><figcaption><b>F · 田中一光几何</b>（秒数轮盘 east-09）中性 · 海报首页 · 备选</figcaption></figure>
+
+</div></body></html>
