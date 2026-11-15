@@ -14,9 +14,6 @@ from qrclaw.memory.compression.compressor import (
     truncate,
 )
 
-# 兼容旧代码的别名
-compressor = None  # 保持向后兼容
-
 __all__ = [
     "count_tokens",
     "count_text_tokens",

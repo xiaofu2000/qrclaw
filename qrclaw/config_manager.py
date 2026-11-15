@@ -4,9 +4,7 @@
 统一管理用户配置，所有配置文件存放在 ~/.qrclaw/ 目录下：
 - ~/.qrclaw/config.yaml      用户配置（API Key 等）
 - ~/.qrclaw/permissions.yaml 权限配置
-- ~/.qrclaw/MEMORY.md        中期记忆
-- ~/.qrclaw/sessions/        会话历史
-- ~/.qrclaw/logs/            日志文件
+- ~/.qrclaw/agents/<id>/     各 Agent 的会话、日志、技能和 Wiki 记忆
 """
 
 import json

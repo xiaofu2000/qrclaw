@@ -6,7 +6,7 @@ from unittest.mock import patch
 from rich.console import Console
 
 from qrclaw.graph.nodes.react_loop import ReactLoopNode
-from qrclaw.memory.context.context_manager import init_context_manager
+from qrclaw.memory.context.runtime.manager import init_context_manager
 from qrclaw.memory.context.session import Session
 from qrclaw.providers.base import LLMResponse, ToolCall
 from qrclaw.workspace import Workspace

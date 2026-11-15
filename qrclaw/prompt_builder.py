@@ -188,8 +188,9 @@ def _build_heartbeat_section(heartbeat_file: Path | None = None) -> str:
         return ""
 
     try:
-        content = heartbeat_file.read_text(encoding="utf-8")
-        if not content.strip():
+        from qrclaw.heartbeat import heartbeat_tasks
+        content = heartbeat_tasks(heartbeat_file.read_text(encoding="utf-8"))
+        if not content:
             return ""
         logger.info("注入心跳任务到 system prompt")
         return "\n".join([

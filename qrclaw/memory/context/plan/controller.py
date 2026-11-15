@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from qrclaw.memory.context.plan.state import PlanState
 from qrclaw.memory.context.plan.step_result import StepResult
-from qrclaw.memory.context.message_builder import build_replanner_messages
+from qrclaw.memory.context.prompt.builder import build_replanner_messages
 
 
 class PlanController:

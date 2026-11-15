@@ -214,7 +214,7 @@ def run(
         if memory_integration:
             memory_integration.extractor.collect(session.messages)
 
-        from qrclaw.memory.context.context_manager import init_context_manager
+        from qrclaw.memory.context.runtime.manager import init_context_manager
         init_context_manager(session, workspace, is_sub_agent=is_sub_agent())
         if not is_sub_agent():
             _mcp_initialized_this_run = _init_mcp()

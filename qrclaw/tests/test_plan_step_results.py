@@ -7,7 +7,7 @@ from qrclaw.graph.nodes.plan_executor import PlanExecutorNode
 from qrclaw.graph.nodes.router import Plan, PlanStep, RouteResult
 from qrclaw.graph.runner import GraphRunner
 from qrclaw.memory.context.prompt.builder import build_react_messages, build_router_messages
-from qrclaw.memory.context.context_manager import init_context_manager
+from qrclaw.memory.context.runtime.manager import init_context_manager
 from qrclaw.memory.context.session import Session
 from qrclaw.workspace import Workspace
 

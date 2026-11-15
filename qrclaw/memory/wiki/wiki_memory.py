@@ -1,7 +1,7 @@
 """
 WikiMemory —— LLM Wiki 记忆管理器
 
-替代原有的 LongTermMemory，采用 LLM Wiki 架构：
+采用 LLM Wiki 架构：
 - 所有页面平铺在 pages/ 目录
 - index.json 作为结构化索引（代码用）
 - index.md 作为人类可读目录（注入 system prompt）
@@ -417,7 +417,7 @@ class WikiMemory:
 
     def invalidate_cache(self) -> None:
         """记忆变化后使下一轮系统提示读取新索引。"""
-        from qrclaw.memory.context.context_manager import get_context_manager
+        from qrclaw.memory.context.runtime.manager import get_context_manager
         try:
             get_context_manager().invalidate_cache()
         except RuntimeError:

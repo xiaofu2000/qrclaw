@@ -20,9 +20,9 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.text import Text
 from qrclaw.memory.context.session import Session
-from qrclaw.memory.context.step_result import StepResult
-from qrclaw.memory.context.events import SessionEvent
-from qrclaw.memory.context.context_manager import get_context_manager
+from qrclaw.memory.context.plan.step_result import StepResult
+from qrclaw.memory.context.session.events import SessionEvent
+from qrclaw.memory.context.runtime.manager import get_context_manager
 from qrclaw.workspace import Workspace
 from qrclaw.graph.executor import get_next_layer
 from qrclaw.graph.nodes.replanner import ReplannerNode

@@ -19,7 +19,7 @@ from rich.console import Console
 
 from qrclaw.memory.wiki.wiki_memory import WikiMemory
 from qrclaw.memory.context.session import Session
-from qrclaw.memory.context.context_manager import (
+from qrclaw.memory.context.runtime.manager import (
     ContextManager,
     init_context_manager,
     get_context_manager,

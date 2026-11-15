@@ -7,7 +7,7 @@ from unittest.mock import PropertyMock, patch
 import pytest
 from fastapi.testclient import TestClient
 
-from qrclaw.memory.context.context_manager import init_context_manager
+from qrclaw.memory.context.runtime.manager import init_context_manager
 from qrclaw.memory.context.session import Session
 from qrclaw.providers.base import LLMResponse
 from qrclaw.server.app import create_app

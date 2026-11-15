@@ -90,10 +90,11 @@ def main() -> None:
 
         if HEARTBEAT_ENABLED:
             def on_heartbeat():
-                """心跳触发时，后台执行维护任务"""
-                console.print("\n[bold yellow]⏰ 心跳触发[/bold yellow] - 后台执行维护任务...\n")
+                """心跳触发时在后台执行任务；没有任务时不打扰终端。"""
                 try:
                     result = execute_heartbeat_tasks(workspace)
+                    if not result:
+                        return
                     console.print(f"\n[bold green]✅ 心跳任务完成[/bold green]\n[dim]{result[:200]}{'...' if len(result) > 200 else ''}[/dim]\n")
                 except Exception as e:
                     console.print(f"\n[bold red]❌ 心跳任务失败[/bold red]: {e}\n")
