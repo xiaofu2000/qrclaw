@@ -89,7 +89,7 @@
 - `list_pages()` 每处理一页都要重新读一次整个 `.wiki-state.json`，系统提示词每次重建都要扫一遍；
 - `search_wiki` 工具每次调用都会额外调一次模型来选页；
 - 页面的 `applied_batches` 只增不减。
-- 压缩保留的近期原文默认只有 1536 token（`compress.recent_max_tokens`）。11 月 6 日改为类型化配置之前，默认是窗口的 12%（约 5.8 万）；`compress.summary_max_tokens` 目前没有被压缩逻辑使用。
+- ~~压缩保留的近期原文默认只有 1536 token~~：已修复，默认改为窗口的 12%，无效的 `compress.summary_max_tokens` 已删除。
 
 ---
 

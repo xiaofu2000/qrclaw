@@ -52,11 +52,8 @@ DEFAULT_CONFIG = {
         "interval": 3600,
     },
     "compress": {
+        # 近期原文预算 recent_max_tokens 不写进默认配置：不写时按窗口 12% 计算，跟着 llm.max_tokens 变。
         "threshold_ratio": 0.9,
-        "target_min_ratio": 0.20,
-        "target_max_ratio": 0.25,
-        "summary_max_tokens": 2560,
-        "recent_max_tokens": 1536,
     },
     "memory": {
         "init_threshold": 5000,
@@ -92,7 +89,6 @@ ENV_OVERRIDES: dict[str, tuple[str, str]] = {
     "HEARTBEAT_ENABLED": ("heartbeat", "enabled"),
     "HEARTBEAT_INTERVAL": ("heartbeat", "interval"),
     "COMPRESS_THRESHOLD_RATIO": ("compress", "threshold_ratio"),
-    "COMPRESS_SUMMARY_MAX_TOKENS": ("compress", "summary_max_tokens"),
     "COMPRESS_RECENT_MAX_TOKENS": ("compress", "recent_max_tokens"),
     "MEMORY_INIT_THRESHOLD": ("memory", "init_threshold"),
     "MEMORY_UPDATE_INTERVAL": ("memory", "update_interval"),

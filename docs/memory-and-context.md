@@ -44,7 +44,7 @@ token 计数用 LiteLLM 的 `token_counter`（`memory/token_utils.py`），按�
 每次 ReactLoop 调模型前都会调用 `ctx.compress_if_needed()`：
 
 1. `context_tokens` 超过阈值（默认模型窗口的 **90%**）才压缩。
-2. `_pick_recent()` 从最新消息往回保留，预算为 `compress.recent_max_tokens`（默认 1536 token）；不会把 `tool_calls` 和对应的 `tool` 结果拆开。
+2. `_pick_recent()` 从最新消息往回保留，预算默认为窗口的 **12%**（`compress.recent_max_tokens` 可改成固定值）；不会把 `tool_calls` 和对应的 `tool` 结果拆开。
 3. 更早的消息交给 LLM 生成结构化摘要（用户信息 / 已完成任务 / 关键结论 / 待处理事项），目标约窗口的 10%。
 4. 历史被替换为：`[SUMMARY] 摘要` + 保留的近期消息。如果旧消息里已有 `[SUMMARY]`，会一起再压一次（递归摘要）。
 5. 压缩后若总量超过 25%，再收紧近期消息预算。
@@ -54,14 +54,15 @@ token 计数用 LiteLLM 的 `token_counter`（`memory/token_utils.py`），按�
 - 写回前检查会话是否被其他进程改过，改过就放弃。
 - 压缩开始/完成/失败都会写一条 `compression` 事件，前端可展示进度。
 
-相关配置（`config.yaml` 的 `llm` / `compress` 段，可用环境变量覆盖）：
+相关配置（`~/.qrclaw/config.yaml`，由 `qrclaw/config.py` 加载，可用环境变量覆盖）：
 
-| 变量 | 默认 | 含义 |
-|---|---|---|
-| `MODEL_MAX_TOKENS` | 485000 | 模型上下文窗口 |
-| `COMPRESS_THRESHOLD_RATIO` | 0.9 | 触发压缩的比例 |
-| `COMPRESS_RECENT_MAX_TOKENS` | 1536 | 保留近期消息的预算 |
-| `COMPRESS_SUMMARY_MAX_TOKENS` | 2560 | 摘要上限（目前未被压缩逻辑使用；摘要目标固定为窗口 × 10%） |
+| 配置项 | 环境变量 | 默认 | 含义 |
+|---|---|---|---|
+| `llm.max_tokens` | `MODEL_MAX_TOKENS` | 485000 | 模型上下文窗口 |
+| `compress.threshold_ratio` | `COMPRESS_THRESHOLD_RATIO` | 0.9 | 触发压缩的比例 |
+| `compress.recent_max_tokens` | `COMPRESS_RECENT_MAX_TOKENS` | 不写时为窗口 × 12%（485k 窗口约 58,200） | 保留近期消息的预算；写了固定值就按固定值 |
+
+摘要长度不单独设上限，只在提示词里要求约窗口的 10%，超出 25% 总量时靠收紧近期消息兜底。
 
 ### 4. 计划模式下的上下文
 

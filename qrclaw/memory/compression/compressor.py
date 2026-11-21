@@ -12,8 +12,7 @@ from collections import deque
 from filelock import FileLock
 from qrclaw.memory.token_utils import count_text_tokens
 from qrclaw.config import (
-    COMPRESS_SUMMARY_MAX_TOKENS, COMPRESS_SUMMARY_TARGET_TOKENS,
-    COMPRESS_RECENT_MAX_TOKENS,
+    COMPRESS_SUMMARY_TARGET_TOKENS, COMPRESS_RECENT_MAX_TOKENS,
     COMPRESS_TARGET_MIN_RATIO, COMPRESS_TARGET_MAX_RATIO,
     _MODEL_MAX_TOKENS,
 )

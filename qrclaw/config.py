@@ -64,11 +64,19 @@ class HeartbeatSettings(_Section):
     interval: int = 3600
 
 
+# 未配置 compress.recent_max_tokens 时，压缩后保留的近期原文按窗口的这个比例计算。
+COMPRESS_RECENT_RATIO = 0.12
+
+
 class CompressSettings(_Section):
     # 默认超过 90% 触发压缩，预留 10% 给后续消息和回复。
     threshold_ratio: float = 0.9
-    summary_max_tokens: int = 2560
-    recent_max_tokens: int = 1536
+    # 压缩后保留的近期原文 token 预算；不写时按窗口 × COMPRESS_RECENT_RATIO 计算。
+    recent_max_tokens: int | None = Field(default=None, gt=0)
+
+    def recent_budget(self, window: int) -> int:
+        """近期原文预算：显式配置优先，否则按窗口比例。"""
+        return self.recent_max_tokens if self.recent_max_tokens is not None else int(window * COMPRESS_RECENT_RATIO)
 
     @field_validator("threshold_ratio")
     @classmethod
@@ -180,11 +188,9 @@ COMPRESS_THRESHOLD = int(_MODEL_MAX_TOKENS * COMPRESS_THRESHOLD_RATIO)
 # 压缩后目标范围：摘要 + 短期记忆 = 20%~25% 上下文窗口
 COMPRESS_TARGET_MIN_RATIO = 0.20  # 最小 20%，避免压缩太短
 COMPRESS_TARGET_MAX_RATIO = 0.25  # 最大 25%，避免压缩效果差
-# 摘要目标占 10% 上下文窗口，短期记忆占 12%
+# 摘要目标占 10% 上下文窗口（写进摘要提示词），近期原文默认占 12%
 COMPRESS_SUMMARY_TARGET_TOKENS = int(_MODEL_MAX_TOKENS * 0.10)
-COMPRESS_SUMMARY_MAX_TOKENS = settings.compress.summary_max_tokens
-COMPRESS_RECENT_TARGET_TOKENS = int(_MODEL_MAX_TOKENS * 0.12)
-COMPRESS_RECENT_MAX_TOKENS = settings.compress.recent_max_tokens
+COMPRESS_RECENT_MAX_TOKENS = settings.compress.recent_budget(_MODEL_MAX_TOKENS)
 
 TAVILY_API_KEY = settings.search.tavily_api_key
 

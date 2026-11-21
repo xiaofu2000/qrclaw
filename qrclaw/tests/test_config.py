@@ -107,3 +107,28 @@ def test_memory_extraction_settings_from_file_and_env():
     for bad in ({"min_turns": 0}, {"idle_seconds": -1}, {"cooldown_seconds": "inf"}):
         with pytest.raises(ValueError):
             load_settings({"memory": bad}, env={})
+
+
+def test_recent_budget_defaults_to_window_ratio_and_explicit_values_win():
+    """近期原文预算未配置时按窗口 12% 算；配置文件或环境变量写了固定值就用固定值。"""
+    default = load_settings({}, env={}).compress
+    assert default.recent_max_tokens is None
+    assert default.recent_budget(485000) == 58200
+    assert load_settings({"compress": {"recent_max_tokens": None}}, env={}).compress.recent_budget(10000) == 1200
+    assert load_settings({"compress": {"recent_max_tokens": 4096}}, env={}).compress.recent_budget(485000) == 4096
+    from_env = load_settings({"compress": {"recent_max_tokens": 4096}}, env={"COMPRESS_RECENT_MAX_TOKENS": "8000"})
+    assert from_env.compress.recent_budget(485000) == 8000
+    with pytest.raises(ValueError):
+        load_settings({"compress": {"recent_max_tokens": 0}}, env={})
+
+
+def test_removed_compress_keys_are_ignored_and_not_written_by_default():
+    """旧配置文件里的 summary_max_tokens、target_*_ratio 不影响启动；新生成的默认配置也不再写死近期预算。"""
+    old_file = {"compress": {"threshold_ratio": 0.9, "target_min_ratio": 0.2, "target_max_ratio": 0.25,
+                             "summary_max_tokens": 2560}}
+    settings = load_settings(old_file, env={"COMPRESS_SUMMARY_MAX_TOKENS": "100"})
+    assert settings.compress.recent_max_tokens is None
+    assert not hasattr(settings.compress, "summary_max_tokens")
+    assert "COMPRESS_SUMMARY_MAX_TOKENS" not in config_manager.ENV_OVERRIDES
+    assert config_manager.DEFAULT_CONFIG["compress"] == {"threshold_ratio": 0.9}
+    assert load_settings(config_manager.DEFAULT_CONFIG, env={}).compress.recent_max_tokens is None
