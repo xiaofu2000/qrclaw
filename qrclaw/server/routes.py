@@ -5,7 +5,7 @@ import uuid
 import json
 from queue import Empty, Full, Queue
 from threading import Event, Thread
-from threading import Lock, RLock
+from threading import BoundedSemaphore, RLock
 from io import StringIO
 from typing import Any
 
@@ -14,6 +14,8 @@ from fastapi.responses import StreamingResponse
 from rich.console import Console
 
 from qrclaw.agent import run as run_agent
+from qrclaw.config import MAX_CONCURRENT_RUNS
+from qrclaw.memory.context.session.events import STREAMED_STATUS_CODES, status_code
 from qrclaw.subagent_progress import has_active_sub_agents, sub_agent_snapshot
 from qrclaw.workspace import Workspace
 from qrclaw.logger import get_logger
@@ -27,15 +29,20 @@ from .schemas import (
     SessionSummary,
 )
 from .session_service import SessionService
+from .session_titles import schedule_title
 
 MODEL_ID = "qrclaw-agent"
 logger = get_logger("qrclaw.server.routes")
-_agent_run_lock = Lock()
+# 同时执行的对话数上限，超出的请求显示「等待执行」。每次运行的会话、工作空间、上下文和记忆节点都按线程隔离，
+# 同一会话不会并发（见 chat_completions 里的 runs 检查），上限只用来避免同时向模型发出过多请求。
+_run_slots = BoundedSemaphore(MAX_CONCURRENT_RUNS)
 
 
 def build_router(workspace: Workspace) -> APIRouter:
     router = APIRouter()
     service = SessionService(workspace)
+    from .wiki_routes import build_wiki_router
+    router.include_router(build_wiki_router(workspace))
     runs: dict[str, str] = {}
     failures: dict[str, str] = {}
     status_lock = RLock()
@@ -83,13 +90,16 @@ def build_router(workspace: Workspace) -> APIRouter:
         return with_status(service.describe_session(session))
 
     @router.get("/v1/sessions/{session_id}", response_model=SessionDetail)
-    def get_session_api(session_id: str) -> dict[str, Any]:
+    def get_session_api(session_id: str, messages_from: int = 0, events_from: int = 0,
+                        history_version: int | None = None) -> dict[str, Any]:
+        """读取会话；带上已有的历史版本和长度时只返回新增部分，避免运行中反复下载整份会话。"""
         # 避免返回旧内容和刚完成的 idle 状态，让页面误以为结果已完整。
         with status_lock:
             session = service.get_session(session_id)
             if not session._path.exists():
                 raise HTTPException(status_code=404, detail="会话不存在")
-            return with_status(service.describe_session(session))
+            return with_status(service.describe_session(session, messages_from=messages_from, events_from=events_from,
+                                                        history_version=history_version))
 
     @router.patch("/v1/sessions/{session_id}", response_model=SessionDetail)
     def rename_session_api(session_id: str, request: RenameSessionRequest) -> dict[str, Any]:
@@ -141,7 +151,7 @@ def build_router(workspace: Workspace) -> APIRouter:
                 for index in range(cursor + 1, len(saved)):
                     cursor = index
                     event = saved[index]
-                    is_step = event.get("kind") == "status" and event.get("title") in ("执行中", "步骤完成", "步骤失败", "执行失败")
+                    is_step = status_code(event) in STREAMED_STATUS_CODES
                     if is_step or event.get("kind") in ("tool_status", "subagent", "message_saved", "context_usage", "compression"):
                         visible = {key: event[key] for key in ("kind", "title", "content", "created_at", "meta") if key in event}
                         yield f'id: {index}\nevent: progress\ndata: {json.dumps(visible, ensure_ascii=False)}\n\n'
@@ -197,8 +207,7 @@ def build_router(workspace: Workspace) -> APIRouter:
         def execute(on_delta=None):
             """统一维护非流式和流式运行状态。"""
             try:
-                # MCP 工具注册表和后台 Agent 状态是进程级的。
-                with _agent_run_lock:
+                with _run_slots:
                     with status_lock:
                         runs[session.session_id] = "running"
                     if request.edit_message_id is not None:
@@ -215,7 +224,10 @@ def build_router(workspace: Workspace) -> APIRouter:
                         kwargs["record_user_message"] = False
                     if on_delta is not None:
                         kwargs["on_delta"] = on_delta
-                    return run_agent(**kwargs)
+                    result = run_agent(**kwargs)
+                if not session.title:
+                    schedule_title(workspace.sessions_dir, session.session_id)
+                return result
             except Exception as exc:
                 with status_lock:
                     failures[session.session_id] = str(exc)

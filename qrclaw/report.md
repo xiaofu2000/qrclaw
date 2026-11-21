@@ -96,7 +96,7 @@ except KeyError:
 
 ### 瓶颈 3：System Prompt 每次迭代重建（🔴 高优先级）
 
-**位置**: `memory/context/context_manager.py` 第 95-97 行
+**位置**: `memory/context/runtime/manager.py`（原 `memory/context/context_manager.py`，该转发模块已删除）
 
 ```python
 def _make_system_prompt(self) -> dict:

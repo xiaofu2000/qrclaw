@@ -1,0 +1,28 @@
+{
+  "repo": "MengTo/Skills",
+  "stars": 6847,
+  "commit": "398cd41c86ba42fbb30e944ae507f463648f08b7",
+  "skill_path": "agent-skills/web-design/build-threejs-scroll-worlds",
+  "files": [
+    {
+      "name": "SKILL.md",
+      "type": "file",
+      "path": "agent-skills/web-design/build-threejs-scroll-worlds/SKILL.md"
+    },
+    {
+      "name": "agents",
+      "type": "dir",
+      "path": "agent-skills/web-design/build-threejs-scroll-worlds/agents"
+    },
+    {
+      "name": "demo",
+      "type": "dir",
+      "path": "agent-skills/web-design/build-threejs-scroll-worlds/demo"
+    },
+    {
+      "name": "references",
+      "type": "dir",
+      "path": "agent-skills/web-design/build-threejs-scroll-worlds/references"
+    }
+  ]
+}

@@ -21,6 +21,23 @@ from qrclaw.tools.wiki_tools import write_wiki_page
 from qrclaw.workspace import Workspace
 
 
+@pytest.fixture(autouse=True)
+def provide_fake_source_references(monkeypatch):
+    """旧假模型迁移到来源协议；未知或显式来源保持原样供独立测试检查。"""
+    import re
+    from qrclaw.memory.wiki.extraction.runner import ExtractionRunner
+    original = ExtractionRunner.analyze_with_llm
+    def analyze(runner, data):
+        result = original(runner, data)
+        sources = re.findall(r"\[来源 ([a-f0-9]+)；user；", data["messages_text"])
+        if result and sources:
+            for page in result.pages:
+                if not page.source_ids:
+                    page.source_ids = sources
+        return result
+    monkeypatch.setattr(ExtractionRunner, "analyze_with_llm", analyze)
+
+
 def _config(**overrides):
     values = dict(minimum_message_tokens_to_init=1, minimum_tokens_between_update=1,
                   idle_seconds=0, cooldown_seconds=0)
@@ -81,10 +98,17 @@ def test_flush_persists_page_and_index(temp_dir):
 
 
 def test_concurrent_wiki_appends_keep_every_update(temp_dir):
+    """不同实例共用目录文件锁：锁内读改写不会丢失任何一次更新。"""
     WikiMemory(temp_dir).save_page("偏好", "起始")
 
+    def append(i):
+        wiki = WikiMemory(temp_dir)
+        with wiki._lock:
+            page = wiki.get_page("偏好")
+            wiki.save_page("偏好", page.content + f"\n\n更新{i}", page.description, expected_page=page)
+
     with ThreadPoolExecutor(max_workers=8) as pool:
-        list(pool.map(lambda i: WikiMemory(temp_dir).append_page("偏好", f"更新{i}"), range(16)))
+        list(pool.map(append, range(16)))
 
     wiki = WikiMemory(temp_dir)
     content = wiki.get_page("偏好").content
@@ -119,7 +143,7 @@ def test_existing_page_is_merged_even_when_llm_says_create(temp_dir, queued):
     extraction.pages[0].related = ["运行环境", "项目架构"]
     analyzer.analyze.return_value = extraction
     analyzer.consolidate.return_value = ConsolidatePageSchema(
-        content="当前端口为9000。\n用户喜欢中文回复。", description="用户当前配置", tags=["配置"])
+        content="当前端口为9000。\n用户喜欢中文回复。", description="用户当前配置", tags=["配置"], related=["运行环境"])
     node = MemoryExtractionNode(wiki, _config(), analyzer)
 
     if queued:
@@ -129,16 +153,19 @@ def test_existing_page_is_merged_even_when_llm_says_create(temp_dir, queued):
     else:
         assert node.write_now("端口改回9000") == 1
     analyzer.consolidate.assert_called_once_with(
-        existing_content=original.content, new_content=extraction.pages[0].content, page_name="用户偏好")
+        existing_content=original.content, new_content=extraction.pages[0].content, page_name="用户偏好",
+        existing_metadata=dict(description=original.description, tags=original.tags, related=original.related),
+        new_metadata=dict(description=extraction.pages[0].description, tags=extraction.pages[0].tags, related=extraction.pages[0].related))
     reopened = WikiMemory(temp_dir)
     saved = reopened.get_page("用户偏好")
     assert saved.content == analyzer.consolidate.return_value.content
     assert "8765" not in saved.content
     assert saved.created_at == original.created_at
-    assert saved.tags == ["配置", "偏好"]
-    assert saved.related == ["项目架构", "运行环境"]
+    assert saved.tags == ["配置"]
+    assert saved.related == ["运行环境"]
     assert reopened.index.all_entries()[0]["description"] == "用户当前配置"
     assert "用户当前配置" in reopened.load_index()
+    assert node.write_now("端口改回9000") == (1 if queued else 0)
     assert node.write_now("端口改回9000") == 0
 
 
@@ -396,7 +423,7 @@ def test_semantic_recall_when_keyword_search_misses(temp_dir, monkeypatch):
     wiki.save_page("回复风格", "尽量简洁")
     monkeypatch.setattr(
         "qrclaw.memory.wiki.selection.WikiPageSelector.select",
-        lambda self, query, messages: SimpleNamespace(selected=[SimpleNamespace(name="回复风格")]),
+        lambda self, query, messages, **kwargs: SimpleNamespace(selected=[SimpleNamespace(name="回复风格", relevance=1.0)]),
     )
 
     pages = wiki.select_relevant_pages("怎样回答用户", [], top_k=1)
@@ -434,7 +461,19 @@ def test_default_and_custom_config():
     assert default.minimum_turns == 3
     assert default.idle_seconds == 120
     assert default.cooldown_seconds == 300
-    assert default.tool_calls_between_updates == 0
 
-    custom = _config(tool_calls_between_updates=5)
-    assert custom.tool_calls_between_updates == 5
+    custom = _config(minimum_turns=5)
+    assert custom.minimum_turns == 5
+
+
+def test_legacy_extraction_state_fields_are_ignored(tmp_path):
+    """旧版本进度文件里的废弃字段不影响读取，待处理正文保留。"""
+    import json
+    from qrclaw.memory.wiki.extraction.indexer import ExtractionIndexer
+    indexer = ExtractionIndexer(tmp_path, "旧会话")
+    indexer.state_file.write_text(json.dumps({
+        "last_extraction_tool_calls": 2, "last_extraction_idx": 7, "total_extractions": 1,
+        "pending_messages": [{"uuid": "m1", "role": "user", "content": "以后用中文"}]}), encoding="utf-8")
+    state = indexer.get_state()
+    assert state.total_extractions == 1
+    assert [m["uuid"] for m in state.pending_messages] == ["m1"]

@@ -1,0 +1,598 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-20T05:34:48.118138Z",
+  "title": "Design System: QRClaw 官网",
+  "extensions": {
+    "colorMeta": {
+      "blue": {
+        "role": "primary",
+        "displayName": "冰蓝",
+        "tonalRamp": [
+          "oklch(15.00% 0.09544 267.19)",
+          "oklch(26.43% 0.09544 267.19)",
+          "oklch(37.86% 0.09544 267.19)",
+          "oklch(49.29% 0.09544 267.19)",
+          "oklch(60.71% 0.09544 267.19)",
+          "oklch(72.14% 0.09544 267.19)",
+          "oklch(83.57% 0.09544 267.19)",
+          "oklch(95.00% 0.09544 267.19)"
+        ]
+      },
+      "blue-hover": {
+        "role": "primary",
+        "displayName": "高亮冰蓝",
+        "canonical": "#d3e0ff",
+        "tonalRamp": [
+          "oklch(15.00% 0.04478 267.42)",
+          "oklch(26.43% 0.04478 267.42)",
+          "oklch(37.86% 0.04478 267.42)",
+          "oklch(49.29% 0.04478 267.42)",
+          "oklch(60.71% 0.04478 267.42)",
+          "oklch(72.14% 0.04478 267.42)",
+          "oklch(83.57% 0.04478 267.42)",
+          "oklch(95.00% 0.04478 267.42)"
+        ]
+      },
+      "ink": {
+        "role": "neutral",
+        "displayName": "冰白",
+        "tonalRamp": [
+          "oklch(15.00% 0.00589 239.82)",
+          "oklch(26.43% 0.00589 239.82)",
+          "oklch(37.86% 0.00589 239.82)",
+          "oklch(49.29% 0.00589 239.82)",
+          "oklch(60.71% 0.00589 239.82)",
+          "oklch(72.14% 0.00589 239.82)",
+          "oklch(83.57% 0.00589 239.82)",
+          "oklch(95.00% 0.00589 239.82)"
+        ]
+      },
+      "muted": {
+        "role": "neutral",
+        "displayName": "灰蓝",
+        "tonalRamp": [
+          "oklch(15.00% 0.02552 248.17)",
+          "oklch(26.43% 0.02552 248.17)",
+          "oklch(37.86% 0.02552 248.17)",
+          "oklch(49.29% 0.02552 248.17)",
+          "oklch(60.71% 0.02552 248.17)",
+          "oklch(72.14% 0.02552 248.17)",
+          "oklch(83.57% 0.02552 248.17)",
+          "oklch(95.00% 0.02552 248.17)"
+        ]
+      },
+      "paper": {
+        "role": "neutral",
+        "displayName": "深夜蓝",
+        "tonalRamp": [
+          "oklch(15.00% 0.00627 236.95)",
+          "oklch(26.43% 0.00627 236.95)",
+          "oklch(37.86% 0.00627 236.95)",
+          "oklch(49.29% 0.00627 236.95)",
+          "oklch(60.71% 0.00627 236.95)",
+          "oklch(72.14% 0.00627 236.95)",
+          "oklch(83.57% 0.00627 236.95)",
+          "oklch(95.00% 0.00627 236.95)"
+        ]
+      },
+      "soft": {
+        "role": "neutral",
+        "displayName": "暗蓝",
+        "tonalRamp": [
+          "oklch(15.00% 0.01320 243.49)",
+          "oklch(26.43% 0.01320 243.49)",
+          "oklch(37.86% 0.01320 243.49)",
+          "oklch(49.29% 0.01320 243.49)",
+          "oklch(60.71% 0.01320 243.49)",
+          "oklch(72.14% 0.01320 243.49)",
+          "oklch(83.57% 0.01320 243.49)",
+          "oklch(95.00% 0.01320 243.49)"
+        ]
+      },
+      "line": {
+        "role": "neutral",
+        "displayName": "结构线",
+        "tonalRamp": [
+          "oklch(15.00% 0.02336 243.57)",
+          "oklch(26.43% 0.02336 243.57)",
+          "oklch(37.86% 0.02336 243.57)",
+          "oklch(49.29% 0.02336 243.57)",
+          "oklch(60.71% 0.02336 243.57)",
+          "oklch(72.14% 0.02336 243.57)",
+          "oklch(83.57% 0.02336 243.57)",
+          "oklch(95.00% 0.02336 243.57)"
+        ]
+      },
+      "night": {
+        "role": "neutral",
+        "displayName": "深夜蓝",
+        "tonalRamp": [
+          "oklch(15.00% 0.00627 236.95)",
+          "oklch(26.43% 0.00627 236.95)",
+          "oklch(37.86% 0.00627 236.95)",
+          "oklch(49.29% 0.00627 236.95)",
+          "oklch(60.71% 0.00627 236.95)",
+          "oklch(72.14% 0.00627 236.95)",
+          "oklch(83.57% 0.00627 236.95)",
+          "oklch(95.00% 0.00627 236.95)"
+        ]
+      },
+      "extension": {
+        "role": "primary",
+        "displayName": "扩展钴蓝",
+        "canonical": "#264aca",
+        "tonalRamp": [
+          "oklch(15.00% 0.20218 266.17)",
+          "oklch(26.43% 0.20218 266.17)",
+          "oklch(37.86% 0.20218 266.17)",
+          "oklch(49.29% 0.20218 266.17)",
+          "oklch(60.71% 0.20218 266.17)",
+          "oklch(72.14% 0.20218 266.17)",
+          "oklch(83.57% 0.20218 266.17)",
+          "oklch(95.00% 0.20218 266.17)"
+        ]
+      },
+      "panel": {
+        "role": "neutral",
+        "displayName": "正文钢灰",
+        "canonical": "#202930",
+        "tonalRamp": [
+          "oklch(15.00% 0.01813 241.72)",
+          "oklch(26.43% 0.01813 241.72)",
+          "oklch(37.86% 0.01813 241.72)",
+          "oklch(49.29% 0.01813 241.72)",
+          "oklch(60.71% 0.01813 241.72)",
+          "oklch(72.14% 0.01813 241.72)",
+          "oklch(83.57% 0.01813 241.72)",
+          "oklch(95.00% 0.01813 241.72)"
+        ]
+      },
+      "node": {
+        "role": "neutral",
+        "displayName": "节点钢灰",
+        "canonical": "#25313c",
+        "tonalRamp": [
+          "oklch(15.00% 0.02574 246.41)",
+          "oklch(26.43% 0.02574 246.41)",
+          "oklch(37.86% 0.02574 246.41)",
+          "oklch(49.29% 0.02574 246.41)",
+          "oklch(60.71% 0.02574 246.41)",
+          "oklch(72.14% 0.02574 246.41)",
+          "oklch(83.57% 0.02574 246.41)",
+          "oklch(95.00% 0.02574 246.41)"
+        ]
+      },
+      "terminal": {
+        "role": "neutral",
+        "displayName": "终端深灰",
+        "canonical": "#141c24",
+        "tonalRamp": [
+          "oklch(15.00% 0.01965 248.73)",
+          "oklch(26.43% 0.01965 248.73)",
+          "oklch(37.86% 0.01965 248.73)",
+          "oklch(49.29% 0.01965 248.73)",
+          "oklch(60.71% 0.01965 248.73)",
+          "oklch(72.14% 0.01965 248.73)",
+          "oklch(83.57% 0.01965 248.73)",
+          "oklch(95.00% 0.01965 248.73)"
+        ]
+      },
+      "terminal-text": {
+        "role": "neutral",
+        "displayName": "终端文字",
+        "canonical": "#e0eaff",
+        "tonalRamp": [
+          "oklch(15.00% 0.03044 265.33)",
+          "oklch(26.43% 0.03044 265.33)",
+          "oklch(37.86% 0.03044 265.33)",
+          "oklch(49.29% 0.03044 265.33)",
+          "oklch(60.71% 0.03044 265.33)",
+          "oklch(72.14% 0.03044 265.33)",
+          "oklch(83.57% 0.03044 265.33)",
+          "oklch(95.00% 0.03044 265.33)"
+        ]
+      },
+      "light-bg": {
+        "role": "neutral",
+        "displayName": "安装浅底",
+        "canonical": "#dfe5e9",
+        "tonalRamp": [
+          "oklch(15.00% 0.00846 236.57)",
+          "oklch(26.43% 0.00846 236.57)",
+          "oklch(37.86% 0.00846 236.57)",
+          "oklch(49.29% 0.00846 236.57)",
+          "oklch(60.71% 0.00846 236.57)",
+          "oklch(72.14% 0.00846 236.57)",
+          "oklch(83.57% 0.00846 236.57)",
+          "oklch(95.00% 0.00846 236.57)"
+        ]
+      },
+      "light-ink": {
+        "role": "neutral",
+        "displayName": "安装正文",
+        "canonical": "#18232c",
+        "tonalRamp": [
+          "oklch(15.00% 0.02313 243.55)",
+          "oklch(26.43% 0.02313 243.55)",
+          "oklch(37.86% 0.02313 243.55)",
+          "oklch(49.29% 0.02313 243.55)",
+          "oklch(60.71% 0.02313 243.55)",
+          "oklch(72.14% 0.02313 243.55)",
+          "oklch(83.57% 0.02313 243.55)",
+          "oklch(95.00% 0.02313 243.55)"
+        ]
+      },
+      "light-muted": {
+        "role": "neutral",
+        "displayName": "安装辅助",
+        "canonical": "#4d6172",
+        "tonalRamp": [
+          "oklch(15.00% 0.03668 244.29)",
+          "oklch(26.43% 0.03668 244.29)",
+          "oklch(37.86% 0.03668 244.29)",
+          "oklch(49.29% 0.03668 244.29)",
+          "oklch(60.71% 0.03668 244.29)",
+          "oklch(72.14% 0.03668 244.29)",
+          "oklch(83.57% 0.03668 244.29)",
+          "oklch(95.00% 0.03668 244.29)"
+        ]
+      },
+      "light-blue": {
+        "role": "primary",
+        "displayName": "安装深蓝",
+        "canonical": "#2449a9",
+        "tonalRamp": [
+          "oklch(15.00% 0.16024 264.61)",
+          "oklch(26.43% 0.16024 264.61)",
+          "oklch(37.86% 0.16024 264.61)",
+          "oklch(49.29% 0.16024 264.61)",
+          "oklch(60.71% 0.16024 264.61)",
+          "oklch(72.14% 0.16024 264.61)",
+          "oklch(83.57% 0.16024 264.61)",
+          "oklch(95.00% 0.16024 264.61)"
+        ]
+      },
+      "light-blue-hover": {
+        "role": "primary",
+        "displayName": "安装链接悬停",
+        "canonical": "#142c71",
+        "tonalRamp": [
+          "oklch(15.00% 0.12303 265.32)",
+          "oklch(26.43% 0.12303 265.32)",
+          "oklch(37.86% 0.12303 265.32)",
+          "oklch(49.29% 0.12303 265.32)",
+          "oklch(60.71% 0.12303 265.32)",
+          "oklch(72.14% 0.12303 265.32)",
+          "oklch(83.57% 0.12303 265.32)",
+          "oklch(95.00% 0.12303 265.32)"
+        ]
+      },
+      "light-line": {
+        "role": "neutral",
+        "displayName": "安装分隔",
+        "canonical": "#afbec9",
+        "tonalRamp": [
+          "oklch(15.00% 0.02277 239.51)",
+          "oklch(26.43% 0.02277 239.51)",
+          "oklch(37.86% 0.02277 239.51)",
+          "oklch(49.29% 0.02277 239.51)",
+          "oklch(60.71% 0.02277 239.51)",
+          "oklch(72.14% 0.02277 239.51)",
+          "oklch(83.57% 0.02277 239.51)",
+          "oklch(95.00% 0.02277 239.51)"
+        ]
+      },
+      "focus": {
+        "role": "primary",
+        "displayName": "焦点蓝",
+        "canonical": "#78a0ff",
+        "tonalRamp": [
+          "oklch(15.00% 0.14587 265.61)",
+          "oklch(26.43% 0.14587 265.61)",
+          "oklch(37.86% 0.14587 265.61)",
+          "oklch(49.29% 0.14587 265.61)",
+          "oklch(60.71% 0.14587 265.61)",
+          "oklch(72.14% 0.14587 265.61)",
+          "oklch(83.57% 0.14587 265.61)",
+          "oklch(95.00% 0.14587 265.61)"
+        ]
+      },
+      "phase-line": {
+        "role": "primary",
+        "displayName": "阶段冰蓝",
+        "tonalRamp": [
+          "oklch(15% 0.055 250)",
+          "oklch(27% 0.055 250)",
+          "oklch(38% 0.055 250)",
+          "oklch(50% 0.055 250)",
+          "oklch(61% 0.055 250)",
+          "oklch(72% 0.055 250)",
+          "oklch(84% 0.055 250)",
+          "oklch(95% 0.055 250)"
+        ]
+      },
+      "phase-number": {
+        "role": "primary",
+        "displayName": "阶段序号冰蓝",
+        "tonalRamp": [
+          "oklch(15% 0.055 250)",
+          "oklch(27% 0.055 250)",
+          "oklch(38% 0.055 250)",
+          "oklch(50% 0.055 250)",
+          "oklch(61% 0.055 250)",
+          "oklch(72% 0.055 250)",
+          "oklch(84% 0.055 250)",
+          "oklch(95% 0.055 250)"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "中文首屏标题",
+        "purpose": "QRDisplay 是自托管 Noto Sans SC 700 的标题字符子集；文件 102836 字节，新增标题需核对子集。"
+      },
+      "headline": {
+        "displayName": "章节标题",
+        "purpose": "h2 使用 QRDisplay；开始使用和 FAQ 保留独立尺寸。"
+      },
+      "scene-heading": {
+        "displayName": "场景章节",
+        "purpose": "四阶段侧文案；900px 上下分区，720px 最终字号 32px。"
+      },
+      "body": {
+        "displayName": "正文基准",
+        "purpose": "Satoshi 400/700，其余中文回退系统无衬线；不是标题字体。"
+      },
+      "action": {
+        "displayName": "行动文字",
+        "purpose": "按钮及文字链接的常规桌面尺寸。"
+      },
+      "label": {
+        "displayName": "辅助标签",
+        "purpose": "记忆来源、分类与阶段说明；部分手机标签为 11px。"
+      },
+      "code": {
+        "displayName": "终端代码",
+        "purpose": "等宽、保留空白，内部横向滚动；手机为 11px。"
+      }
+    },
+    "shadows": [
+      {
+        "name": "product-window",
+        "value": "0 30px 90px #0005",
+        "purpose": "正文的真实产品展示窗口。"
+      },
+      {
+        "name": "scene-bridge",
+        "value": "0 24px 60px #0007",
+        "purpose": "最后阶段出现的真实 UI 桥接。"
+      },
+      {
+        "name": "memory-node",
+        "value": "0 8px 24px #0002",
+        "purpose": "图谱节点。"
+      },
+      {
+        "name": "wiki-mark",
+        "value": "0 15px 30px #0003",
+        "purpose": "图谱中心标记。"
+      },
+      {
+        "name": "memory-image",
+        "value": "0 20px 50px #0003",
+        "purpose": "展开的真实记忆截图。"
+      },
+      {
+        "name": "feedback",
+        "value": "0 8px 24px #0b172730",
+        "purpose": "复制结果反馈。"
+      }
+    ],
+    "motion": [
+      {
+        "name": "ease",
+        "value": "cubic-bezier(.16,1,.3,1)",
+        "purpose": "源码 --ease；交互位移和下划线。"
+      },
+      {
+        "name": "control-color",
+        "value": "0.2s",
+        "purpose": "颜色、背景与边界变化。"
+      },
+      {
+        "name": "control-transform",
+        "value": "0.25s",
+        "purpose": "主按钮 -3px、记忆节点 -4px 的悬停位移。"
+      },
+      {
+        "name": "phase-line",
+        "value": "0.45s",
+        "purpose": "首屏四阶段的冰蓝下划线。"
+      },
+      {
+        "name": "story-line",
+        "value": "0.7s",
+        "purpose": "真实回放步骤下划线。"
+      },
+      {
+        "name": "product-frame",
+        "value": "0.5s",
+        "purpose": "真实截图切换时从透明度 .6、下移 6px 回到原位。"
+      },
+      {
+        "name": "canvas-ready",
+        "value": "0.35s",
+        "purpose": "WebGL 就绪后画布显现。"
+      },
+      {
+        "name": "timeline-hold",
+        "value": "0.12 / 0.76 / 0.12",
+        "purpose": "每段滚动关键帧的起始停顿、三次缓动与结束停顿；来自 sampleTimeline。"
+      },
+      {
+        "name": "scroll-smoothing",
+        "value": "1 - exp(-3.2 * min(dt, 1/30))",
+        "purpose": "帧率无关阻尼；精确滚动状态与渲染状态分离，静态模式直接到端点。"
+      },
+      {
+        "name": "bridge-progress",
+        "value": "0.78–0.96",
+        "purpose": "按实际镜头进度显现，位移 48px、缩放 .94 到 1，大脑画面透明度 1 到 .28。"
+      },
+      {
+        "name": "memory-flow",
+        "value": "18s linear infinite",
+        "purpose": "仅记忆章节在视口内时运行；后台、全局暂停和减少效果停止。"
+      },
+      {
+        "name": "story-interval",
+        "value": "5000ms",
+        "purpose": "用户开启真实截图回放且内容可见时推进；首屏不使用自动阶段定时器。"
+      },
+      {
+        "name": "toast-duration",
+        "value": "3200ms",
+        "purpose": "中文复制结果反馈。"
+      },
+      {
+        "name": "reduced-motion",
+        "value": "prefers-reduced-motion: reduce",
+        "purpose": "禁用动画、过渡和产品窗口透视；内容仍按滚动阶段更新，WebGL不持续RAF。"
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "compact-content-max",
+        "value": "1100px"
+      },
+      {
+        "name": "scene-and-webgl-max",
+        "value": "900px"
+      },
+      {
+        "name": "mobile-page-max",
+        "value": "720px"
+      },
+      {
+        "name": "short-height-max-at-min-width-901",
+        "value": "760px"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "银白主行动",
+      "kind": "button",
+      "refersTo": "button-white",
+      "description": "正文和蓝色扩展区的矩形主行动；首屏使用独立文字行动。",
+      "html": "<a class=\"ds-button-white\" href=\"#start\">开始使用 <svg class=\"ds-arrow\" viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path d=\"M5 12h14m-6-6 6 6-6 6\"/></svg></a>",
+      "css": ".ds-button-white{font-family:var(--font,Satoshi,\"PingFang SC\",\"Microsoft YaHei\",sans-serif);display:inline-flex;justify-content:center;align-items:center;gap:28px;min-height:50px;padding:0 23px;border-radius:4px;font-size:14px;font-weight:700;background:#edf1f4;color:#101315;text-decoration:none;transition:background .2s,transform .25s var(--ease,cubic-bezier(.16,1,.3,1))}.ds-button-white:hover{background:#dce7ff;transform:translateY(-3px)}.ds-button-white:focus-visible{outline:3px solid #78a0ff;outline-offset:5px;}.ds-arrow{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.6}@media(prefers-reduced-motion:reduce){.ds-button-white{transition:none}.ds-button-white:hover{transform:none}}"
+    },
+    {
+      "name": "正文文字行动",
+      "kind": "button",
+      "refersTo": "text-link",
+      "description": "暗色阅读面使用浅蓝；浅色安装区可继承局部 --blue 覆盖。",
+      "html": "<a class=\"ds-text-link\" href=\"#memory-detail\">看看记忆如何积累 <svg class=\"ds-external\" viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path d=\"M6 18 18 6M6 6h12v12\"/></svg></a>",
+      "css": ".ds-text-link{font-family:var(--font,Satoshi,\"PingFang SC\",\"Microsoft YaHei\",sans-serif);display:inline-flex;align-items:center;gap:12px;min-height:44px;padding:8px 0;font-size:14px;font-weight:700;color:var(--blue,#aac9ff);text-decoration:none;transition:color .2s}.ds-text-link:hover{color:var(--blue-hover,#d3e0ff)}.ds-text-link:focus-visible{outline:3px solid #78a0ff;outline-offset:5px;}.ds-external{display:inline-block;flex-shrink:0;width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.6}@media(prefers-reduced-motion:reduce){.ds-text-link{transition:none}}"
+    },
+    {
+      "name": "首屏唯一行动",
+      "kind": "button",
+      "refersTo": "text-link-light",
+      "description": "首屏的浅色底线链接，手机字号 12px；背景只演示使用环境。",
+      "html": "<div class=\"ds-light-context\"><a class=\"ds-light-link\" href=\"#start\">开始使用 <svg viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path d=\"M5 12h14m-6-6 6 6-6 6\"/></svg></a></div>",
+      "css": ".ds-light-context{background:var(--night,#030916);padding:16px}.ds-light-link{font-family:var(--font,Satoshi,\"PingFang SC\",\"Microsoft YaHei\",sans-serif);display:inline-flex;align-items:center;gap:38px;min-height:44px;padding:8px 0;font-size:13px;font-weight:400;color:#e8efff;text-decoration:none;transition:color .2s}.ds-light-link:hover{color:#b8d0ff}.ds-light-link:focus-visible{outline:3px solid #78a0ff;outline-offset:5px;}.ds-play{display:inline-block;width:0;height:0;border-top:5px solid transparent;border-bottom:5px solid transparent;border-left:8px solid currentColor}@media(prefers-reduced-motion:reduce){.ds-light-link{transition:none}}.ds-light-link{border-bottom:1px solid #68809f}.ds-light-link svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.6}"
+    },
+    {
+      "name": "固定导航的链接与入口",
+      "kind": "nav",
+      "refersTo": "nav-action",
+      "description": "提取固定导航的可复用样式；定位和手机开合留在官网布局及 app.js。",
+      "html": "<nav class=\"ds-nav\" aria-label=\"导航样式示例\"><a href=\"#workflow\">工作方式</a><a href=\"#memory\">长期记忆</a><a class=\"ds-nav-action\" href=\"#start\">开始使用 <svg class=\"ds-external\" viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path d=\"M6 18 18 6M6 6h12v12\"/></svg></a></nav>",
+      "css": ".ds-nav{font-family:var(--font,Satoshi,\"PingFang SC\",\"Microsoft YaHei\",sans-serif);display:flex;flex-wrap:wrap;align-items:center;gap:34px;font-size:14px;background:linear-gradient(#030916 12%,#030916e0 65%,#03091600);color:#edf1f4;padding:18px}.ds-nav a{color:inherit;text-decoration:none;transition:color .2s,background .2s}.ds-nav a:hover{color:#a5bfff}.ds-nav a:focus-visible{outline:3px solid #78a0ff;outline-offset:5px;}.ds-nav .ds-nav-action{padding:11px 17px;border:1px solid #59636e;display:flex;gap:25px;align-items:center;border-radius:4px}.ds-nav .ds-nav-action:hover{background:#edf1f4;color:#101315}.ds-external{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.5}@media(prefers-reduced-motion:reduce){.ds-nav a{transition:none}}"
+    },
+    {
+      "name": "记忆节点",
+      "kind": "button",
+      "refersTo": "memory-node",
+      "description": "默认深钢灰，选中浅蓝底深色字；图标使用当前项目节点描边 SVG。",
+      "html": "<button class=\"ds-memory-node\" aria-pressed=\"false\"><svg class=\"ds-node-icon\" viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path d=\"M3 7V5a2 2 0 0 1 2-2h5l3 4h6a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z\"/></svg><span>项目背景</span></button>",
+      "css": ".ds-memory-node{font-family:var(--font,Satoshi,\"PingFang SC\",\"Microsoft YaHei\",sans-serif);display:inline-flex;align-items:center;gap:10px;background:#25313c;color:var(--ink,#eef5ff);min-height:52px;padding:10px 17px;border:0;border-radius:9px;font-size:13px;box-shadow:0 8px 24px #0002;cursor:pointer;transition:color .2s,background .2s,transform .25s var(--ease,cubic-bezier(.16,1,.3,1))}.ds-memory-node:hover{transform:translateY(-4px)}.ds-memory-node[aria-pressed=\"true\"]{background:var(--blue,#aac9ff);color:#101828}.ds-memory-node:focus-visible{outline:3px solid #78a0ff;outline-offset:5px;}.ds-node-icon{width:19px;height:19px;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}@media(prefers-reduced-motion:reduce){.ds-memory-node{transition:none}.ds-memory-node:hover{transform:none}}"
+    },
+    {
+      "name": "记忆分类标签",
+      "kind": "chip",
+      "refersTo": "memory-tag",
+      "description": "静态分类信息，不承担筛选或操作。",
+      "html": "<div class=\"ds-note-tags\"><span>用户偏好</span><span>输出格式</span></div>",
+      "css": ".ds-note-tags{font-family:var(--font,Satoshi,\"PingFang SC\",\"Microsoft YaHei\",sans-serif);display:flex;gap:8px}.ds-note-tags span{font-size:12px;padding:5px 9px;background:var(--soft,#0c1524);border-radius:5px;color:#a5bfff}"
+    },
+    {
+      "name": "记忆正文",
+      "kind": "card",
+      "refersTo": "memory-note",
+      "description": "无阴影的暗色阅读卡；显示正文与来源，样本内容与官网一致。",
+      "html": "<article class=\"ds-memory-note\"><div class=\"ds-note-top\"><span>Wiki / 输出偏好</span><span>记忆示意</span></div><h3>先给结论，再讲依据。</h3><p>你偏好简洁的中文摘要：先说明结论，再列出依据与待办。后续任务可以检索这条偏好，减少重复交代。</p><div class=\"ds-note-source\"><span>来源可追溯</span><p>关联到提出这项偏好的原始对话</p></div></article>",
+      "css": ".ds-memory-note{font-family:var(--font,Satoshi,\"PingFang SC\",\"Microsoft YaHei\",sans-serif);padding:28px 32px;background:#202930;color:var(--ink,#eef5ff);border-radius:var(--radius,12px);min-height:380px}.ds-note-top{display:flex;justify-content:space-between;gap:12px;color:var(--muted,#aebfd4);font-size:12px;padding-bottom:28px}.ds-memory-note h3{font-size:23px;line-height:1.5;margin:0 0 18px;font-weight:700}.ds-memory-note>p{margin:0;font-size:14px;line-height:1.85;color:var(--muted,#aebfd4);min-height:78px}.ds-note-source{margin-top:24px;padding-top:19px;border-top:1px solid var(--line,#30425c);font-size:12px}.ds-note-source>span{color:var(--blue,#aac9ff);font-weight:700}.ds-note-source p{font-size:12px;line-height:1.85;color:var(--muted,#aebfd4);margin:5px 0 0}"
+    },
+    {
+      "name": "终端与复制控件",
+      "kind": "custom",
+      "refersTo": "terminal",
+      "description": "代码容器内部滚动；样本展示外观，复制反馈由官网脚本提供。",
+      "html": "<div class=\"ds-terminal\"><div class=\"ds-terminal-head\"><span>启动 Web 工作台</span><button class=\"ds-copy\" aria-label=\"复制启动命令样式示例\">复制</button></div><pre><code>uv run qrclaw serve</code></pre></div>",
+      "css": ".ds-terminal{font-family:var(--font,Satoshi,\"PingFang SC\",\"Microsoft YaHei\",sans-serif);background:#141c24;color:#dae7ff;border-radius:10px;overflow:hidden;min-width:0}.ds-terminal-head{display:flex;align-items:center;justify-content:space-between;gap:15px;padding:7px 18px;border-bottom:1px solid #ffffff1a;min-height:43px;font-size:12px;color:#aabbd9}.ds-terminal pre{margin:0;padding:22px 23px;overflow:auto;line-height:1.9;color:#e0eaff}.ds-terminal code{font-family:\"SFMono-Regular\",Consolas,\"Liberation Mono\",monospace;font-size:12px;line-height:1.9;tab-size:2}.ds-copy{font-family:var(--font,Satoshi,\"PingFang SC\",\"Microsoft YaHei\",sans-serif);font-size:12px;color:#c8d8f6;padding:8px;min-height:36px;margin-right:-6px;border:0;background:none;border-radius:5px;cursor:pointer;transition:color .2s,background .2s}.ds-copy:hover{background:#ffffff15;color:white}.ds-copy:focus-visible{outline:3px solid #78a0ff;outline-offset:5px;}@media(prefers-reduced-motion:reduce){.ds-copy{transition:none}}"
+    },
+    {
+      "name": "工作原理阶段入口",
+      "kind": "button",
+      "refersTo": "phase-control",
+      "description": "冰蓝下划线与 aria-pressed 表达选中，完整行为使用统一滚动坐标。",
+      "html": "<div class=\"ds-phase-context\"><button class=\"ds-phase\" aria-label=\"02 拆解\" aria-pressed=\"true\"><span class=\"ds-step-number\">02</span><i aria-hidden=\"true\"></i></button></div>",
+      "css": ".ds-phase-context{background:#030916;padding:16px}.ds-phase{font-family:var(--font,Satoshi,\"PingFang SC\",\"Microsoft YaHei\",sans-serif);position:relative;display:flex;align-items:center;gap:12px;color:#a2b0bc;font-size:14px;padding:13px 0;min-height:44px;min-width:44px;text-align:left;border:0;background:none;cursor:pointer;transition:color .2s}.ds-step-number{font-size:12px;color:#80909f;font-variant-numeric:tabular-nums}.ds-phase[aria-pressed=\"true\"]{color:#fff}.ds-phase[aria-pressed=\"true\"] .ds-step-number{color:#c2dfff}.ds-phase i{position:absolute;height:1px;left:12px;right:12px;bottom:0;background:#b6dcff;transform:scaleX(0);transform-origin:left;transition:transform .45s var(--ease,cubic-bezier(.16,1,.3,1))}.ds-phase[aria-pressed=\"true\"] i{transform:scaleX(1)}.ds-phase:focus-visible{outline:3px solid #78a0ff;outline-offset:5px;}@media(prefers-reduced-motion:reduce){.ds-phase,.ds-phase i{transition:none}}.ds-phase{justify-content:center}"
+    }
+  ],
+  "narrative": {
+    "northStar": "冷蓝玻璃暗棚",
+    "overview": "深蓝暗场承托 AH 的真实 Human Brain 模型。自然褶皱、冰蓝透射和窄条反射构成体积；固定模型与连续相机把完整轮廓、侧面和近景连接起来，最后让真实工作台接过叙事。\n\n中文标题、明确的行动入口与四阶段定位保持可读。正文保留既有产品回放、记忆、扩展和安装组件，仅共享更新后的暗蓝基础色；真实截图保留产品自身外观。",
+    "keyCharacteristics": [
+      "深蓝暗场、冰蓝玻璃、受控反射与白色文字。",
+      "同一个固定模型、连续镜头、四阶段自然滚动。",
+      "QRDisplay 中文标题、Satoshi 品牌与正文、等宽代码。",
+      "矩形行动、细线导航、真实截图和可追溯模型署名。",
+      "暂停与减少动态模式保留章节阅读和静态关键镜头。"
+    ],
+    "rules": [
+      {
+        "name": "The 状态可读 Rule",
+        "body": "阶段与选中状态同时保留文字、下划线和可访问语义。",
+        "section": "colors"
+      },
+      {
+        "name": "The 标题子集 Rule",
+        "body": "新增中文标题时复核并更新 QRDisplay 子集。",
+        "section": "typography"
+      },
+      {
+        "name": "The Dark Refraction Rule",
+        "body": "透射背景必须存在于 WebGL 场景内，CSS 暗底不能代替玻璃采样背景。",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "**Do** 保留 AH 原始几何、冷蓝玻璃层次与可见署名。",
+      "**Do** 保持场景与相机的 900px compact 分支一致，并保留独立窄屏镜头。",
+      "**Do** 正文、灯光、相机和选中标签共用实际画面进度；滚动不等待动画，不拦截输入。",
+      "**Do** 保留键盘、暂停、减少动态与真实模型静帧降级。",
+      "**Do** 区分工作原理示意、真实截图、实际运行状态与本地性能样本。"
+    ],
+    "donts": [
+      "**Don't** 用旧 Q 几何或旋转环替代已确认的真实大脑。",
+      "**Don't** 将模型旋转、指针偏移或额外装饰重新加入这条相机叙事。",
+      "**Don't** 把材质色、派生色带或被覆盖的 CSS 旧值当成主题真源。",
+      "**Don't** 将官网视觉规范覆盖到根目录产品工作台。",
+      "**Don't** 将本地手机尺寸视口数据写成手机真机或线上性能保证。"
+    ]
+  }
+}

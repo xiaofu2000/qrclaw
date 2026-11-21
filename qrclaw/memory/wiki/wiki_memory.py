@@ -1,7 +1,7 @@
 """
 WikiMemory —— LLM Wiki 记忆管理器
 
-替代原有的 LongTermMemory，采用 LLM Wiki 架构：
+采用 LLM Wiki 架构的长期记忆：
 - 所有页面平铺在 pages/ 目录
 - index.json 作为结构化索引（代码用）
 - index.md 作为人类可读目录（注入 system prompt）
@@ -13,26 +13,30 @@ WikiMemory —— LLM Wiki 记忆管理器
 - list_pages：列出所有页面
 - search_pages：关键词全文搜索
 - delete_page：删除页面
-- load_index：返回 index.md，供 system prompt 注入
+- load_index：生成可检索页面的索引，供 system prompt 注入
 """
 
 from __future__ import annotations
 
 from datetime import datetime
+import threading
 from pathlib import Path
+from qrclaw.home import qrclaw_home
 from typing import Optional
 from filelock import FileLock
 
 from qrclaw.logger import get_logger
 from qrclaw.memory.wiki.index import IndexManager, atomic_write
-from qrclaw.memory.wiki.page import WikiPage
+from qrclaw.memory.wiki.page import WikiPage, wiki_links
 
 logger = get_logger("qrclaw.memory.wiki.wiki_memory")
 
-AGENTS_ROOT = Path.home() / ".qrclaw" / "agents"
+AGENTS_ROOT = qrclaw_home() / "agents"
 
 # 按 memory_dir 缓存实例，同一目录永远返回同一个实例
 _instances: dict[Path, "WikiMemory"] = {}
+# 多个会话可能同时第一次访问同一目录；不加锁会各建一个实例，实例上的锁就互相看不见。
+_instances_lock = threading.RLock()
 
 
 class WikiMemory:
@@ -51,9 +55,10 @@ class WikiMemory:
     def for_workspace(cls, memory_dir: Path) -> "WikiMemory":
         """按 memory_dir 返回缓存实例，同一目录永远返回同一个对象"""
         key = Path(memory_dir).resolve()
-        if key not in _instances:
-            _instances[key] = cls(memory_dir)
-        return _instances[key]
+        with _instances_lock:
+            if key not in _instances:
+                _instances[key] = cls(memory_dir)
+            return _instances[key]
 
     def __init__(self, memory_dir: Path = None):
         if memory_dir:
@@ -67,12 +72,19 @@ class WikiMemory:
         with self._lock:
             self.index = IndexManager(self.memory_dir)
             self.pages_dir.mkdir(parents=True, exist_ok=True)
+            from qrclaw.memory.wiki.schema import DEFAULT_WIKI_SCHEMA
+            schema = self.memory_dir / "SCHEMA.md"
+            if not schema.exists():
+                atomic_write(schema, DEFAULT_WIKI_SCHEMA)
         logger.debug(f"WikiMemory 初始化: {self.memory_dir}")
+        from qrclaw.memory.wiki.provenance import WikiProvenance
+        self.provenance = WikiProvenance(self)
+        self._repair_worker = None
 
     # ── 核心 CRUD ─────────────────────────────────────────────────────────────
 
     def _page_path(self, name: str) -> Path:
-        if not isinstance(name, str) or not name.strip() or name != name.strip() or any(c in name for c in "/\\\r\n\0"):
+        if not isinstance(name, str) or not name.strip() or name != name.strip() or len(name.encode("utf-8")) > 252 or any(c in name for c in "/\\\r\n\0"):
             raise ValueError(f"无效的 Wiki 页面名称: {name!r}")
         path = self.pages_dir / f"{name}.md"
         if not path.resolve().is_relative_to(self.pages_dir.resolve()):
@@ -88,20 +100,44 @@ class WikiMemory:
         related: list[str] = None,
         *,
         expected_page: WikiPage | None = None,
+        expected_missing: bool = False,
+        source_ids: list[str] | None = None,
+        status: str | None = None,
+        batch_id: str | None = None,
+        allow_invalid_sources: bool = False,
+        explicit: bool = False,
+        started_at: float | None = None,
     ) -> WikiPage:
         """保存页面；模型整理结果须基于未被其他任务修改的旧页面。"""
         with self._lock:
+            state = self.provenance.read()
+            if name in state["deleted_pages"]:
+                deleted_at = datetime.fromisoformat(state["deleted_pages"][name]).timestamp()
+                if not explicit or started_at is None or deleted_at >= started_at:
+                    raise RuntimeError(f"页面「{name}」已被主动删除，拒绝旧任务恢复")
+            current = self.get_page(name)
+            if batch_id and current and batch_id in current.applied_batches:
+                return current
+            if expected_missing and self.page_exists(name):
+                raise RuntimeError(f"页面「{name}」已由其他任务创建，请重新读取")
+            if source_ids is not None and not allow_invalid_sources and not self.provenance.current(source_ids):
+                raise RuntimeError("记忆来源已被撤销，拒绝写入旧结果")
             if expected_page is not None:
-                if not content.strip():
+                if not content.strip() and status != "inactive":
                     raise ValueError("整理后的页面正文为空，保留原页面")
                 current = self.get_page(name)
                 # 旧格式页面可能没有时间戳，按正文和元数据检查并发变化。
                 if current is None or any(
                     getattr(current, field) != getattr(expected_page, field)
-                    for field in ("name", "content", "description", "tags", "related")
+                    for field in ("name", "content", "description", "tags", "related", "revision")
                 ):
                     raise RuntimeError(f"页面「{name}」在整理期间发生变化，请重新读取后更新")
-            return self._save_page(name, content, description, tags, related)
+            revision = max(current.revision if current else 0, state["page_revisions"].get(name, 0)) + 1
+            saved = self._save_page(name, content, description, tags, related, source_ids=source_ids, status=status, batch_id=batch_id, revision=revision)
+            if name in state["deleted_pages"]:
+                state["deleted_pages"].pop(name)
+                self.provenance.write(state)
+            return saved
 
     def _save_page(
         self,
@@ -110,6 +146,7 @@ class WikiMemory:
         description: str = "",
         tags: list[str] = None,
         related: list[str] = None,
+        *, source_ids: list[str] | None = None, status: str | None = None, batch_id: str | None = None, revision: int,
     ) -> WikiPage:
         """
         新建或更新 Wiki 页面（upsert 语义）
@@ -119,9 +156,6 @@ class WikiMemory:
 
         同时更新 index.json → 重建 index.md → 追加 log.md
         """
-        tags = tags or []
-        related = related or []
-
         filepath = self._page_path(name)
         self.index.all_entries()
         existing = self.get_page(name)
@@ -131,9 +165,9 @@ class WikiMemory:
             page = WikiPage(
                 name=name,
                 content=content,
-                description=description or existing.description,
-                tags=tags or existing.tags,
-                related=related or existing.related,
+                description=description,
+                tags=existing.tags if tags is None else list(dict.fromkeys(tags)),
+                related=existing.related if related is None else list(dict.fromkeys(related)),
                 created_at=existing.created_at,
                 updated_at=now,
             )
@@ -143,12 +177,19 @@ class WikiMemory:
                 name=name,
                 content=content,
                 description=description,
-                tags=tags,
-                related=related,
+                tags=list(dict.fromkeys(tags or [])),
+                related=list(dict.fromkeys(related or [])),
                 created_at=now,
                 updated_at=now,
             )
             action = "write"
+
+        page.revision = revision
+        page.source_ids = list(dict.fromkeys(source_ids if source_ids is not None else existing.source_ids if existing else []))
+        page.status = status or ("ready" if page.source_ids else "legacy")
+        page.applied_batches = list(existing.applied_batches if existing else [])
+        if batch_id:
+            page.applied_batches.append(batch_id)
 
         # 写入文件
         atomic_write(filepath, page.to_markdown())
@@ -156,37 +197,10 @@ class WikiMemory:
         # 更新索引
         self.index.upsert(page)
         self.index.append_log(action, name, description)
+        self.invalidate_cache()
 
         logger.info(f"WikiMemory.save_page [{action}]: {name}")
         return page
-
-    def append_page(
-        self,
-        name: str,
-        content: str,
-        tags: list[str] = None,
-        related: list[str] = None,
-    ) -> WikiPage:
-        """
-        追加内容到已有页面末尾。
-        页面不存在时自动创建（等同于 save_page）。
-        tags/related 为空时保留已有值。
-        """
-        with self._lock:
-            existing = self.get_page(name)
-            if not existing:
-                return self._save_page(name=name, content=content, tags=tags or [], related=related or [])
-
-            new_content = existing.content.rstrip() + "\n\n" + content.strip()
-            merged_tags = list(dict.fromkeys(existing.tags + (tags or [])))
-            merged_related = list(dict.fromkeys(existing.related + (related or [])))
-            return self._save_page(
-                name=name,
-                content=new_content,
-                description=existing.description,
-                tags=merged_tags,
-                related=merged_related,
-            )
 
     def fuzzy_find_name(self, name: str) -> Optional[str]:
         """
@@ -224,21 +238,39 @@ class WikiMemory:
                 return False
 
             self.index.all_entries()
+            state = self.provenance.read()
+            page = self.get_page(name)
+            # 删除后的版本下限继续保留，重建同名页面也不能复用旧版本。
+            if page:
+                state["page_revisions"][name] = max(page.revision, state["page_revisions"].get(name, 0))
+            state["deleted_pages"][name] = datetime.now().isoformat()
+            state["repairs"].pop(name, None)
+            state["baselines"].pop(name, None)
+            for source in state["sources"].values():
+                if source.get("page_name") == name:
+                    source["state"] = "withdrawn"
+                    source.pop("body", None)
+                    source.pop("diff", None)
+            self.provenance.write(state)
             filepath.unlink()
             self.index.remove(name)
             self.index.append_log("delete", name)
             logger.info(f"WikiMemory.delete_page: {name}")
+            self.invalidate_cache()
             return True
 
     # ── 查询 ──────────────────────────────────────────────────────────────────
 
-    def list_pages(self) -> list[WikiPage]:
+    def list_pages(self, *, include_unavailable: bool = False) -> list[WikiPage]:
         """列出所有页面（从 pages/ 目录扫描）"""
         pages = []
+        with self._lock:
+            deleted = self.provenance.read()["deleted_pages"]
         for md_file in sorted(self.pages_dir.glob("*.md")):
-            text = md_file.read_text(encoding="utf-8")
-            page = WikiPage.from_markdown(text, fallback_name=md_file.stem)
-            if page:
+            if md_file.stem in deleted:
+                continue
+            page = self.get_page(md_file.stem)
+            if page and (include_unavailable or self.retrievable(page)):
                 pages.append(page)
         return pages
 
@@ -273,12 +305,10 @@ class WikiMemory:
         """
         基于 LLM 的智能页面选择
 
-        两阶段筛选：
-        1. 关键词初筛：用 search_pages 获取候选页面
-        2. LLM 精选：用 WikiPageSelector 做语义匹配，选出 top_k 个最相关页面
+        根据完整页面目录（名称和摘要）做语义匹配，选出 top_k 个最相关页面。
 
         Args:
-            query: 用户当前消息（用于关键词初筛和 LLM 精选）
+            query: 用户当前消息
             messages: 主 agent 的完整 messages 列表（继承对话上下文）
             top_k: 返回的最相关页面数量，默认 3
 
@@ -294,30 +324,34 @@ class WikiMemory:
         """
         from qrclaw.memory.wiki.selection import WikiPageSelector
 
-        # 第一阶段：关键词初筛，获取候选页面
-        candidates = self.search_pages(query)
-        if not candidates and not self.index.all_entries():
+        candidates = self.list_pages()
+        if not candidates or top_k < 1:
             return []
 
-        # 第二阶段：LLM 精选
-        selector = WikiPageSelector(self)
-        selection_result = selector.select(query, messages)
+        query_folded = query.casefold()
+        mentioned = [p.name for p in candidates if len(p.name) > 1 and p.name.casefold() in query_folded]
+        # shortcut: 全量目录会随页面数增加而变贵；目录超出模型预算时改为主题分层路由。
+        selected = []
+        if not any(name.casefold() == query_folded for name in mentioned):
+            selected = WikiPageSelector(self).select(query, messages, candidates=candidates).selected
+        names = mentioned + [page.name for page in selected if page.relevance >= 0.6]
 
-        if not selection_result.selected:
-            logger.debug("select_relevant_pages: LLM 精选无结果，返回关键词匹配结果")
-            return candidates[:top_k]
-
-        # 根据 LLM 选择结果获取 WikiPage 对象
+        # 选页期间页面可能被撤销，返回前重新验证。
         selected_pages = []
-        for selected in selection_result.selected[:top_k]:
-            page = self.get_page(selected.name)
-            if page:
+        candidate_names = {p.name for p in candidates}
+        seen = set()
+        for name in names:
+            if name in seen:
+                continue
+            seen.add(name)
+            page = self.get_page(name)
+            if page and self.retrievable(page) and name in candidate_names:
                 selected_pages.append(page)
+            if len(selected_pages) >= top_k:
+                break
 
-        logger.debug(
-            f"select_relevant_pages: 关键词候选 {len(candidates)} 个，LLM 选中 {len(selected_pages)} 个"
-        )
-        return selected_pages or candidates[:top_k]
+        logger.debug(f"select_relevant_pages: 目录页面 {len(candidates)} 个，选中 {len(selected_pages)} 个")
+        return selected_pages or self.search_pages(query)[:top_k]
 
     def page_exists(self, name: str) -> bool:
         """检查页面是否存在"""
@@ -330,11 +364,40 @@ class WikiMemory:
 
     def load_index(self) -> str:
         """
-        返回 index.md 全文，供注入 system prompt。
+        生成注入 system prompt 的索引：每个可检索页面一行「名称：描述」。
 
-        Agent 通过这个了解 Wiki 全貌，决定新建还是更新页面。
+        直接扫描 pages/，排除来源失效、整理中和已删除的页面；不读取 index.md。
         """
-        return self.index.load_index_md()
+        return "# Wiki 索引\n\n" + "\n".join(f"- {p.name}：{p.description}" for p in self.list_pages())
+
+    def retrievable(self, page: WikiPage) -> bool:
+        """来源撤销或整理失败期间不向 Agent 暴露旧正文和旧摘要。"""
+        with self._lock:
+            state = self.provenance.read()
+            return (page.status in ("ready", "legacy") and page.name not in state["deleted_pages"]
+                    and self.provenance.current(page.source_ids)
+                    and state["repairs"].get(page.name, {}).get("status") not in ("pending", "processing", "failed"))
+
+    def backlinks(self, name: str) -> list[str]:
+        """计算反向引用，章节和别名沿用统一解析规则。"""
+        return [p.name for p in self.list_pages(include_unavailable=True)
+                if name in p.related + wiki_links(p.content) and p.name != name]
+
+    @property
+    def repair_worker(self):
+        """按工作空间复用单个可恢复整理工作器。"""
+        if self._repair_worker is None:
+            from qrclaw.memory.wiki.repair import WikiRepairWorker
+            self._repair_worker = WikiRepairWorker(self)
+        return self._repair_worker
+
+    def invalidate_cache(self) -> None:
+        """记忆变化后使下一轮系统提示读取新索引。"""
+        from qrclaw.memory.context.runtime.manager import get_context_manager
+        try:
+            get_context_manager().invalidate_cache()
+        except RuntimeError:
+            pass
 
     # ── 维护 ──────────────────────────────────────────────────────────────────
 
@@ -343,19 +406,3 @@ class WikiMemory:
         with self._lock:
             self.index.rebuild_from_pages_dir()
         logger.info("WikiMemory: 重建索引完成")
-
-    def clear_all(self) -> None:
-        """清空所有页面和索引（开发/测试用）"""
-        with self._lock:
-            for md_file in self.pages_dir.glob("*.md"):
-                md_file.unlink()
-            self.index.rebuild_from_pages_dir()
-        logger.info("WikiMemory: 已清空所有页面")
-
-    def stats(self) -> dict:
-        """返回统计信息"""
-        entries = self.index.all_entries()
-        return {
-            "total_pages": len(entries),
-            "memory_dir": str(self.memory_dir),
-        }

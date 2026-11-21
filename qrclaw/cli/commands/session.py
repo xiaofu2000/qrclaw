@@ -3,7 +3,7 @@
 """
 from rich.console import Console
 from rich.table import Table
-from qrclaw.memory.context.session import Session, list_sessions, delete_session
+from qrclaw.memory.context.session import Session, list_sessions
 from qrclaw.workspace import Workspace
 from qrclaw.logger import setup_logger
 from qrclaw.config import LOG_LEVEL, LOG_MAX_DAYS, LOG_TO_FILE, LOG_TO_CONSOLE, LOG_CONSOLE_LEVEL
@@ -97,7 +97,8 @@ def _cmd_delete(session_id: str, current_session: Session, console: Console, wor
         console.print("[red]不能删除当前正在使用的会话，请先切换到其他会话[/red]")
         return current_session
 
-    if delete_session(session_id, workspace.sessions_dir):
+    from qrclaw.server.session_service import SessionService
+    if SessionService(workspace).delete_session(session_id):
         console.print(f"[dim]会话 {session_id} 已删除[/dim]")
     else:
         console.print(f"[yellow]会话 {session_id} 不存在[/yellow]")

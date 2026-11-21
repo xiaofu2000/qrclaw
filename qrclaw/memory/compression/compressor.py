@@ -12,8 +12,7 @@ from collections import deque
 from filelock import FileLock
 from qrclaw.memory.token_utils import count_text_tokens
 from qrclaw.config import (
-    COMPRESS_SUMMARY_MAX_TOKENS, COMPRESS_SUMMARY_TARGET_TOKENS,
-    COMPRESS_RECENT_MAX_TOKENS,
+    COMPRESS_SUMMARY_TARGET_TOKENS, COMPRESS_RECENT_MAX_TOKENS,
     COMPRESS_TARGET_MIN_RATIO, COMPRESS_TARGET_MAX_RATIO,
     _MODEL_MAX_TOKENS,
 )
@@ -168,7 +167,7 @@ def summarize(session) -> bool:
 
         # 重建 session.messages
         with FileLock(f"{session._path}.lock"):
-            session._load(strict=True)
+            session._load_for_update()
             if session.messages != original_messages:
                 raise RuntimeError("压缩期间会话内容发生变化，请稍后重试")
             session.messages = [
@@ -187,17 +186,3 @@ def summarize(session) -> bool:
     except Exception as e:
         logger.error(f"压缩失败: {e}", exc_info=True)
         raise
-
-
-def truncate(session, keep: int = 20) -> None:
-    """
-    滚动截断策略：直接丢弃旧消息，只保留最近 keep 条。
-    最简单，但会丢失早期信息。
-    """
-    if len(session.messages) > keep:
-        old_count = len(session.messages)
-        session.messages = session.messages[-keep:]
-        session._save()
-        logger.info(f"滚动截断完成，保留最近 {keep} 条消息 (丢弃 {old_count - keep} 条)")
-    else:
-        logger.debug(f"消息数未超过阈值 ({len(session.messages)}/{keep})，无需截断")

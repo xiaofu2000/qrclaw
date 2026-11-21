@@ -1,61 +1,25 @@
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
-const { readFileSync } = require('node:fs')
-const vm = require('node:vm')
-const ts = require('typescript')
+const { loadModule, hookRuntime, deferred } = require('./helpers/load.cjs')
 
-const compiled = ts.transpileModule(readFileSync('src/features/chat/useChatWorkspace.ts', 'utf8'), {
-  compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
-}).outputText
 const session = id => ({ id, title: id, history_version: 0, message_count: 0, updated_at: '', messages: [], events: [], total_tokens: 0, run_status: 'idle', run_error: null })
-function deferred() {
-  let resolve, reject
-  const promise = new Promise((yes, no) => { resolve = yes; reject = no })
-  return { promise, resolve, reject }
-}
 
 // Run the real hook with deterministic effects and manually controlled network completion.
 function workspace(api, preferences = new Map()) {
-  const slots = []
+  const runtime = hookRuntime()
   const timers = new Map()
-  let timerId = 0
-  let cursor = 0, effects = [], current
-  const changed = (before, after) => !before || after.some((value, index) => value !== before[index])
-  const react = {
-    useState(initial) {
-      const index = cursor++
-      slots[index] ??= { value: typeof initial === 'function' ? initial() : initial }
-      return [slots[index].value, value => { slots[index].value = typeof value === 'function' ? value(slots[index].value) : value }]
+  let timerId = 0, current
+  const { useChatWorkspace } = loadModule('src/features/chat/useChatWorkspace.ts', {
+    mocks: { react: runtime.react },
+    globals: {
+      setTimeout: fn => { timers.set(++timerId, fn); return timerId },
+      clearTimeout: id => timers.delete(id),
+      AbortController,
+      localStorage: { getItem: key => preferences.get(key) ?? null, setItem: (key, value) => preferences.set(key, value) },
     },
-    useRef(initial) { return (slots[cursor++] ??= { current: initial }) },
-    useMemo(fn, deps) {
-      const index = cursor++
-      if (changed(slots[index]?.deps, deps)) slots[index] = { value: fn(), deps }
-      return slots[index].value
-    },
-    useCallback(fn, deps) { return react.useMemo(() => fn, deps) },
-    useEffect(fn, deps) {
-      const index = cursor++
-      if (changed(slots[index]?.deps, deps)) effects.push(() => {
-        slots[index]?.cleanup?.()
-        slots[index] = { deps, cleanup: fn() }
-      })
-    },
-  }
-  const exports = {}
-  vm.runInNewContext(compiled, {
-    exports, require: () => react,
-    setTimeout: fn => { timers.set(++timerId, fn); return timerId },
-    clearTimeout: id => timers.delete(id),
-    AbortController,
-    localStorage: { getItem: key => preferences.get(key) ?? null, setItem: (key, value) => preferences.set(key, value) },
   })
   function render() {
-    cursor = 0
-    current = exports.useChatWorkspace(api)
-    const pending = effects
-    effects = []
-    pending.forEach(effect => effect())
+    current = runtime.render(() => useChatWorkspace(api))
     return current
   }
   render()
@@ -73,7 +37,7 @@ function workspace(api, preferences = new Map()) {
       pending.forEach(fn => fn())
       return this.flush()
     },
-    close() { slots.forEach(slot => slot?.cleanup?.()) },
+    close: runtime.close,
   }
 }
 
@@ -797,5 +761,308 @@ test('旧会话保存事件不完整时，编辑立即清理旧过程和子任�
   api.sessions.A = { ...api.sessions.A, history_version: 1, events: [], messages: current.session.messages }
   pending.resolve()
   await editing
+  hook.close()
+})
+
+test('精灵跟随当前轮的等待、思考、工具、子任务、压缩、回复和完成', async () => {
+  const api = client(), task = deferred(), progress = deferred()
+  let push, delta
+  api.sessions.A.events = [{ kind: 'tool_status', title: '旧工具开始', meta: { state: 'started' } }]
+  api.chatStream = (_id, _content, onDelta, onReady) => { delta = onDelta; onReady(); return task.promise }
+  api.streamEvents = (_id, _after, onEvent) => { push = onEvent; return progress.promise }
+  const hook = workspace(api)
+  let view = await hook.flush()
+  assert.equal(view.activity.phase, 'idle')
+  const sending = view.send('检查状态')
+  assert.equal(hook.render().activity.phase, 'queued', '新轮次不能沿用旧工具事件')
+  push(1, { kind: 'context_usage', title: '上下文用量' })
+  assert.equal(hook.render().activity.phase, 'thinking')
+  push(2, { kind: 'tool_status', title: '工具开始', meta: { state: 'started', tool: 'read_file' } })
+  assert.equal(hook.render().activity.phase, 'tool')
+  push(3, { kind: 'tool_status', title: '工具完成', meta: { state: 'completed' } })
+  assert.equal(hook.render().activity.phase, 'thinking')
+  push(4, { kind: 'subagent', title: '子任务', meta: { child_session_id: 'C', state: 'running', after_message_index: 0 } })
+  push(5, { kind: 'subagent', title: '子任务', meta: { child_session_id: 'D', state: 'running', after_message_index: 0 } })
+  push(6, { kind: 'subagent', title: '子任务完成', meta: { child_session_id: 'D', state: 'completed' } })
+  assert.equal(hook.render().activity.phase, 'subagent', '另一个子任务还在执行')
+  push(7, { kind: 'subagent', title: '子任务完成', meta: { child_session_id: 'C', state: 'completed' } })
+  assert.equal(hook.render().activity.phase, 'thinking')
+  push(8, { kind: 'compression', title: '压缩中', meta: { state: 'started' } })
+  assert.equal(hook.render().activity.phase, 'compressing')
+  push(9, { kind: 'compression', title: '压缩未执行', meta: { state: 'skipped' } })
+  delta('完成了')
+  assert.equal(hook.render().activity.phase, 'responding')
+  api.sessions.A = { ...hook.render().session, run_status: 'idle', messages: [
+    ...hook.render().session.messages, { role: 'assistant', content: '完成了' },
+  ] }
+  task.resolve()
+  progress.resolve()
+  await sending
+  view = await hook.flush()
+  assert.equal(view.activity.phase, 'completed')
+  assert.equal(view.activity.status, 'ready')
+  hook.close()
+})
+
+test('精灵按会话隔离，后台运行、刷新恢复和失败均显示真实状态', async () => {
+  const api = client(), progress = deferred()
+  api.sessions.A = { ...session('A'), run_status: 'running', messages: [{ role: 'user', content: '执行中', turn_event_index: 0 }],
+    events: [{ kind: 'tool_status', title: '工具开始', meta: { state: 'started', tool: 'read_file' } }] }
+  api.streamEvents = () => progress.promise
+  const hook = workspace(api)
+  let view = await hook.flush()
+  assert.equal(view.activity.phase, 'tool', '刷新后从保存事件恢复')
+  await view.loadConversation('B')
+  view = hook.render()
+  assert.equal(view.activity.phase, 'background')
+  assert.match(view.activity.label, /1 个后台任务/)
+  assert.equal(view.status, 'ready', '其他会话运行不影响当前会话检查面板')
+  api.sessions.A = { ...api.sessions.A, run_status: 'idle', run_error: '验证失败' }
+  view = await hook.poll()
+  assert.equal(view.activity.phase, 'idle', '后台任务结束不能让空会话显示完成')
+  await view.loadConversation('A')
+  view = hook.render()
+  assert.equal(view.activity.phase, 'error')
+  assert.equal(view.activity.status, 'error')
+  progress.resolve()
+  hook.close()
+})
+
+test('主会话继续运行时，已中断的旧子任务不再驱动精灵', async () => {
+  const api = client(), progress = deferred()
+  api.sessions.A = { ...session('A'), run_status: 'running', messages: [{ role: 'user', content: '继续任务', turn_event_index: 0 }],
+    events: [{ kind: 'subagent', title: '子任务', meta: { child_session_id: 'C', state: 'running', after_message_index: 0 } }] }
+  api.sessions.C = session('C')
+  api.streamEvents = () => progress.promise
+  const hook = workspace(api)
+  const view = await hook.flush()
+  assert.equal(view.cards[0].state, 'interrupted')
+  assert.equal(view.activity.phase, 'thinking')
+  progress.resolve()
+  hook.close()
+})
+
+test('完成回复保持未读，确认阅读后恢复初始态，刷新与改名不会重新提示', async () => {
+  const api = client(), preferences = new Map()
+  api.sessions.A.messages = [{ role: 'user', content: '问题' }, { role: 'assistant', uuid: 'reply-1', content: '答复' }]
+  let hook = workspace(api, preferences), view = await hook.flush()
+  assert.equal(view.activity.phase, 'completed')
+  assert.equal(view.unreadReplyId, 'reply-1')
+  assert.equal(view.unreadIds.has('A'), true)
+  await view.loadConversation('A')
+  view = hook.render()
+  assert.equal(view.activity.phase, 'completed', '选择会话不等于读过最新回复')
+  view.markReplyRead('A', 'reply-1')
+  view = hook.render()
+  assert.equal(view.activity.phase, 'idle')
+  assert.equal(view.unreadReplyId, null)
+  assert.equal(view.unreadIds.has('A'), false)
+  await view.renameConversation('A', '新的标题')
+  assert.equal(hook.render().activity.phase, 'idle')
+  hook.close()
+  hook = workspace(api, preferences)
+  view = await hook.flush()
+  assert.equal(view.activity.phase, 'idle')
+  assert.deepEqual(JSON.parse(preferences.get('qrclaw.readReplies')).A, ['reply-1'])
+  hook.close()
+})
+
+test('后台完成保留未读，切换会话和迟到的阅读事件不误读其他会话或新回复', async () => {
+  const api = client(), pending = deferred()
+  api.chatStream = () => pending.promise
+  const hook = workspace(api)
+  let view = await hook.flush()
+  const sending = view.send('后台任务')
+  await hook.render().loadConversation('B')
+  api.sessions.A = { ...api.sessions.A, messages: [{ role: 'user', content: '后台任务' }, { role: 'assistant', uuid: 'done-A', content: '完成' }] }
+  pending.resolve()
+  await sending
+  view = await hook.flush()
+  assert.equal(view.activity.phase, 'idle')
+  assert.equal(view.unreadIds.has('A'), true)
+  view.markReplyRead('A', 'done-A')
+  assert.equal(hook.render().unreadIds.has('A'), true, '后台会话不能由迟到事件标记已读')
+  await view.loadConversation('A')
+  view = hook.render()
+  view.markReplyRead('A', 'done-A')
+  assert.equal(hook.render().activity.phase, 'idle')
+  api.sessions.A = { ...api.sessions.A, history_version: 1, messages: [{ role: 'user', content: '重跑问题' }, { role: 'assistant', uuid: 'new-A', content: '新答复' }] }
+  await hook.render().loadConversation('A')
+  view = hook.render()
+  view.markReplyRead('A', 'done-A')
+  assert.equal(hook.render().unreadReplyId, 'new-A', '同样消息数量的新答复不能被旧回执清除')
+  hook.close()
+})
+
+test('列表摘要能还原未打开会话的未读提示，工具与报告不算正文回复', async () => {
+  const api = client(), preferences = new Map([['qrclaw.readReplies', JSON.stringify({ A: ['seen-A'] })]])
+  api.listSessions = async () => [
+    { ...session('A'), last_reply_id: 'seen-A' }, { ...session('B'), last_reply_id: 'unseen-B' },
+    { ...session('C'), active_subagents: true, last_reply_id: 'working-C' },
+  ]
+  api.sessions.A.messages = [{ role: 'user', content: '执行' },
+    { role: 'assistant', content: '正在调用', tool_calls: [{ id: 'call' }] },
+    { role: 'tool', content: '结果' }, { role: 'assistant', kind: 'execution_report', content: '报告' }]
+  const hook = workspace(api, preferences), view = await hook.flush()
+  assert.equal(view.activity.phase, 'idle')
+  assert.equal(view.unreadReplyId, null)
+  assert.deepEqual([...view.unreadIds], ['B'])
+  hook.close()
+})
+
+test('已读回复经过压缩或删除后保留状态，下一轮和失败状态不会被清除', async () => {
+  const api = client(), preferences = new Map([['qrclaw.readReplies', JSON.stringify({ A: ['first', 'second'] })]])
+  api.sessions.A = { ...session('A'), history_version: 2, messages: [{ role: 'user', uuid: 'u1', content: '第一轮' },
+    { role: 'assistant', uuid: 'first', content: '回复' }] }
+  const hook = workspace(api, preferences)
+  let view = await hook.flush()
+  assert.equal(view.activity.phase, 'idle')
+  api.sessions.A = { ...api.sessions.A, run_status: 'running', messages: [...api.sessions.A.messages, { role: 'user', content: '下一轮' }] }
+  const progress = deferred()
+  api.streamEvents = () => progress.promise
+  await view.loadConversation('A')
+  view = await hook.flush()
+  view.markReplyRead('A', 'first')
+  assert.notEqual(hook.render().activity.phase, 'idle')
+  api.sessions.A = { ...api.sessions.A, run_status: 'idle', run_error: '任务失败' }
+  view = await hook.poll()
+  assert.equal(view.activity.phase, 'error')
+  assert.equal(view.unreadReplyId, null)
+  progress.resolve()
+  hook.close()
+})
+
+test('损坏或禁用的浏览器存储不阻断当前页面的已读确认', async () => {
+  const api = client(), preferences = new Map([['qrclaw.readReplies', 'null']])
+  api.sessions.A.messages = [{ role: 'user', content: '旧会话' }, { role: 'assistant', content: '没有UUID的回复' }]
+  preferences.set = () => { throw new Error('浏览器禁止存储') }
+  const hook = workspace(api, preferences), view = await hook.flush()
+  assert.equal(view.unreadReplyId, 'legacy:0:1')
+  view.markReplyRead('A', view.unreadReplyId)
+  assert.equal(hook.render().activity.phase, 'idle')
+  hook.close()
+})
+
+/** 沙箱里创建的数组和对象原型不同，比较前转成普通数据。 */
+const plain = value => JSON.parse(JSON.stringify(value))
+
+test('后台运行的会话轮询只查列表，任务结束后才读取一次详情', async () => {
+  const api = client(), reads = []
+  api.sessions.B.run_status = 'running'
+  api.getSession = async id => { reads.push(id); return api.sessions[id] }
+  const hook = workspace(api)
+  let view = await hook.flush()
+  assert.equal(view.activeId, 'A')
+  assert.ok(view.runningIds.has('B'))
+  reads.length = 0
+  await hook.poll()
+  await hook.poll()
+  assert.equal(reads.length, 0, '运行中的后台会话不重复下载详情')
+  api.sessions.B = { ...api.sessions.B, run_status: 'idle', messages: [{ role: 'user', content: '问' }, { role: 'assistant', content: 'B 完成' }] }
+  view = await hook.poll()
+  assert.equal(view.runningIds.has('B'), false)
+  assert.deepEqual(reads, ['B'])
+  hook.close()
+})
+
+test('过程流保存消息时带游标只读取新增部分，并按顺序拼回完整历史', async () => {
+  const api = client(), pending = deferred(), process = deferred(), cursors = []
+  const saved = { kind: 'message_saved', title: '消息已保存' }
+  api.sessions.A = { ...api.sessions.A, messages: [{ role: 'user', content: '旧问题' }], events: [saved], event_count: 1 }
+  api.getSession = async (id, cursor) => {
+    cursors.push(cursor && plain(cursor))
+    const full = api.sessions[id]
+    if (!cursor) return full
+    return { ...full, messages_offset: cursor.messages, events_offset: cursor.events, event_count: full.events.length,
+      messages: full.messages.slice(cursor.messages), events: full.events.slice(cursor.events) }
+  }
+  let pushEvent
+  api.chatStream = (_id, _content, _delta, onReady) => { onReady(); return pending.promise }
+  api.streamEvents = (_id, _after, onEvent) => { pushEvent = onEvent; return process.promise }
+  const hook = workspace(api)
+  let view = await hook.flush()
+  const sending = view.send('新问题')
+  api.sessions.A = { ...api.sessions.A, run_status: 'running',
+    messages: [...api.sessions.A.messages, { role: 'user', content: '新问题' }, { role: 'assistant', content: '新回复' }],
+    events: [saved, saved, saved] }
+  pushEvent(2, saved)
+  view = await hook.flush()
+  assert.deepEqual(cursors.at(-1), { historyVersion: 0, messages: 1, events: 1 })
+  assert.deepEqual(plain(view.messages.map(message => message.content)), ['旧问题', '新问题', '新回复'])
+  api.sessions.A = { ...api.sessions.A, run_status: 'idle' }
+  pending.resolve()
+  process.resolve()
+  await sending
+  hook.close()
+})
+
+test('已有空白会话时「新对话」直接切过去，没有空白会话才新建', async () => {
+  const api = client()
+  let created = 0
+  api.sessions.A = { ...api.sessions.A, message_count: 1, messages: [{ role: 'user', content: '有内容' }] }
+  api.createSession = async () => { created++; api.sessions.C = session('C'); return api.sessions.C }
+  const hook = workspace(api)
+  let view = await hook.flush()
+  await view.newConversation()
+  view = await hook.flush()
+  assert.equal(view.activeId, 'B')
+  assert.equal(created, 0)
+  api.sessions.B = { ...api.sessions.B, message_count: 1, messages: [{ role: 'user', content: '也有内容' }] }
+  await view.refresh()
+  view = await hook.flush()
+  await view.newConversation()
+  view = await hook.flush()
+  assert.equal(created, 1)
+  assert.equal(view.activeId, 'C')
+  hook.close()
+})
+
+test('删除会话同时清掉它的已读记录，列表里消失的会话也不再保留', async () => {
+  const preferences = new Map([['qrclaw.readReplies', JSON.stringify({ A: ['r1'], B: ['r2'], gone: ['r3'] })]])
+  const api = client()
+  const hook = workspace(api, preferences)
+  let view = await hook.flush()
+  await view.deleteConversation('B')
+  view = await hook.flush()
+  assert.deepEqual(Object.keys(JSON.parse(preferences.get('qrclaw.readReplies'))), ['A'])
+  hook.close()
+})
+
+test('只有正在查看的运行中会话连接过程流，切换后关闭旧流、切回来按游标续接', async () => {
+  const api = client(), a = deferred(), b = deferred()
+  const open = new Map(), opened = [], inFlight = new Set()
+  api.chatStream = (id, _content, _delta, onReady) => {
+    inFlight.add(id)
+    onReady()
+    return (id === 'A' ? a : b).promise.finally(() => inFlight.delete(id))
+  }
+  api.getSession = async id => ({ ...api.sessions[id], run_status: inFlight.has(id) ? 'running' : 'idle' })
+  api.listSessions = async () => Object.values(api.sessions).map(item => ({ ...item, run_status: inFlight.has(item.id) ? 'running' : 'idle' }))
+  api.streamEvents = (id, after, _onEvent, signal) => {
+    opened.push([id, after])
+    open.set(id, signal)
+    return new Promise(resolve => signal.addEventListener('abort', () => { open.delete(id); resolve() }))
+  }
+  const hook = workspace(api)
+  let view = await hook.flush()
+  const sendingA = view.send('任务 A')
+  view = await hook.flush()
+  assert.deepEqual([...open.keys()], ['A'])
+  await view.newConversation()
+  view = await hook.flush()
+  assert.equal(view.activeId, 'B')
+  assert.deepEqual([...open.keys()], [], '切走后 A 的过程流关闭，聊天流继续')
+  const sendingB = view.send('任务 B')
+  view = await hook.flush()
+  assert.deepEqual([...open.keys()], ['B'])
+  view = await hook.poll()
+  assert.deepEqual([...open.keys()], ['B'], '轮询不为后台会话重开过程流')
+  await view.loadConversation('A')
+  view = await hook.flush()
+  assert.deepEqual([...open.keys()], ['A'])
+  assert.equal(opened.filter(([id]) => id === 'A').length, 2)
+  a.resolve()
+  b.resolve()
+  await Promise.all([sendingA, sendingB])
   hook.close()
 })

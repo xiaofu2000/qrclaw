@@ -1,0 +1,393 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>QRClaw 工作文档</title>
+<!--
+方向 A · iA「工作文档」
+- 来源：iA（Oliver Reichenstein）的排印主张与 iA Writer 的 Focus Mode，参考板 refs/board-3.jpg
+- 借的：单一阅读列（约 34 字宽）、中文衬线正文 17px / 1.9 行高、元信息一律等宽小字、更早的轮次调灰、无卡片无阴影
+- 主角：长回复本身；Agent 的工作过程退到页边批注
+- form 来自内容：这个用户的回复动辄上千字、带路径和代码，它首先是要读的文档
+- 数据：全部来自本机会话 20261012-0fbd13e0 与 Wiki；「回放这一轮」按事件日志的真实顺序重演
+-->
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;600;700&family=Noto+Sans+SC:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script>
+/* 三个方向共用的演示数据。
+   只摘取页面会显示的片段，全部来自本机 QRClaw 会话 20261012-0fbd13e0 和 Wiki（2026-11-06 读取），
+   没有编造的数字。工具顺序 seq 由事件日志按「工具开始」逐条取出：
+   s=run_shell r=read_file/grep_code k=read_wiki_page w=write_wiki_page q=web_search/web_extract
+   m=MCP（call_tool/codegraph_explore/search_tools） A=启动子 Agent |=上下文压缩完成 */
+window.QR = {
+  session: { title: '你为什么不用codegraph mcp呢 你记住，能用codegraph就用codegraph，', messages: 99, tools: 107,
+    subagents: 4, tokens: 6089838, ctx: 144571, limit: 485000, threshold: 436500, updated: '10月16日 17:13', pct: 29.8 },
+  sessions: [
+    { id: 's1', title: '你为什么不用codegraph mcp呢 你记住，能用codegraph就用codegraph，', updated: '10月16日 17:13', messages: 99, tools: 107, subagents: 4, unread: true, pct: 29.8 },
+    { id: 's2', title: '看看qrclaw项目的记忆系统与codex的有什么区别 /Users/admin/Documen', updated: '10月13日 12:37', messages: 298, tools: 155, subagents: 0, unread: true, pct: 73.4 },
+    { id: 's3', title: '帮我看一下我的 /Users/admin/AndroidStudioProjects/ai_re', updated: '10月12日 15:40', messages: 8, tools: 2, subagents: 7, unread: true, pct: 5.0, plan: true },
+    { id: 's4', title: '新对话', updated: '10月12日 19:37', messages: 0, tools: 0, subagents: 0, unread: false, pct: 0 }
+  ],
+  toolTotals: [['run_shell', 65], ['read_file', 16], ['web_search', 5], ['write_wiki_page', 5], ['mcp__call_tool', 5],
+    ['read_wiki_page', 3], ['codegraph_explore', 3], ['grep_code', 2], ['web_extract', 2], ['search_tools', 1]],
+  seq: 'AAAArssssrskkrrrrrmsqsssssqss|ssssssssssssssssssssssssrrrsssssssrssss|wmssssssmmmsmrmrrmrwksqqqsssswsqqsssrmrrsww',
+  subagents: [
+    { id: 'step-1', task: '通过网络搜索调研 codegraph 的 MCP 服务：它是什么、官方仓库/文档地址、安装方式', state: '已完成' },
+    { id: 'step-2', task: '探测当前运行环境中 MCP 配置文件的存放位置，查找常见的 MCP 客户端配置文件', state: '已完成' },
+    { id: 'step-1', task: '读取 ~/.qrclaw/config.yaml 的完整内容，重点检查 mcp.servers 字段当前是否为空', state: '已完成' },
+    { id: 'step-1', task: '用 Python 脚本读取 config.yaml，定位 mcp.servers 中 label 为 codegraph 的条目', state: '已完成' }
+  ],
+  compressions: [{ b: 78572, a: 15987 }, { b: 84557, a: 23143 }],
+  prev: {
+    user: '我感觉我需要装吗 什么意思没明白',
+
+    reply: '别急，我说人话。\n\n**skill 不是"功能"，是一份写给 AI 看的"使用说明书"。**\n\n- **MCP（你已经装好的）= 一整套工具**。等于给 AI 配了锤子、螺丝刀、显微镜，让它能真的去拆开一个软件看内部。\n- **skill = 一本操作手册**。里面写着"遇到这类活儿，先检查环境、再选引擎、然后按这个顺序拆"。\n\n那我建议你**现在不用装**：你平时问的都是**自己项目的代码**，这种用 **codegraph** 就够了。'
+  },
+  turn: {
+    user: 'npx skills add morluto/rea --skill reverse-engineer-anything\n现在的qrclaw没适配这样的功能是吧  你先不要改代码',
+    at: '10月16日 16:33',
+    duration: '4 分 46 秒',
+    tools: [
+      { t: 'run_shell', at: '16:33:21', d: '1.1秒' }, { t: 'grep_code', at: '16:33:22', d: '0.1秒' },
+      { t: 'mcp__call_tool', at: '16:33:29', d: '0.2秒' }, { t: 'read_file', at: '16:33:37', d: '0.1秒' },
+      { t: 'read_file', at: '16:33:37', d: '0.1秒' }, { t: 'run_shell', at: '16:33:45', d: '4.0秒' },
+      { t: 'write_wiki_page', at: '16:34:00', d: '2分43秒', page: 'QRClaw Skill 机制' },
+      { t: 'write_wiki_page', at: '16:36:48', d: '1分19秒', page: '代码分析工具偏好' }
+    ],
+    wrote: ['QRClaw Skill 机制', '代码分析工具偏好'],
+    reply: '对，**没适配**——而且比你以为的还少一截。\n\n分三点说：\n\n**1. QRClaw 其实自带一套 skill 系统**\n格式是 `SKILL.md` + YAML frontmatter，代码注释原话"完全兼容 OpenClaw 的 SKILL.md 格式"。也就是说它跟 Claude Code / Codex / skills.sh 的 skill **是同一个格式**。\n它加载的地方是：`~/.qrclaw/agents/default/skills/<技能名>/SKILL.md`\n→ **这个目录现在是空的，0 个技能**。\n\n**2. 它不认识 `npx skills add`**\n那条命令是 skills.sh 的 CLI，只往它认识的 client 目录写——Claude Code / Codex / Cursor。**它名单里没有 QRClaw**，所以跑它不会落到 QRClaw 的目录里。\n\n**3. QRClaw 自己的入口 `/skill import` 是空壳**\n它有 `/skill list` 和 `/skill import <名字|url>`。但 `import` 的代码只是**打印一句话**：\n> "请在对话中说：导入 skill X，LLM 会用 install-skill skill 帮你下载"\n\n而 `install-skill` 这个技能**代码里根本没实现**。所以现在你敲 `/skill import` **不会真的下载任何东西**。\n\n**结论**：\n- 想让 QRClaw 用上 REA 的这个 skill，**当前只能手动**：把那个 `SKILL.md` 目录整个拷进 `~/.qrclaw/agents/default/skills/`。\n- 想让它像 `npx skills add` 一样一键装，**得改代码**（你说先不改，那就不动）。\n\n要不要我帮你**手动拷一份**到 QRClaw 的 skills 目录试试（只拷文件、不改代码）？还是先算了。'
+  },
+  memoryPending: 1,
+  memory: [
+    { name: 'QRClaw Skill 机制', desc: 'QRClaw 自带 Skill 系统：格式、加载路径、use_skill 调用链、现状与安装缺口。', tags: ['QRClaw', 'Skill', '扩展机制'], updated: '10月16日 16:41', status: 'ready', sources: 2 },
+    { name: 'REA 使用方式', desc: 'REA 使用方式：MCP/CLI、安装（含 skill-only）、依赖、证据、本机可用性及 QRClaw 接入边界。', tags: ['REA', '逆向工程', '工具配置'], updated: '10月16日 16:41', status: 'ready', sources: 8 },
+    { name: '代码分析工具偏好', desc: '偏好用 codegraph、REA 分析代码，优先 codegraph_explore 替代逐文件 grep。', tags: ['工具偏好', '代码分析', 'codegraph'], updated: '10月16日 16:38', status: 'ready', sources: 5 },
+    { name: 'ai_remind 登录失效停语音', desc: 'ai_remind 登录失效/退出登录时停止语音会话的触发源、双路径、关键组件、脆弱点与测试状态。', tags: ['ai_remind', '语音会话'], updated: '10月14日 16:01', status: 'ready', sources: 4 },
+    { name: 'Claude Code 记忆与上下文压缩', desc: 'Claude Code 记忆/压缩：双轨记忆、三档压缩、REA 证据边界与 app.asar 配置面限制。', tags: ['Claude Code', '记忆系统'], updated: '10月13日 12:41', status: 'ready', sources: 7 },
+    { name: 'REA MCP 接入', desc: 'REA MCP 接入 QRClaw：配置、白名单、CLI 与 JS 分析边界。', tags: ['REA', 'MCP', 'QRClaw'], updated: '10月13日 12:40', status: 'ready', sources: 10 },
+    { name: 'LLM Wiki 记忆模式', desc: 'LLM Wiki 记忆模式：Karpathy 出处、QRClaw 落地、与 Codex CLI 对比及暂缓的改进方案。', tags: ['记忆系统', 'LLM Wiki'], updated: '10月13日 12:37', status: 'ready', sources: 2 },
+    { name: 'QRClaw', desc: 'QRClaw 本地自主 AI Agent 的能力、可承担工作与记忆系统方向及实现细节', tags: ['AI Agent', 'QRClaw'], updated: '10月12日 21:08', status: 'legacy', sources: 0 },
+    { name: 'codegraph MCP 接入', desc: 'codegraph MCP 接入指南：安装配置、QRClaw 接入、使用约定与实测记录。', tags: ['MCP', 'codegraph'], updated: '10月12日 20:52', status: 'legacy', sources: 0 },
+    { name: 'ai_remind 多轮语音 ViewModel 重构方案', desc: '多轮语音 ViewModel 重构方案，含阶段2落地、测试结果与后续抽离计划。', tags: ['ai_remind', '重构'], updated: '10月12日 20:52', status: 'legacy', sources: 0 },
+    { name: 'Codex CLI 记忆系统', desc: '从落盘产物反推 Codex CLI memories：存储布局、map-reduce 流水线、SQLite 结构。', tags: ['Codex', '记忆系统'], updated: '10月12日 20:51', status: 'legacy', sources: 0 },
+    { name: 'ai_remind 多轮语音会话', desc: 'ai_remind 多轮语音会话：协议、状态机、协调器、落库、边界与测试。', tags: ['语音会话', 'ai_remind'], updated: '10月12日 20:37', status: 'legacy', sources: 0 },
+    { name: 'ai_remind 单轮语音链路', desc: 'ai_remind 中长按一句话单轮语音链路的实现与与多轮的差异。', tags: ['语音输入', 'ai_remind'], updated: '10月12日 15:39', status: 'legacy', sources: 0 },
+    { name: 'ai_remind 数据同步流程', desc: 'ai_remind 的数据同步机制：三层同步链路、拉取/上传、冲突合并策略、触发时机。', tags: ['ai_remind', '数据同步'], updated: '10月12日 14:59', status: 'legacy', sources: 0 },
+    { name: 'ai_remind 项目架构', desc: 'ai_remind Flutter 项目的技术栈、目录结构与模块概览。', tags: ['Flutter', '架构'], updated: '10月12日 14:30', status: 'legacy', sources: 0 }
+  ],
+  page: {
+    name: 'QRClaw Skill 机制', revision: 2, links: ['QRClaw', 'REA 使用方式', 'REA MCP 接入'], backlinks: ['REA 使用方式'],
+    sources: [{ role: '用户消息', at: '10月16日 16:33' }, { role: '助手背景', at: '10月16日 16:38' }],
+    content: '## 格式与兼容性\n- 格式：`SKILL.md + YAML frontmatter`，代码注释称"完全兼容 OpenClaw 的 SKILL.md 格式"（`qrclaw/skills/registry.py`）。\n- 与 Anthropic / Claude Code / Codex / skills.sh 生态的 skill 是同一格式。\n\n## 加载路径\n- 默认加载路径为 `~/.qrclaw/agents/default/skills/<技能名>/SKILL.md`。\n- 顶层 `~/.qrclaw/skills` 不是 agent 的 skills 目录，也不是读取位置。\n- `SkillRegistry` 是单例，`load_from_dir` 只扫描一次，并按目录缓存。\n\n## 调用链\n- `use_skill` → `get_skill_registry()` → `load_from_dir` → `Skill.from_skill_md`。\n- `use_skill` 注入技能完整信息 + 执行指导，是"按需加载"，不是把技能注册成工具。'
+  }
+}
+
+/* 极简 Markdown：段落、加粗、行内代码、列表、引用、二级标题。仅用于原型展示。 */
+window.md = function (src) {
+  const esc = s => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  const inline = s => esc(s).replace(/`([^`]+)`/g, '<code>$1</code>').replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+  return src.split(/\n{2,}/).map(block => {
+    const lines = block.split('\n')
+    if (lines.every(l => l.startsWith('- '))) return '<ul>' + lines.map(l => '<li>' + inline(l.slice(2)) + '</li>').join('') + '</ul>'
+    if (lines[0].startsWith('## ')) return '<h3>' + inline(lines[0].slice(3)) + '</h3>' + (lines.length > 1 ? window.md(lines.slice(1).join('\n')) : '')
+    if (lines.every(l => l.startsWith('> '))) return '<blockquote>' + inline(lines.map(l => l.slice(2)).join(' ')) + '</blockquote>'
+    const head = lines.findIndex(l => l.startsWith('- '))
+    if (head > 0) return '<p>' + lines.slice(0, head).map(inline).join('<br>') + '</p>' + window.md(lines.slice(head).join('\n'))
+    return '<p>' + lines.map(l => l.startsWith('> ') ? '</p><blockquote>' + inline(l.slice(2)) + '</blockquote><p>' : inline(l)).join('<br>').replace(/<br><\/p>/g, '</p>').replace(/<p><br>/g, '<p>') + '</p>'
+  }).join('')
+}
+</script>
+<style>
+:root{
+  --paper:#fbfbfa; --ink:#1d1d1f; --ink2:#3a3a3c; --dim:#6c6c66; --meta:#6b6b66; --rule:#e6e6e2; --soft:#f2f2ef;
+  --blue:#0a72b5; --cursor:#00a3ff; --blue-soft:#e6f4fd; --warn:#8a5a00;
+  --serif:"Noto Serif SC","Songti SC",serif; --sans:"Noto Sans SC","PingFang SC",sans-serif; --mono:"IBM Plex Mono",ui-monospace,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--paper:#161616;--ink:#ececea;--ink2:#d4d4d1;--dim:#9a9a94;--meta:#a3a39d;--rule:#2b2b29;--soft:#1f1f1e;--blue:#5cb8f2;--blue-soft:#13283a}}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:var(--paper);color:var(--ink);font-family:var(--sans)}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+a{color:inherit}
+.app{display:grid;grid-template-columns:248px 1fr;height:100dvh}
+
+/* 左侧索引 */
+.index{border-right:1px solid var(--rule);display:flex;flex-direction:column;min-height:0;padding:22px 0 0}
+.who{display:flex;align-items:center;gap:12px;padding:0 22px 20px}
+.who img{width:44px;height:44px;animation:bob 3.2s ease-in-out infinite}
+.who b{display:block;font:500 15px var(--mono);letter-spacing:.01em}
+.who span{font:12px/1.5 var(--mono);color:var(--meta)}
+.who span.live{color:var(--blue)}
+@keyframes bob{50%{transform:translateY(-3px)}}
+.newtask{margin:0 22px 18px;display:flex;justify-content:space-between;align-items:center;font:14px var(--sans);padding:10px 0;border-top:1px solid var(--ink);border-bottom:1px solid var(--rule)}
+.newtask kbd{font:12px var(--mono);color:var(--meta)}
+.newtask:hover{color:var(--blue)}
+.ix-h{font:12px var(--mono);color:var(--meta);padding:0 22px 8px;display:flex;justify-content:space-between}
+.sessions{overflow:auto;flex:1;min-height:0}
+.sess{display:block;width:100%;text-align:left;padding:10px 22px 11px;border-left:2px solid transparent;position:relative}
+.sess:hover{background:var(--soft)}
+.sess[aria-current]{border-left-color:var(--cursor);background:var(--soft)}
+.sess .t{font-size:14px;line-height:1.55;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.sess .m{font:12px/1.6 var(--mono);color:var(--meta);margin-top:3px}
+.sess .dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--cursor);margin-right:7px;vertical-align:2px}
+.memlink{border-top:1px solid var(--rule);padding:14px 22px 18px;text-align:left;width:100%}
+.memlink b{display:block;font-size:14px;font-weight:500}
+.memlink span{font:12px var(--mono);color:var(--meta)}
+.memlink[aria-current]{background:var(--soft);box-shadow:inset 2px 0 var(--cursor)}
+
+/* 文档 */
+.desk{display:grid;grid-template-columns:minmax(0,1fr) 300px;min-height:0}
+.doc{overflow:auto;min-height:0;scroll-behavior:smooth}
+.column{max-width:700px;margin:0 auto;padding:46px 56px 0}
+.doc-title{font:600 25px/1.5 var(--serif);margin:0;letter-spacing:-.01em}
+.doc-meta{font:12px/1.8 var(--mono);color:var(--meta);margin:8px 0 34px}
+.doc-meta button{color:var(--blue);margin-left:10px}
+.turn{margin-bottom:38px}
+.prompt{font:14px/1.75 var(--mono);color:var(--ink2);white-space:pre-wrap;padding-left:22px;position:relative;margin:0 0 18px}
+.prompt:before{content:"›";position:absolute;left:0;color:var(--cursor);font-weight:500}
+.prompt time{display:block;font-size:12px;color:var(--meta);margin-bottom:2px}
+.prose{font:17px/1.95 var(--serif);color:var(--ink)}
+.prose p{margin:0 0 1.05em}
+.prose strong{font-weight:700}
+.prose code{font:14px var(--mono);background:var(--soft);padding:1px 4px;border-radius:2px}
+.prose ul{margin:0 0 1.05em;padding-left:1.3em}
+.prose li{margin:.25em 0}
+.prose blockquote{margin:0 0 1.05em;padding-left:16px;border-left:2px solid var(--rule);color:var(--ink2)}
+.focus .past .prose,.focus .past .prompt{color:var(--dim)}
+.focus .past .prose strong{color:var(--dim)}
+.chapter{display:flex;align-items:center;gap:14px;font:12px var(--mono);color:var(--meta);margin:6px 0 40px}
+.chapter:before,.chapter:after{content:"";flex:1;height:1px;background:var(--rule)}
+.reply-actions{font:12px var(--mono);color:var(--meta);display:flex;gap:18px;margin-top:-4px}
+.reply-actions button:hover{color:var(--blue)}
+.caret{display:inline-block;width:2px;height:1.1em;background:var(--cursor);vertical-align:-.18em;animation:blink 1s steps(1) infinite}
+@keyframes blink{50%{opacity:0}}
+
+/* 输入：文档的最后一行 */
+.composer{position:sticky;bottom:0;background:linear-gradient(transparent,var(--paper) 22px);padding:26px 0 22px}
+.write{display:flex;gap:12px;align-items:flex-start;border-top:1px solid var(--ink);padding-top:14px}
+.write span{font:15px/1.7 var(--mono);color:var(--cursor)}
+.write textarea{flex:1;border:0;outline:0;resize:none;background:transparent;font:16px/1.75 var(--serif);color:var(--ink);min-height:30px}
+.write textarea::placeholder{color:var(--meta)}
+.write button.send{font:13px var(--mono);border:1px solid var(--ink);padding:6px 12px;border-radius:2px}
+.write button.send:hover{background:var(--ink);color:var(--paper)}
+.tools{display:flex;gap:22px;font:12px var(--mono);color:var(--meta);margin-top:10px;align-items:center}
+.tools button[role=switch]{display:flex;gap:7px;align-items:center}
+.tools button[role=switch] i{width:24px;height:13px;border:1px solid currentColor;border-radius:7px;position:relative}
+.tools button[role=switch] i:after{content:"";position:absolute;top:2px;left:2px;width:7px;height:7px;border-radius:50%;background:currentColor;transition:left .2s}
+.tools button[aria-checked=true]{color:var(--blue)}
+.tools button[aria-checked=true] i:after{left:13px}
+.ctx{display:flex;gap:8px;align-items:center}
+.ctx b{font-weight:500;color:var(--ink)}
+.ctx svg{display:block}
+
+/* 页边批注 */
+.margin{border-left:1px solid var(--rule);overflow:auto;padding:46px 26px 30px 24px;font:12.5px/1.75 var(--mono);color:var(--meta)}
+.note{margin-bottom:30px}
+.note h4{font:500 12px var(--mono);color:var(--ink);margin:0 0 8px;letter-spacing:.02em}
+.note .big{font:500 15px/1.5 var(--mono);color:var(--ink)}
+.calls{list-style:none;margin:10px 0 0;padding:0}
+.calls li{display:grid;grid-template-columns:44px 1fr auto;gap:8px;padding:2px 0;opacity:1;transition:opacity .3s}
+.calls li.pending{opacity:.28}
+.calls li.live{color:var(--blue)}
+.calls li.live:before{content:"";position:absolute}
+.calls em{font-style:normal;color:var(--meta)}
+.wrote a{display:block;color:var(--blue);text-decoration:none;font-family:var(--sans);font-size:14px;line-height:1.7}
+.wrote a:hover{text-decoration:underline}
+.wrote a.pending{opacity:.28;pointer-events:none}
+.replay{font:12px var(--mono);color:var(--blue);border:1px solid currentColor;padding:5px 10px;border-radius:2px;margin-top:12px}
+.bars{display:grid;grid-template-columns:auto 1fr auto;gap:4px 8px;align-items:center;margin-top:8px}
+.bars i{height:5px;background:var(--ink);opacity:.75}
+.marker{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--cursor);margin-right:6px;vertical-align:1px}
+
+/* 记忆视图 */
+.memory{display:none;grid-template-columns:300px minmax(0,1fr) 280px;min-height:0}
+[data-view=memory] .memory{display:grid}
+[data-view=memory] .desk{display:none}
+.toc{border-right:1px solid var(--rule);overflow:auto;padding:40px 0 20px}
+.toc h2{font:600 22px var(--serif);margin:0 24px 4px}
+.toc .sub{font:12px var(--mono);color:var(--meta);margin:0 24px 14px}
+.toc input{margin:0 24px 14px;width:calc(100% - 48px);border:0;border-bottom:1px solid var(--ink);background:transparent;font:14px var(--sans);padding:8px 0;color:var(--ink);outline:0}
+.toc button{display:block;width:100%;text-align:left;padding:9px 24px;border-left:2px solid transparent}
+.toc button:hover{background:var(--soft)}
+.toc button[aria-current]{border-left-color:var(--cursor);background:var(--soft)}
+.toc button b{display:block;font-weight:500;font-size:14px;line-height:1.5}
+.toc button span{font:12px var(--mono);color:var(--meta)}
+.page{overflow:auto;padding:46px 56px}
+.page .prose h3{font:600 19px/1.6 var(--serif);margin:1.6em 0 .5em}
+.page-actions{font:12px var(--mono);color:var(--meta);display:flex;gap:18px;margin:0 0 30px}
+.page-actions button{color:var(--blue)}
+
+@media (max-width:1180px){.desk{grid-template-columns:1fr}.margin{display:none}.inline-notes{display:block!important}.memory{grid-template-columns:260px 1fr}.memory .margin{display:none}}
+.inline-notes{display:none;font:12px/1.8 var(--mono);color:var(--meta);border-left:2px solid var(--cursor);padding-left:12px;margin:0 0 20px}
+.inline-notes a{color:var(--blue)}
+.topbar{display:none}
+@media (max-width:760px){
+  .app{grid-template-columns:1fr;grid-template-rows:auto 1fr}
+  .index{position:fixed;inset:0 auto 0 0;width:86vw;max-width:320px;background:var(--paper);z-index:5;transform:translateX(-100%);transition:transform .25s}
+  .app.nav-open .index{transform:none;box-shadow:0 0 0 100vmax rgba(0,0,0,.25)}
+  .topbar{display:flex;align-items:center;gap:12px;padding:10px 16px;border-bottom:1px solid var(--rule)}
+  .topbar button{width:44px;height:44px;font:20px var(--mono)}
+  .topbar img{width:34px;height:34px}
+  .topbar span{font:12px var(--mono);color:var(--meta)}
+  .column{padding:24px 16px 0}
+  .doc-title{font-size:20px}
+  .prose{font-size:16px;line-height:1.9}
+  .memory{grid-template-columns:1fr}.toc{display:none}.page{padding:24px 16px}
+}
+</style></head>
+<body>
+<div class="app" id="app" data-view="chat">
+  <header class="topbar"><button aria-label="打开会话索引" onclick="app.classList.toggle('nav-open')">≡</button><img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIGNsYXNzPSJhZ2VudC1zcHJpdGUiIHZpZXdCb3g9Ii0xNTggLTE1OCAzMTYgMzE2IiBkYXRhLWFuaW1hdGlvbj0iaWRsZSIgYXJpYS1oaWRkZW49InRydWUiIGZvY3VzYWJsZT0iZmFsc2UiPjxkZWZzPjxtYXNrIGlkPSJibG91Yi1tYXNrIiBtYXNrVW5pdHM9InVzZXJTcGFjZU9uVXNlIiB4PSItMTU4IiB5PSItMTU4IiB3aWR0aD0iMzE2IiBoZWlnaHQ9IjMxNiI+PHBhdGggZD0iTTk5LjUyIC0wLjY2Qzk5LjUyIDIuNjIgOTkuMzYgNS45MSA5OS4wNCA5LjE3Qzk4LjcyIDEyLjQzIDk4LjIzIDE1LjcgOTcuNiAxOC45MUM5Ni45NiAyMi4xMyA5Ni4xNiAyNS4zMyA5NS4yMSAyOC40NkM5NC4yNiAzMS42IDkzLjE2IDM0LjcxIDkxLjkxIDM3Ljc0QzkwLjY1IDQwLjc2IDg5LjI1IDQzLjc1IDg3LjcxIDQ2LjY0Qzg2LjE3IDQ5LjUzIDg0LjQ4IDUyLjM2IDgyLjY2IDU1LjA4QzgwLjg1IDU3LjgxIDc4Ljg5IDYwLjQ2IDc2LjgyIDYyLjk5Qzc0Ljc1IDY1LjUzIDcyLjU0IDY3Ljk3IDcwLjIzIDcwLjI5QzY3LjkyIDcyLjYxIDY1LjQ4IDc0LjgyIDYyLjk2IDc2LjlDNjAuNDMgNzguOTggNTcuNzkgODAuOTUgNTUuMDcgODIuNzdDNTIuMzYgODQuNTkgNDkuNTQgODYuMjggNDYuNjYgODcuODNDNDMuNzggODkuMzggNDAuOCA5MC43OSAzNy43OSA5Mi4wNEMzNC43NyA5My4yOSAzMS42NyA5NC40MSAyOC41NSA5NS4zNkMyNS40MiA5Ni4zMSAyMi4yMyA5Ny4xMSAxOS4wMyA5Ny43NUMxNS44MiA5OC4zOSAxMi41NyA5OC44NyA5LjMyIDk5LjJDNi4wNyA5OS41MiAyLjc4IDk5LjY4IC0wLjQ4IDk5LjY4Qy0zLjc1IDk5LjY4IC03LjAzIDk5LjUyIC0xMC4yOCA5OS4yQy0xMy41NCA5OC44NyAtMTYuNzkgOTguMzkgLTE5Ljk5IDk3Ljc1Qy0yMy4yIDk3LjExIC0yNi4zOCA5Ni4zMSAtMjkuNTEgOTUuMzZDLTMyLjY0IDk0LjQxIC0zNS43MyA5My4yOSAtMzguNzUgOTIuMDRDLTQxLjc3IDkwLjc5IC00NC43NCA4OS4zOCAtNDcuNjIgODcuODNDLTUwLjUgODYuMjggLTUzLjMyIDg0LjU5IC01Ni4wNCA4Mi43N0MtNTguNzYgODAuOTUgLTYxLjQgNzguOTggLTYzLjkyIDc2LjlDLTY2LjQ1IDc0LjgyIC02OC44OCA3Mi42MSAtNzEuMTkgNzAuMjlDLTczLjUgNjcuOTcgLTc1LjcxIDY1LjUzIC03Ny43OCA2Mi45OUMtNzkuODYgNjAuNDYgLTgxLjgxIDU3LjgxIC04My42MyA1NS4wOEMtODUuNDQgNTIuMzYgLTg3LjEzIDQ5LjUzIC04OC42NyA0Ni42NEMtOTAuMjIgNDMuNzUgLTkxLjYyIDQwLjc2IC05Mi44NyAzNy43NEMtOTQuMTIgMzQuNzEgLTk1LjIzIDMxLjYgLTk2LjE4IDI4LjQ2Qy05Ny4xMyAyNS4zMyAtOTcuOTIgMjIuMTMgLTk4LjU2IDE4LjkxQy05OS4yIDE1LjcgLTk5LjY4IDEyLjQzIC0xMDAgOS4xN0MtMTAwLjMyIDUuOTEgLTEwMC40OCAyLjYyIC0xMDAuNDggLTAuNjZDLTEwMC40OCAtMy45NCAtMTAwLjMyIC03LjI0IC0xMDAgLTEwLjVDLTk5LjY4IC0xMy43NiAtOTkuMiAtMTcuMDIgLTk4LjU2IC0yMC4yNEMtOTcuOTIgLTIzLjQ1IC05Ny4xMyAtMjYuNjUgLTk2LjE4IC0yOS43OUMtOTUuMjMgLTMyLjkzIC05NC4xMiAtMzYuMDMgLTkyLjg3IC0zOS4wNkMtOTEuNjIgLTQyLjA5IC05MC4yMiAtNDUuMDcgLTg4LjY3IC00Ny45NkMtODcuMTMgLTUwLjg2IC04NS40NCAtNTMuNjggLTgzLjYzIC01Ni40MUMtODEuODEgLTU5LjE0IC03OS44NiAtNjEuNzggLTc3Ljc4IC02NC4zMkMtNzUuNzEgLTY2Ljg1IC03My41IC02OS4zIC03MS4xOSAtNzEuNjJDLTY4Ljg4IC03My45MyAtNjYuNDUgLTc2LjE1IC02My45MiAtNzguMjNDLTYxLjQgLTgwLjMxIC01OC43NiAtODIuMjcgLTU2LjA0IC04NC4wOUMtNTMuMzIgLTg1LjkyIC01MC41IC04Ny42MSAtNDcuNjIgLTg5LjE2Qy00NC43NCAtOTAuNyAtNDEuNzcgLTkyLjExIC0zOC43NSAtOTMuMzdDLTM1LjczIC05NC42MiAtMzIuNjQgLTk1LjczIC0yOS41MSAtOTYuNjhDLTI2LjM4IC05Ny42NCAtMjMuMiAtOTguNDQgLTE5Ljk5IC05OS4wOEMtMTYuNzkgLTk5LjcyIC0xMy41NCAtMTAwLjIgLTEwLjI4IC0xMDAuNTJDLTcuMDMgLTEwMC44NCAtMy43NSAtMTAxIC0wLjQ4IC0xMDFDMi43OCAtMTAxIDYuMDcgLTEwMC44NCA5LjMyIC0xMDAuNTJDMTIuNTcgLTEwMC4yIDE1LjgyIC05OS43MiAxOS4wMyAtOTkuMDhDMjIuMjMgLTk4LjQ0IDI1LjQyIC05Ny42NCAyOC41NSAtOTYuNjhDMzEuNjcgLTk1LjczIDM0Ljc3IC05NC42MiAzNy43OSAtOTMuMzdDNDAuOCAtOTIuMTEgNDMuNzggLTkwLjcgNDYuNjYgLTg5LjE2QzQ5LjU0IC04Ny42MSA1Mi4zNiAtODUuOTIgNTUuMDcgLTg0LjA5QzU3Ljc5IC04Mi4yNyA2MC40MyAtODAuMzEgNjIuOTYgLTc4LjIzQzY1LjQ4IC03Ni4xNSA2Ny45MiAtNzMuOTMgNzAuMjMgLTcxLjYyQzcyLjU0IC02OS4zIDc0Ljc1IC02Ni44NSA3Ni44MiAtNjQuMzJDNzguODkgLTYxLjc4IDgwLjg1IC01OS4xNCA4Mi42NiAtNTYuNDFDODQuNDggLTUzLjY4IDg2LjE3IC01MC44NiA4Ny43MSAtNDcuOTZDODkuMjUgLTQ1LjA3IDkwLjY1IC00Mi4wOSA5MS45MSAtMzkuMDZDOTMuMTYgLTM2LjAzIDk0LjI2IC0zMi45MyA5NS4yMSAtMjkuNzlDOTYuMTYgLTI2LjY1IDk2Ljk2IC0yMy40NSA5Ny42IC0yMC4yNEM5OC4yMyAtMTcuMDIgOTguNzIgLTEzLjc2IDk5LjA0IC0xMC41Qzk5LjM2IC03LjI0IDk5LjUyIC0zLjk0IDk5LjUyIC0wLjY2WiIgZmlsbD0iI2ZmZiI+PC9wYXRoPjxwYXRoIGQ9Ik0tOS4zIC0xMS4zQTkuMyA5LjMgMCAwIDEgMCAtMjAuNkwwIC0yMC42QTkuMyA5LjMgMCAwIDEgOS4zIC0xMS4zTDkuMyAxMS4zQTkuMyA5LjMgMCAwIDEgMCAyMC42TDAgMjAuNkE5LjMgOS4zIDAgMCAxIC05LjMgMTEuM1oiIHRyYW5zZm9ybT0ibWF0cml4KDAuODcsLTAuMzQsMC40NSwwLjg1LDIxLjA4LC00MS4zMykiIG9wYWNpdHk9IjEiIGZpbGw9IiMwMDAiPjwvcGF0aD48cGF0aCBkPSJNLTkuMyAtMTEuM0E5LjMgOS4zIDAgMCAxIDAgLTIwLjZMMCAtMjAuNkE5LjMgOS4zIDAgMCAxIDkuMyAtMTEuM0w5LjMgMTEuM0E5LjMgOS4zIDAgMCAxIDAgMjAuNkwwIDIwLjZBOS4zIDkuMyAwIDAgMSAtOS4zIDExLjNaIiB0cmFuc2Zvcm09Im1hdHJpeCgwLjYzLC0wLjA4LDAuNDUsMC44NSw2Mi41OSwtNTIuOSkiIG9wYWNpdHk9IjEiIGZpbGw9IiMwMDAiPjwvcGF0aD48L21hc2s+PC9kZWZzPjxnIGZpbGw9Im5vbmUiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCI+PC9nPjxnIG9wYWNpdHk9IjEiPjxwYXRoIGQ9Ik05OS41MiAtMC42NkM5OS41MiAyLjYyIDk5LjM2IDUuOTEgOTkuMDQgOS4xN0M5OC43MiAxMi40MyA5OC4yMyAxNS43IDk3LjYgMTguOTFDOTYuOTYgMjIuMTMgOTYuMTYgMjUuMzMgOTUuMjEgMjguNDZDOTQuMjYgMzEuNiA5My4xNiAzNC43MSA5MS45MSAzNy43NEM5MC42NSA0MC43NiA4OS4yNSA0My43NSA4Ny43MSA0Ni42NEM4Ni4xNyA0OS41MyA4NC40OCA1Mi4zNiA4Mi42NiA1NS4wOEM4MC44NSA1Ny44MSA3OC44OSA2MC40NiA3Ni44MiA2Mi45OUM3NC43NSA2NS41MyA3Mi41NCA2Ny45NyA3MC4yMyA3MC4yOUM2Ny45MiA3Mi42MSA2NS40OCA3NC44MiA2Mi45NiA3Ni45QzYwLjQzIDc4Ljk4IDU3Ljc5IDgwLjk1IDU1LjA3IDgyLjc3QzUyLjM2IDg0LjU5IDQ5LjU0IDg2LjI4IDQ2LjY2IDg3LjgzQzQzLjc4IDg5LjM4IDQwLjggOTAuNzkgMzcuNzkgOTIuMDRDMzQuNzcgOTMuMjkgMzEuNjcgOTQuNDEgMjguNTUgOTUuMzZDMjUuNDIgOTYuMzEgMjIuMjMgOTcuMTEgMTkuMDMgOTcuNzVDMTUuODIgOTguMzkgMTIuNTcgOTguODcgOS4zMiA5OS4yQzYuMDcgOTkuNTIgMi43OCA5OS42OCAtMC40OCA5OS42OEMtMy43NSA5OS42OCAtNy4wMyA5OS41MiAtMTAuMjggOTkuMkMtMTMuNTQgOTguODcgLTE2Ljc5IDk4LjM5IC0xOS45OSA5Ny43NUMtMjMuMiA5Ny4xMSAtMjYuMzggOTYuMzEgLTI5LjUxIDk1LjM2Qy0zMi42NCA5NC40MSAtMzUuNzMgOTMuMjkgLTM4Ljc1IDkyLjA0Qy00MS43NyA5MC43OSAtNDQuNzQgODkuMzggLTQ3LjYyIDg3LjgzQy01MC41IDg2LjI4IC01My4zMiA4NC41OSAtNTYuMDQgODIuNzdDLTU4Ljc2IDgwLjk1IC02MS40IDc4Ljk4IC02My45MiA3Ni45Qy02Ni40NSA3NC44MiAtNjguODggNzIuNjEgLTcxLjE5IDcwLjI5Qy03My41IDY3Ljk3IC03NS43MSA2NS41MyAtNzcuNzggNjIuOTlDLTc5Ljg2IDYwLjQ2IC04MS44MSA1Ny44MSAtODMuNjMgNTUuMDhDLTg1LjQ0IDUyLjM2IC04Ny4xMyA0OS41MyAtODguNjcgNDYuNjRDLTkwLjIyIDQzLjc1IC05MS42MiA0MC43NiAtOTIuODcgMzcuNzRDLTk0LjEyIDM0LjcxIC05NS4yMyAzMS42IC05Ni4xOCAyOC40NkMtOTcuMTMgMjUuMzMgLTk3LjkyIDIyLjEzIC05OC41NiAxOC45MUMtOTkuMiAxNS43IC05OS42OCAxMi40MyAtMTAwIDkuMTdDLTEwMC4zMiA1LjkxIC0xMDAuNDggMi42MiAtMTAwLjQ4IC0wLjY2Qy0xMDAuNDggLTMuOTQgLTEwMC4zMiAtNy4yNCAtMTAwIC0xMC41Qy05OS42OCAtMTMuNzYgLTk5LjIgLTE3LjAyIC05OC41NiAtMjAuMjRDLTk3LjkyIC0yMy40NSAtOTcuMTMgLTI2LjY1IC05Ni4xOCAtMjkuNzlDLTk1LjIzIC0zMi45MyAtOTQuMTIgLTM2LjAzIC05Mi44NyAtMzkuMDZDLTkxLjYyIC00Mi4wOSAtOTAuMjIgLTQ1LjA3IC04OC42NyAtNDcuOTZDLTg3LjEzIC01MC44NiAtODUuNDQgLTUzLjY4IC04My42MyAtNTYuNDFDLTgxLjgxIC01OS4xNCAtNzkuODYgLTYxLjc4IC03Ny43OCAtNjQuMzJDLTc1LjcxIC02Ni44NSAtNzMuNSAtNjkuMyAtNzEuMTkgLTcxLjYyQy02OC44OCAtNzMuOTMgLTY2LjQ1IC03Ni4xNSAtNjMuOTIgLTc4LjIzQy02MS40IC04MC4zMSAtNTguNzYgLTgyLjI3IC01Ni4wNCAtODQuMDlDLTUzLjMyIC04NS45MiAtNTAuNSAtODcuNjEgLTQ3LjYyIC04OS4xNkMtNDQuNzQgLTkwLjcgLTQxLjc3IC05Mi4xMSAtMzguNzUgLTkzLjM3Qy0zNS43MyAtOTQuNjIgLTMyLjY0IC05NS43MyAtMjkuNTEgLTk2LjY4Qy0yNi4zOCAtOTcuNjQgLTIzLjIgLTk4LjQ0IC0xOS45OSAtOTkuMDhDLTE2Ljc5IC05OS43MiAtMTMuNTQgLTEwMC4yIC0xMC4yOCAtMTAwLjUyQy03LjAzIC0xMDAuODQgLTMuNzUgLTEwMSAtMC40OCAtMTAxQzIuNzggLTEwMSA2LjA3IC0xMDAuODQgOS4zMiAtMTAwLjUyQzEyLjU3IC0xMDAuMiAxNS44MiAtOTkuNzIgMTkuMDMgLTk5LjA4QzIyLjIzIC05OC40NCAyNS40MiAtOTcuNjQgMjguNTUgLTk2LjY4QzMxLjY3IC05NS43MyAzNC43NyAtOTQuNjIgMzcuNzkgLTkzLjM3QzQwLjggLTkyLjExIDQzLjc4IC05MC43IDQ2LjY2IC04OS4xNkM0OS41NCAtODcuNjEgNTIuMzYgLTg1LjkyIDU1LjA3IC04NC4wOUM1Ny43OSAtODIuMjcgNjAuNDMgLTgwLjMxIDYyLjk2IC03OC4yM0M2NS40OCAtNzYuMTUgNjcuOTIgLTczLjkzIDcwLjIzIC03MS42MkM3Mi41NCAtNjkuMyA3NC43NSAtNjYuODUgNzYuODIgLTY0LjMyQzc4Ljg5IC02MS43OCA4MC44NSAtNTkuMTQgODIuNjYgLTU2LjQxQzg0LjQ4IC01My42OCA4Ni4xNyAtNTAuODYgODcuNzEgLTQ3Ljk2Qzg5LjI1IC00NS4wNyA5MC42NSAtNDIuMDkgOTEuOTEgLTM5LjA2QzkzLjE2IC0zNi4wMyA5NC4yNiAtMzIuOTMgOTUuMjEgLTI5Ljc5Qzk2LjE2IC0yNi42NSA5Ni45NiAtMjMuNDUgOTcuNiAtMjAuMjRDOTguMjMgLTE3LjAyIDk4LjcyIC0xMy43NiA5OS4wNCAtMTAuNUM5OS4zNiAtNy4yNCA5OS41MiAtMy45NCA5OS41MiAtMC42NloiIGZpbGw9IiNmZmYiPjwvcGF0aD48cGF0aCBkPSJNOTkuNTIgLTAuNjZDOTkuNTIgMi42MiA5OS4zNiA1LjkxIDk5LjA0IDkuMTdDOTguNzIgMTIuNDMgOTguMjMgMTUuNyA5Ny42IDE4LjkxQzk2Ljk2IDIyLjEzIDk2LjE2IDI1LjMzIDk1LjIxIDI4LjQ2Qzk0LjI2IDMxLjYgOTMuMTYgMzQuNzEgOTEuOTEgMzcuNzRDOTAuNjUgNDAuNzYgODkuMjUgNDMuNzUgODcuNzEgNDYuNjRDODYuMTcgNDkuNTMgODQuNDggNTIuMzYgODIuNjYgNTUuMDhDODAuODUgNTcuODEgNzguODkgNjAuNDYgNzYuODIgNjIuOTlDNzQuNzUgNjUuNTMgNzIuNTQgNjcuOTcgNzAuMjMgNzAuMjlDNjcuOTIgNzIuNjEgNjUuNDggNzQuODIgNjIuOTYgNzYuOUM2MC40MyA3OC45OCA1Ny43OSA4MC45NSA1NS4wNyA4Mi43N0M1Mi4zNiA4NC41OSA0OS41NCA4Ni4yOCA0Ni42NiA4Ny44M0M0My43OCA4OS4zOCA0MC44IDkwLjc5IDM3Ljc5IDkyLjA0QzM0Ljc3IDkzLjI5IDMxLjY3IDk0LjQxIDI4LjU1IDk1LjM2QzI1LjQyIDk2LjMxIDIyLjIzIDk3LjExIDE5LjAzIDk3Ljc1QzE1LjgyIDk4LjM5IDEyLjU3IDk4Ljg3IDkuMzIgOTkuMkM2LjA3IDk5LjUyIDIuNzggOTkuNjggLTAuNDggOTkuNjhDLTMuNzUgOTkuNjggLTcuMDMgOTkuNTIgLTEwLjI4IDk5LjJDLTEzLjU0IDk4Ljg3IC0xNi43OSA5OC4zOSAtMTkuOTkgOTcuNzVDLTIzLjIgOTcuMTEgLTI2LjM4IDk2LjMxIC0yOS41MSA5NS4zNkMtMzIuNjQgOTQuNDEgLTM1LjczIDkzLjI5IC0zOC43NSA5Mi4wNEMtNDEuNzcgOTAuNzkgLTQ0Ljc0IDg5LjM4IC00Ny42MiA4Ny44M0MtNTAuNSA4Ni4yOCAtNTMuMzIgODQuNTkgLTU2LjA0IDgyLjc3Qy01OC43NiA4MC45NSAtNjEuNCA3OC45OCAtNjMuOTIgNzYuOUMtNjYuNDUgNzQuODIgLTY4Ljg4IDcyLjYxIC03MS4xOSA3MC4yOUMtNzMuNSA2Ny45NyAtNzUuNzEgNjUuNTMgLTc3Ljc4IDYyLjk5Qy03OS44NiA2MC40NiAtODEuODEgNTcuODEgLTgzLjYzIDU1LjA4Qy04NS40NCA1Mi4zNiAtODcuMTMgNDkuNTMgLTg4LjY3IDQ2LjY0Qy05MC4yMiA0My43NSAtOTEuNjIgNDAuNzYgLTkyLjg3IDM3Ljc0Qy05NC4xMiAzNC43MSAtOTUuMjMgMzEuNiAtOTYuMTggMjguNDZDLTk3LjEzIDI1LjMzIC05Ny45MiAyMi4xMyAtOTguNTYgMTguOTFDLTk5LjIgMTUuNyAtOTkuNjggMTIuNDMgLTEwMCA5LjE3Qy0xMDAuMzIgNS45MSAtMTAwLjQ4IDIuNjIgLTEwMC40OCAtMC42NkMtMTAwLjQ4IC0zLjk0IC0xMDAuMzIgLTcuMjQgLTEwMCAtMTAuNUMtOTkuNjggLTEzLjc2IC05OS4yIC0xNy4wMiAtOTguNTYgLTIwLjI0Qy05Ny45MiAtMjMuNDUgLTk3LjEzIC0yNi42NSAtOTYuMTggLTI5Ljc5Qy05NS4yMyAtMzIuOTMgLTk0LjEyIC0zNi4wMyAtOTIuODcgLTM5LjA2Qy05MS42MiAtNDIuMDkgLTkwLjIyIC00NS4wNyAtODguNjcgLTQ3Ljk2Qy04Ny4xMyAtNTAuODYgLTg1LjQ0IC01My42OCAtODMuNjMgLTU2LjQxQy04MS44MSAtNTkuMTQgLTc5Ljg2IC02MS43OCAtNzcuNzggLTY0LjMyQy03NS43MSAtNjYuODUgLTczLjUgLTY5LjMgLTcxLjE5IC03MS42MkMtNjguODggLTczLjkzIC02Ni40NSAtNzYuMTUgLTYzLjkyIC03OC4yM0MtNjEuNCAtODAuMzEgLTU4Ljc2IC04Mi4yNyAtNTYuMDQgLTg0LjA5Qy01My4zMiAtODUuOTIgLTUwLjUgLTg3LjYxIC00Ny42MiAtODkuMTZDLTQ0Ljc0IC05MC43IC00MS43NyAtOTIuMTEgLTM4Ljc1IC05My4zN0MtMzUuNzMgLTk0LjYyIC0zMi42NCAtOTUuNzMgLTI5LjUxIC05Ni42OEMtMjYuMzggLTk3LjY0IC0yMy4yIC05OC40NCAtMTkuOTkgLTk5LjA4Qy0xNi43OSAtOTkuNzIgLTEzLjU0IC0xMDAuMiAtMTAuMjggLTEwMC41MkMtNy4wMyAtMTAwLjg0IC0zLjc1IC0xMDEgLTAuNDggLTEwMUMyLjc4IC0xMDEgNi4wNyAtMTAwLjg0IDkuMzIgLTEwMC41MkMxMi41NyAtMTAwLjIgMTUuODIgLTk5LjcyIDE5LjAzIC05OS4wOEMyMi4yMyAtOTguNDQgMjUuNDIgLTk3LjY0IDI4LjU1IC05Ni42OEMzMS42NyAtOTUuNzMgMzQuNzcgLTk0LjYyIDM3Ljc5IC05My4zN0M0MC44IC05Mi4xMSA0My43OCAtOTAuNyA0Ni42NiAtODkuMTZDNDkuNTQgLTg3LjYxIDUyLjM2IC04NS45MiA1NS4wNyAtODQuMDlDNTcuNzkgLTgyLjI3IDYwLjQzIC04MC4zMSA2Mi45NiAtNzguMjNDNjUuNDggLTc2LjE1IDY3LjkyIC03My45MyA3MC4yMyAtNzEuNjJDNzIuNTQgLTY5LjMgNzQuNzUgLTY2Ljg1IDc2LjgyIC02NC4zMkM3OC44OSAtNjEuNzggODAuODUgLTU5LjE0IDgyLjY2IC01Ni40MUM4NC40OCAtNTMuNjggODYuMTcgLTUwLjg2IDg3LjcxIC00Ny45NkM4OS4yNSAtNDUuMDcgOTAuNjUgLTQyLjA5IDkxLjkxIC0zOS4wNkM5My4xNiAtMzYuMDMgOTQuMjYgLTMyLjkzIDk1LjIxIC0yOS43OUM5Ni4xNiAtMjYuNjUgOTYuOTYgLTIzLjQ1IDk3LjYgLTIwLjI0Qzk4LjIzIC0xNy4wMiA5OC43MiAtMTMuNzYgOTkuMDQgLTEwLjVDOTkuMzYgLTcuMjQgOTkuNTIgLTMuOTQgOTkuNTIgLTAuNjZaIiBmaWxsPSIjMGEwYTBjIiBtYXNrPSJ1cmwoI2Jsb3ViLW1hc2spIj48L3BhdGg+PC9nPjxnPjwvZz48ZyBmaWxsPSJub25lIiBzdHJva2UtbGluZWNhcD0icm91bmQiPjwvZz48L3N2Zz4=" alt=""><span id="mStatus">本轮已完成 · 有未读回复</span></header>
+
+  <aside class="index" aria-label="会话索引">
+    <div class="who"><img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIGNsYXNzPSJhZ2VudC1zcHJpdGUiIHZpZXdCb3g9Ii0xNTggLTE1OCAzMTYgMzE2IiBkYXRhLWFuaW1hdGlvbj0iaWRsZSIgYXJpYS1oaWRkZW49InRydWUiIGZvY3VzYWJsZT0iZmFsc2UiPjxkZWZzPjxtYXNrIGlkPSJibG91Yi1tYXNrIiBtYXNrVW5pdHM9InVzZXJTcGFjZU9uVXNlIiB4PSItMTU4IiB5PSItMTU4IiB3aWR0aD0iMzE2IiBoZWlnaHQ9IjMxNiI+PHBhdGggZD0iTTk5LjUyIC0wLjY2Qzk5LjUyIDIuNjIgOTkuMzYgNS45MSA5OS4wNCA5LjE3Qzk4LjcyIDEyLjQzIDk4LjIzIDE1LjcgOTcuNiAxOC45MUM5Ni45NiAyMi4xMyA5Ni4xNiAyNS4zMyA5NS4yMSAyOC40NkM5NC4yNiAzMS42IDkzLjE2IDM0LjcxIDkxLjkxIDM3Ljc0QzkwLjY1IDQwLjc2IDg5LjI1IDQzLjc1IDg3LjcxIDQ2LjY0Qzg2LjE3IDQ5LjUzIDg0LjQ4IDUyLjM2IDgyLjY2IDU1LjA4QzgwLjg1IDU3LjgxIDc4Ljg5IDYwLjQ2IDc2LjgyIDYyLjk5Qzc0Ljc1IDY1LjUzIDcyLjU0IDY3Ljk3IDcwLjIzIDcwLjI5QzY3LjkyIDcyLjYxIDY1LjQ4IDc0LjgyIDYyLjk2IDc2LjlDNjAuNDMgNzguOTggNTcuNzkgODAuOTUgNTUuMDcgODIuNzdDNTIuMzYgODQuNTkgNDkuNTQgODYuMjggNDYuNjYgODcuODNDNDMuNzggODkuMzggNDAuOCA5MC43OSAzNy43OSA5Mi4wNEMzNC43NyA5My4yOSAzMS42NyA5NC40MSAyOC41NSA5NS4zNkMyNS40MiA5Ni4zMSAyMi4yMyA5Ny4xMSAxOS4wMyA5Ny43NUMxNS44MiA5OC4zOSAxMi41NyA5OC44NyA5LjMyIDk5LjJDNi4wNyA5OS41MiAyLjc4IDk5LjY4IC0wLjQ4IDk5LjY4Qy0zLjc1IDk5LjY4IC03LjAzIDk5LjUyIC0xMC4yOCA5OS4yQy0xMy41NCA5OC44NyAtMTYuNzkgOTguMzkgLTE5Ljk5IDk3Ljc1Qy0yMy4yIDk3LjExIC0yNi4zOCA5Ni4zMSAtMjkuNTEgOTUuMzZDLTMyLjY0IDk0LjQxIC0zNS43MyA5My4yOSAtMzguNzUgOTIuMDRDLTQxLjc3IDkwLjc5IC00NC43NCA4OS4zOCAtNDcuNjIgODcuODNDLTUwLjUgODYuMjggLTUzLjMyIDg0LjU5IC01Ni4wNCA4Mi43N0MtNTguNzYgODAuOTUgLTYxLjQgNzguOTggLTYzLjkyIDc2LjlDLTY2LjQ1IDc0LjgyIC02OC44OCA3Mi42MSAtNzEuMTkgNzAuMjlDLTczLjUgNjcuOTcgLTc1LjcxIDY1LjUzIC03Ny43OCA2Mi45OUMtNzkuODYgNjAuNDYgLTgxLjgxIDU3LjgxIC04My42MyA1NS4wOEMtODUuNDQgNTIuMzYgLTg3LjEzIDQ5LjUzIC04OC42NyA0Ni42NEMtOTAuMjIgNDMuNzUgLTkxLjYyIDQwLjc2IC05Mi44NyAzNy43NEMtOTQuMTIgMzQuNzEgLTk1LjIzIDMxLjYgLTk2LjE4IDI4LjQ2Qy05Ny4xMyAyNS4zMyAtOTcuOTIgMjIuMTMgLTk4LjU2IDE4LjkxQy05OS4yIDE1LjcgLTk5LjY4IDEyLjQzIC0xMDAgOS4xN0MtMTAwLjMyIDUuOTEgLTEwMC40OCAyLjYyIC0xMDAuNDggLTAuNjZDLTEwMC40OCAtMy45NCAtMTAwLjMyIC03LjI0IC0xMDAgLTEwLjVDLTk5LjY4IC0xMy43NiAtOTkuMiAtMTcuMDIgLTk4LjU2IC0yMC4yNEMtOTcuOTIgLTIzLjQ1IC05Ny4xMyAtMjYuNjUgLTk2LjE4IC0yOS43OUMtOTUuMjMgLTMyLjkzIC05NC4xMiAtMzYuMDMgLTkyLjg3IC0zOS4wNkMtOTEuNjIgLTQyLjA5IC05MC4yMiAtNDUuMDcgLTg4LjY3IC00Ny45NkMtODcuMTMgLTUwLjg2IC04NS40NCAtNTMuNjggLTgzLjYzIC01Ni40MUMtODEuODEgLTU5LjE0IC03OS44NiAtNjEuNzggLTc3Ljc4IC02NC4zMkMtNzUuNzEgLTY2Ljg1IC03My41IC02OS4zIC03MS4xOSAtNzEuNjJDLTY4Ljg4IC03My45MyAtNjYuNDUgLTc2LjE1IC02My45MiAtNzguMjNDLTYxLjQgLTgwLjMxIC01OC43NiAtODIuMjcgLTU2LjA0IC04NC4wOUMtNTMuMzIgLTg1LjkyIC01MC41IC04Ny42MSAtNDcuNjIgLTg5LjE2Qy00NC43NCAtOTAuNyAtNDEuNzcgLTkyLjExIC0zOC43NSAtOTMuMzdDLTM1LjczIC05NC42MiAtMzIuNjQgLTk1LjczIC0yOS41MSAtOTYuNjhDLTI2LjM4IC05Ny42NCAtMjMuMiAtOTguNDQgLTE5Ljk5IC05OS4wOEMtMTYuNzkgLTk5LjcyIC0xMy41NCAtMTAwLjIgLTEwLjI4IC0xMDAuNTJDLTcuMDMgLTEwMC44NCAtMy43NSAtMTAxIC0wLjQ4IC0xMDFDMi43OCAtMTAxIDYuMDcgLTEwMC44NCA5LjMyIC0xMDAuNTJDMTIuNTcgLTEwMC4yIDE1LjgyIC05OS43MiAxOS4wMyAtOTkuMDhDMjIuMjMgLTk4LjQ0IDI1LjQyIC05Ny42NCAyOC41NSAtOTYuNjhDMzEuNjcgLTk1LjczIDM0Ljc3IC05NC42MiAzNy43OSAtOTMuMzdDNDAuOCAtOTIuMTEgNDMuNzggLTkwLjcgNDYuNjYgLTg5LjE2QzQ5LjU0IC04Ny42MSA1Mi4zNiAtODUuOTIgNTUuMDcgLTg0LjA5QzU3Ljc5IC04Mi4yNyA2MC40MyAtODAuMzEgNjIuOTYgLTc4LjIzQzY1LjQ4IC03Ni4xNSA2Ny45MiAtNzMuOTMgNzAuMjMgLTcxLjYyQzcyLjU0IC02OS4zIDc0Ljc1IC02Ni44NSA3Ni44MiAtNjQuMzJDNzguODkgLTYxLjc4IDgwLjg1IC01OS4xNCA4Mi42NiAtNTYuNDFDODQuNDggLTUzLjY4IDg2LjE3IC01MC44NiA4Ny43MSAtNDcuOTZDODkuMjUgLTQ1LjA3IDkwLjY1IC00Mi4wOSA5MS45MSAtMzkuMDZDOTMuMTYgLTM2LjAzIDk0LjI2IC0zMi45MyA5NS4yMSAtMjkuNzlDOTYuMTYgLTI2LjY1IDk2Ljk2IC0yMy40NSA5Ny42IC0yMC4yNEM5OC4yMyAtMTcuMDIgOTguNzIgLTEzLjc2IDk5LjA0IC0xMC41Qzk5LjM2IC03LjI0IDk5LjUyIC0zLjk0IDk5LjUyIC0wLjY2WiIgZmlsbD0iI2ZmZiI+PC9wYXRoPjxwYXRoIGQ9Ik0tOS4zIC0xMS4zQTkuMyA5LjMgMCAwIDEgMCAtMjAuNkwwIC0yMC42QTkuMyA5LjMgMCAwIDEgOS4zIC0xMS4zTDkuMyAxMS4zQTkuMyA5LjMgMCAwIDEgMCAyMC42TDAgMjAuNkE5LjMgOS4zIDAgMCAxIC05LjMgMTEuM1oiIHRyYW5zZm9ybT0ibWF0cml4KDAuODcsLTAuMzQsMC40NSwwLjg1LDIxLjA4LC00MS4zMykiIG9wYWNpdHk9IjEiIGZpbGw9IiMwMDAiPjwvcGF0aD48cGF0aCBkPSJNLTkuMyAtMTEuM0E5LjMgOS4zIDAgMCAxIDAgLTIwLjZMMCAtMjAuNkE5LjMgOS4zIDAgMCAxIDkuMyAtMTEuM0w5LjMgMTEuM0E5LjMgOS4zIDAgMCAxIDAgMjAuNkwwIDIwLjZBOS4zIDkuMyAwIDAgMSAtOS4zIDExLjNaIiB0cmFuc2Zvcm09Im1hdHJpeCgwLjYzLC0wLjA4LDAuNDUsMC44NSw2Mi41OSwtNTIuOSkiIG9wYWNpdHk9IjEiIGZpbGw9IiMwMDAiPjwvcGF0aD48L21hc2s+PC9kZWZzPjxnIGZpbGw9Im5vbmUiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCI+PC9nPjxnIG9wYWNpdHk9IjEiPjxwYXRoIGQ9Ik05OS41MiAtMC42NkM5OS41MiAyLjYyIDk5LjM2IDUuOTEgOTkuMDQgOS4xN0M5OC43MiAxMi40MyA5OC4yMyAxNS43IDk3LjYgMTguOTFDOTYuOTYgMjIuMTMgOTYuMTYgMjUuMzMgOTUuMjEgMjguNDZDOTQuMjYgMzEuNiA5My4xNiAzNC43MSA5MS45MSAzNy43NEM5MC42NSA0MC43NiA4OS4yNSA0My43NSA4Ny43MSA0Ni42NEM4Ni4xNyA0OS41MyA4NC40OCA1Mi4zNiA4Mi42NiA1NS4wOEM4MC44NSA1Ny44MSA3OC44OSA2MC40NiA3Ni44MiA2Mi45OUM3NC43NSA2NS41MyA3Mi41NCA2Ny45NyA3MC4yMyA3MC4yOUM2Ny45MiA3Mi42MSA2NS40OCA3NC44MiA2Mi45NiA3Ni45QzYwLjQzIDc4Ljk4IDU3Ljc5IDgwLjk1IDU1LjA3IDgyLjc3QzUyLjM2IDg0LjU5IDQ5LjU0IDg2LjI4IDQ2LjY2IDg3LjgzQzQzLjc4IDg5LjM4IDQwLjggOTAuNzkgMzcuNzkgOTIuMDRDMzQuNzcgOTMuMjkgMzEuNjcgOTQuNDEgMjguNTUgOTUuMzZDMjUuNDIgOTYuMzEgMjIuMjMgOTcuMTEgMTkuMDMgOTcuNzVDMTUuODIgOTguMzkgMTIuNTcgOTguODcgOS4zMiA5OS4yQzYuMDcgOTkuNTIgMi43OCA5OS42OCAtMC40OCA5OS42OEMtMy43NSA5OS42OCAtNy4wMyA5OS41MiAtMTAuMjggOTkuMkMtMTMuNTQgOTguODcgLTE2Ljc5IDk4LjM5IC0xOS45OSA5Ny43NUMtMjMuMiA5Ny4xMSAtMjYuMzggOTYuMzEgLTI5LjUxIDk1LjM2Qy0zMi42NCA5NC40MSAtMzUuNzMgOTMuMjkgLTM4Ljc1IDkyLjA0Qy00MS43NyA5MC43OSAtNDQuNzQgODkuMzggLTQ3LjYyIDg3LjgzQy01MC41IDg2LjI4IC01My4zMiA4NC41OSAtNTYuMDQgODIuNzdDLTU4Ljc2IDgwLjk1IC02MS40IDc4Ljk4IC02My45MiA3Ni45Qy02Ni40NSA3NC44MiAtNjguODggNzIuNjEgLTcxLjE5IDcwLjI5Qy03My41IDY3Ljk3IC03NS43MSA2NS41MyAtNzcuNzggNjIuOTlDLTc5Ljg2IDYwLjQ2IC04MS44MSA1Ny44MSAtODMuNjMgNTUuMDhDLTg1LjQ0IDUyLjM2IC04Ny4xMyA0OS41MyAtODguNjcgNDYuNjRDLTkwLjIyIDQzLjc1IC05MS42MiA0MC43NiAtOTIuODcgMzcuNzRDLTk0LjEyIDM0LjcxIC05NS4yMyAzMS42IC05Ni4xOCAyOC40NkMtOTcuMTMgMjUuMzMgLTk3LjkyIDIyLjEzIC05OC41NiAxOC45MUMtOTkuMiAxNS43IC05OS42OCAxMi40MyAtMTAwIDkuMTdDLTEwMC4zMiA1LjkxIC0xMDAuNDggMi42MiAtMTAwLjQ4IC0wLjY2Qy0xMDAuNDggLTMuOTQgLTEwMC4zMiAtNy4yNCAtMTAwIC0xMC41Qy05OS42OCAtMTMuNzYgLTk5LjIgLTE3LjAyIC05OC41NiAtMjAuMjRDLTk3LjkyIC0yMy40NSAtOTcuMTMgLTI2LjY1IC05Ni4xOCAtMjkuNzlDLTk1LjIzIC0zMi45MyAtOTQuMTIgLTM2LjAzIC05Mi44NyAtMzkuMDZDLTkxLjYyIC00Mi4wOSAtOTAuMjIgLTQ1LjA3IC04OC42NyAtNDcuOTZDLTg3LjEzIC01MC44NiAtODUuNDQgLTUzLjY4IC04My42MyAtNTYuNDFDLTgxLjgxIC01OS4xNCAtNzkuODYgLTYxLjc4IC03Ny43OCAtNjQuMzJDLTc1LjcxIC02Ni44NSAtNzMuNSAtNjkuMyAtNzEuMTkgLTcxLjYyQy02OC44OCAtNzMuOTMgLTY2LjQ1IC03Ni4xNSAtNjMuOTIgLTc4LjIzQy02MS40IC04MC4zMSAtNTguNzYgLTgyLjI3IC01Ni4wNCAtODQuMDlDLTUzLjMyIC04NS45MiAtNTAuNSAtODcuNjEgLTQ3LjYyIC04OS4xNkMtNDQuNzQgLTkwLjcgLTQxLjc3IC05Mi4xMSAtMzguNzUgLTkzLjM3Qy0zNS43MyAtOTQuNjIgLTMyLjY0IC05NS43MyAtMjkuNTEgLTk2LjY4Qy0yNi4zOCAtOTcuNjQgLTIzLjIgLTk4LjQ0IC0xOS45OSAtOTkuMDhDLTE2Ljc5IC05OS43MiAtMTMuNTQgLTEwMC4yIC0xMC4yOCAtMTAwLjUyQy03LjAzIC0xMDAuODQgLTMuNzUgLTEwMSAtMC40OCAtMTAxQzIuNzggLTEwMSA2LjA3IC0xMDAuODQgOS4zMiAtMTAwLjUyQzEyLjU3IC0xMDAuMiAxNS44MiAtOTkuNzIgMTkuMDMgLTk5LjA4QzIyLjIzIC05OC40NCAyNS40MiAtOTcuNjQgMjguNTUgLTk2LjY4QzMxLjY3IC05NS43MyAzNC43NyAtOTQuNjIgMzcuNzkgLTkzLjM3QzQwLjggLTkyLjExIDQzLjc4IC05MC43IDQ2LjY2IC04OS4xNkM0OS41NCAtODcuNjEgNTIuMzYgLTg1LjkyIDU1LjA3IC04NC4wOUM1Ny43OSAtODIuMjcgNjAuNDMgLTgwLjMxIDYyLjk2IC03OC4yM0M2NS40OCAtNzYuMTUgNjcuOTIgLTczLjkzIDcwLjIzIC03MS42MkM3Mi41NCAtNjkuMyA3NC43NSAtNjYuODUgNzYuODIgLTY0LjMyQzc4Ljg5IC02MS43OCA4MC44NSAtNTkuMTQgODIuNjYgLTU2LjQxQzg0LjQ4IC01My42OCA4Ni4xNyAtNTAuODYgODcuNzEgLTQ3Ljk2Qzg5LjI1IC00NS4wNyA5MC42NSAtNDIuMDkgOTEuOTEgLTM5LjA2QzkzLjE2IC0zNi4wMyA5NC4yNiAtMzIuOTMgOTUuMjEgLTI5Ljc5Qzk2LjE2IC0yNi42NSA5Ni45NiAtMjMuNDUgOTcuNiAtMjAuMjRDOTguMjMgLTE3LjAyIDk4LjcyIC0xMy43NiA5OS4wNCAtMTAuNUM5OS4zNiAtNy4yNCA5OS41MiAtMy45NCA5OS41MiAtMC42NloiIGZpbGw9IiNmZmYiPjwvcGF0aD48cGF0aCBkPSJNOTkuNTIgLTAuNjZDOTkuNTIgMi42MiA5OS4zNiA1LjkxIDk5LjA0IDkuMTdDOTguNzIgMTIuNDMgOTguMjMgMTUuNyA5Ny42IDE4LjkxQzk2Ljk2IDIyLjEzIDk2LjE2IDI1LjMzIDk1LjIxIDI4LjQ2Qzk0LjI2IDMxLjYgOTMuMTYgMzQuNzEgOTEuOTEgMzcuNzRDOTAuNjUgNDAuNzYgODkuMjUgNDMuNzUgODcuNzEgNDYuNjRDODYuMTcgNDkuNTMgODQuNDggNTIuMzYgODIuNjYgNTUuMDhDODAuODUgNTcuODEgNzguODkgNjAuNDYgNzYuODIgNjIuOTlDNzQuNzUgNjUuNTMgNzIuNTQgNjcuOTcgNzAuMjMgNzAuMjlDNjcuOTIgNzIuNjEgNjUuNDggNzQuODIgNjIuOTYgNzYuOUM2MC40MyA3OC45OCA1Ny43OSA4MC45NSA1NS4wNyA4Mi43N0M1Mi4zNiA4NC41OSA0OS41NCA4Ni4yOCA0Ni42NiA4Ny44M0M0My43OCA4OS4zOCA0MC44IDkwLjc5IDM3Ljc5IDkyLjA0QzM0Ljc3IDkzLjI5IDMxLjY3IDk0LjQxIDI4LjU1IDk1LjM2QzI1LjQyIDk2LjMxIDIyLjIzIDk3LjExIDE5LjAzIDk3Ljc1QzE1LjgyIDk4LjM5IDEyLjU3IDk4Ljg3IDkuMzIgOTkuMkM2LjA3IDk5LjUyIDIuNzggOTkuNjggLTAuNDggOTkuNjhDLTMuNzUgOTkuNjggLTcuMDMgOTkuNTIgLTEwLjI4IDk5LjJDLTEzLjU0IDk4Ljg3IC0xNi43OSA5OC4zOSAtMTkuOTkgOTcuNzVDLTIzLjIgOTcuMTEgLTI2LjM4IDk2LjMxIC0yOS41MSA5NS4zNkMtMzIuNjQgOTQuNDEgLTM1LjczIDkzLjI5IC0zOC43NSA5Mi4wNEMtNDEuNzcgOTAuNzkgLTQ0Ljc0IDg5LjM4IC00Ny42MiA4Ny44M0MtNTAuNSA4Ni4yOCAtNTMuMzIgODQuNTkgLTU2LjA0IDgyLjc3Qy01OC43NiA4MC45NSAtNjEuNCA3OC45OCAtNjMuOTIgNzYuOUMtNjYuNDUgNzQuODIgLTY4Ljg4IDcyLjYxIC03MS4xOSA3MC4yOUMtNzMuNSA2Ny45NyAtNzUuNzEgNjUuNTMgLTc3Ljc4IDYyLjk5Qy03OS44NiA2MC40NiAtODEuODEgNTcuODEgLTgzLjYzIDU1LjA4Qy04NS40NCA1Mi4zNiAtODcuMTMgNDkuNTMgLTg4LjY3IDQ2LjY0Qy05MC4yMiA0My43NSAtOTEuNjIgNDAuNzYgLTkyLjg3IDM3Ljc0Qy05NC4xMiAzNC43MSAtOTUuMjMgMzEuNiAtOTYuMTggMjguNDZDLTk3LjEzIDI1LjMzIC05Ny45MiAyMi4xMyAtOTguNTYgMTguOTFDLTk5LjIgMTUuNyAtOTkuNjggMTIuNDMgLTEwMCA5LjE3Qy0xMDAuMzIgNS45MSAtMTAwLjQ4IDIuNjIgLTEwMC40OCAtMC42NkMtMTAwLjQ4IC0zLjk0IC0xMDAuMzIgLTcuMjQgLTEwMCAtMTAuNUMtOTkuNjggLTEzLjc2IC05OS4yIC0xNy4wMiAtOTguNTYgLTIwLjI0Qy05Ny45MiAtMjMuNDUgLTk3LjEzIC0yNi42NSAtOTYuMTggLTI5Ljc5Qy05NS4yMyAtMzIuOTMgLTk0LjEyIC0zNi4wMyAtOTIuODcgLTM5LjA2Qy05MS42MiAtNDIuMDkgLTkwLjIyIC00NS4wNyAtODguNjcgLTQ3Ljk2Qy04Ny4xMyAtNTAuODYgLTg1LjQ0IC01My42OCAtODMuNjMgLTU2LjQxQy04MS44MSAtNTkuMTQgLTc5Ljg2IC02MS43OCAtNzcuNzggLTY0LjMyQy03NS43MSAtNjYuODUgLTczLjUgLTY5LjMgLTcxLjE5IC03MS42MkMtNjguODggLTczLjkzIC02Ni40NSAtNzYuMTUgLTYzLjkyIC03OC4yM0MtNjEuNCAtODAuMzEgLTU4Ljc2IC04Mi4yNyAtNTYuMDQgLTg0LjA5Qy01My4zMiAtODUuOTIgLTUwLjUgLTg3LjYxIC00Ny42MiAtODkuMTZDLTQ0Ljc0IC05MC43IC00MS43NyAtOTIuMTEgLTM4Ljc1IC05My4zN0MtMzUuNzMgLTk0LjYyIC0zMi42NCAtOTUuNzMgLTI5LjUxIC05Ni42OEMtMjYuMzggLTk3LjY0IC0yMy4yIC05OC40NCAtMTkuOTkgLTk5LjA4Qy0xNi43OSAtOTkuNzIgLTEzLjU0IC0xMDAuMiAtMTAuMjggLTEwMC41MkMtNy4wMyAtMTAwLjg0IC0zLjc1IC0xMDEgLTAuNDggLTEwMUMyLjc4IC0xMDEgNi4wNyAtMTAwLjg0IDkuMzIgLTEwMC41MkMxMi41NyAtMTAwLjIgMTUuODIgLTk5LjcyIDE5LjAzIC05OS4wOEMyMi4yMyAtOTguNDQgMjUuNDIgLTk3LjY0IDI4LjU1IC05Ni42OEMzMS42NyAtOTUuNzMgMzQuNzcgLTk0LjYyIDM3Ljc5IC05My4zN0M0MC44IC05Mi4xMSA0My43OCAtOTAuNyA0Ni42NiAtODkuMTZDNDkuNTQgLTg3LjYxIDUyLjM2IC04NS45MiA1NS4wNyAtODQuMDlDNTcuNzkgLTgyLjI3IDYwLjQzIC04MC4zMSA2Mi45NiAtNzguMjNDNjUuNDggLTc2LjE1IDY3LjkyIC03My45MyA3MC4yMyAtNzEuNjJDNzIuNTQgLTY5LjMgNzQuNzUgLTY2Ljg1IDc2LjgyIC02NC4zMkM3OC44OSAtNjEuNzggODAuODUgLTU5LjE0IDgyLjY2IC01Ni40MUM4NC40OCAtNTMuNjggODYuMTcgLTUwLjg2IDg3LjcxIC00Ny45NkM4OS4yNSAtNDUuMDcgOTAuNjUgLTQyLjA5IDkxLjkxIC0zOS4wNkM5My4xNiAtMzYuMDMgOTQuMjYgLTMyLjkzIDk1LjIxIC0yOS43OUM5Ni4xNiAtMjYuNjUgOTYuOTYgLTIzLjQ1IDk3LjYgLTIwLjI0Qzk4LjIzIC0xNy4wMiA5OC43MiAtMTMuNzYgOTkuMDQgLTEwLjVDOTkuMzYgLTcuMjQgOTkuNTIgLTMuOTQgOTkuNTIgLTAuNjZaIiBmaWxsPSIjMGEwYTBjIiBtYXNrPSJ1cmwoI2Jsb3ViLW1hc2spIj48L3BhdGg+PC9nPjxnPjwvZz48ZyBmaWxsPSJub25lIiBzdHJva2UtbGluZWNhcD0icm91bmQiPjwvZz48L3N2Zz4=" alt="QRClaw 小精灵"><div><b>QRClaw</b><span id="status">本轮已完成</span></div></div>
+    <button class="newtask" type="button">开始新任务<kbd>⌘ N</kbd></button>
+    <div class="ix-h"><span>会话</span><span>4</span></div>
+    <nav class="sessions" id="sessions" aria-label="选择会话"></nav>
+    <button class="memlink" id="memlink" type="button"><b>记忆</b><span>15 页 · 1 项待整理</span></button>
+  </aside>
+
+  <main class="desk" aria-label="对话">
+    <div class="doc focus" id="doc">
+      <div class="column">
+        <h1 class="doc-title" id="title"></h1>
+        <div class="doc-meta" id="meta"></div>
+
+        <section class="turn past" aria-label="更早的一轮">
+          <p class="prompt" id="prevPrompt"></p>
+          <div class="prose" id="prevReply"></div>
+        </section>
+
+        <div class="chapter">上下文已整理　84,557 → 23,143</div>
+
+        <section class="turn now" aria-label="当前这一轮">
+          <p class="prompt" id="prompt"></p>
+          <div class="inline-notes" id="inlineNotes"></div>
+          <div class="prose" id="reply" aria-live="polite"></div>
+          <div class="reply-actions"><button>复制</button><button>编辑上一条消息</button><button>删除</button></div>
+        </section>
+
+        <form class="composer" onsubmit="event.preventDefault()">
+          <div class="write"><span>›</span><textarea rows="1" aria-label="消息" placeholder="接着写……（Enter 发送，Shift+Enter 换行）"></textarea><button class="send" type="submit">发送</button></div>
+          <div class="tools">
+            <button type="button" role="switch" aria-checked="false" id="plan" title="开启后允许自动拆分计划；关闭后直接执行。下次发送生效。"><i></i>Plan</button>
+            <span class="ctx" title="上下文估算 144,571 / 485,000 tokens，超过 90% 时自动整理"><svg width="64" height="6" aria-hidden="true"><rect width="64" height="6" fill="var(--rule)"/><rect width="19" height="6" fill="var(--ink)"/><rect x="57" width="1" height="6" fill="var(--warn)"/></svg>上下文 <b>29.8%</b></span>
+            <span>已整理 2 次</span>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <aside class="margin" aria-label="页边批注">
+      <div class="note" id="runNote">
+        <h4>这一轮做了什么</h4>
+        <div class="big" id="runBig">8 次调用 · 4 分 46 秒</div>
+        <ul class="calls" id="calls"></ul>
+        <button class="replay" id="replay" type="button">回放这一轮</button>
+      </div>
+      <div class="note wrote">
+        <h4>留进记忆</h4>
+        <div id="wrote"></div>
+      </div>
+      <div class="note">
+        <h4>整个会话</h4>
+        <div>107 次工具调用 · 4 个子 Agent</div>
+        <div class="bars" id="bars"></div>
+      </div>
+      <div class="note">
+        <h4>还没整理进记忆</h4>
+        <div>2 条正文等待批量提取<br>闲置 2 分钟后自动处理</div>
+      </div>
+    </aside>
+  </main>
+
+  <section class="memory" aria-label="记忆">
+    <nav class="toc" aria-label="记忆目录">
+      <h2>记忆</h2><div class="sub">15 页 · 1 项待整理</div>
+      <input type="search" placeholder="搜索名称、标签或正文" aria-label="搜索记忆">
+      <div id="toc"></div>
+    </nav>
+    <article class="page" id="page"></article>
+    <aside class="margin" id="pageMargin" aria-label="来源与关联"></aside>
+  </section>
+</div>
+
+<script>
+const Q = window.QR, $ = id => document.getElementById(id)
+const fmt = n => n.toLocaleString('en-US')
+$('title').textContent = Q.session.title
+$('meta').innerHTML = `99 条消息 · ${fmt(Q.session.tokens)} tokens · 最近 ${Q.session.updated}<button id="focusBtn" type="button">专注当前轮：开</button>`
+$('prevPrompt').innerHTML = `<time>更早</time>${Q.prev.user}`
+$('prevReply').innerHTML = md(Q.prev.reply)
+$('prompt').innerHTML = `<time>你 · ${Q.turn.at}</time>` + Q.turn.user.replace(/</g, '&lt;')
+$('reply').innerHTML = md(Q.turn.reply)
+
+$('sessions').innerHTML = Q.sessions.map((s, i) => `<button class="sess" type="button" ${i === 0 ? 'aria-current="page"' : ''} aria-label="${s.title}${s.unread ? '，有未读回复' : ''}">
+  <div class="t">${s.unread ? '<span class="dot" aria-hidden="true"></span>' : ''}${s.title}</div><div class="m">${s.updated} · ${s.messages ? s.tools + ' 次调用' : '空白'}</div></button>`).join('')
+requestAnimationFrame(() => { const now = document.querySelector('.turn.now'); $('doc').style.scrollBehavior = 'auto'; $('doc').scrollTop = now.offsetTop - 40; $('doc').style.scrollBehavior = '' })
+
+const total = Q.toolTotals.reduce((a, [, n]) => a + n, 0)
+$('bars').innerHTML = Q.toolTotals.slice(0, 5).map(([t, n]) => `<span>${t}</span><i style="width:${n / 65 * 100}%"></i><span>${n}</span>`).join('')
+
+function renderCalls(done = Q.turn.tools.length, live = -1) {
+  $('calls').innerHTML = Q.turn.tools.map((c, i) => `<li class="${i < done ? '' : i === live ? 'live' : 'pending'}"><span>${c.at.slice(0, 5)}</span><span>${i === live ? '<span class=marker></span>' : ''}${c.t}</span><em>${i < done ? c.d : i === live ? '进行中' : ''}</em></li>`).join('')
+  $('wrote').innerHTML = Q.turn.wrote.map(name => {
+    const idx = Q.turn.tools.findIndex(c => c.page === name)
+    return `<a href="#memory" data-page="${name}" class="${idx < done ? '' : 'pending'}">${name}</a>`
+  }).join('') + `<div>${done >= Q.turn.tools.length ? '本轮写入 2 页，来源可回溯到这条消息' : '写入后出现在这里'}</div>`
+  $('inlineNotes').innerHTML = `${done}/${Q.turn.tools.length} 次调用 · ${Q.turn.duration} · 留进记忆：${Q.turn.wrote.map(n => `<a href="#memory" data-page="${n}">${n}</a>`).join('、')}`
+}
+renderCalls()
+
+/* 回放：按事件日志顺序逐条点亮，最后流式写出回复 */
+let timer
+$('replay').onclick = () => {
+  clearInterval(timer)
+  const reply = Q.turn.reply
+  let step = 0
+  $('reply').innerHTML = '<span class="caret"></span>'
+  setStatus('正在思考')
+  renderCalls(0, 0)
+  timer = setInterval(() => {
+    if (step < Q.turn.tools.length) {
+      step++
+      renderCalls(step, step < Q.turn.tools.length ? step : -1)
+      setStatus(step < Q.turn.tools.length ? '正在调用 ' + Q.turn.tools[step].t : '正在写回复')
+      return
+    }
+    clearInterval(timer)
+    let n = 0
+    timer = setInterval(() => {
+      n += 14
+      $('reply').innerHTML = md(reply.slice(0, n)) + '<span class="caret"></span>'
+      if (n >= reply.length) { clearInterval(timer); $('reply').innerHTML = md(reply); setStatus('本轮已完成') }
+    }, 40)
+  }, 650)
+}
+function setStatus(text) { $('status').textContent = text; $('status').className = text === '本轮已完成' ? '' : 'live'; $('mStatus').textContent = text }
+
+document.addEventListener('click', e => {
+  if (e.target.id === 'focusBtn') { const on = $('doc').classList.toggle('focus'); e.target.textContent = '专注当前轮：' + (on ? '开' : '关') }
+  if (e.target.id === 'plan') e.target.setAttribute('aria-checked', e.target.getAttribute('aria-checked') !== 'true')
+  const link = e.target.closest('[data-page]')
+  if (link) { e.preventDefault(); openMemory(link.dataset.page) }
+  if (e.target.closest('#memlink')) openMemory(Q.page.name)
+  if (e.target.closest('.sess')) { app.dataset.view = 'chat'; $('memlink').removeAttribute('aria-current') }
+})
+
+function openMemory(name) {
+  app.dataset.view = 'memory'
+  $('memlink').setAttribute('aria-current', 'page')
+  $('toc').innerHTML = Q.memory.map(m => `<button type="button" data-open="${m.name}" ${m.name === name ? 'aria-current="page"' : ''}><b>${m.name}</b><span>${m.updated} · ${m.sources ? m.sources + ' 个来源' : '来源未追溯'}</span></button>`).join('')
+  const meta = Q.memory.find(m => m.name === name)
+  const full = name === Q.page.name
+  $('page').innerHTML = `<h1 class="doc-title">${name}</h1>
+    <div class="doc-meta">${meta.status === 'ready' ? '可用' : '来源未追溯'} · ${full ? '版本 ' + Q.page.revision + ' · ' : ''}更新于 ${meta.updated} · ${meta.tags.join(' / ')}</div>
+    <div class="page-actions"><button type="button">编辑</button><button type="button">删除</button></div>
+    <div class="prose">${full ? md(Q.page.content) : '<p>' + meta.desc + '</p><p style="color:var(--meta);font:13px var(--mono)">（原型只载入了「QRClaw Skill 机制」的正文）</p>'}</div>`
+  $('pageMargin').innerHTML = full ? `<div class="note"><h4>来源 · 2</h4>${Q.page.sources.map(s => `<div>${s.role} · ${s.at}</div>`).join('')}<a href="#" class="replay" style="display:inline-block;text-decoration:none" onclick="event.preventDefault();app.dataset.view='chat'">回到原会话这一轮</a></div>
+    <div class="note"><h4>它链接到</h4>${Q.page.links.map(l => `<div><a href="#" data-page="${l}" style="color:var(--blue)">${l}</a></div>`).join('')}</div>
+    <div class="note"><h4>谁引用了它</h4>${Q.page.backlinks.map(l => `<div><a href="#" data-page="${l}" style="color:var(--blue)">${l}</a></div>`).join('')}</div>`
+    : `<div class="note"><h4>来源</h4><div>${meta.sources ? meta.sources + ' 条来源' : '历史页面，来源未追溯'}</div></div>`
+}
+document.addEventListener('click', e => { const b = e.target.closest('[data-open]'); if (b) openMemory(b.dataset.open) })
+if (location.hash === '#memory') openMemory(Q.page.name)
+</script>
+</body></html>

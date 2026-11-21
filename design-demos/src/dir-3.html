@@ -1,0 +1,299 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>QRClaw 仪器面板</title>
+<!--
+方向 B · Teenage Engineering「仪器」
+- 来源：TE 设计 OP-1 / TX-6 的思路——复杂状态做成实体面板：一块小屏、旋钮表盘、按步排列的音序器
+- 借的：浅铝灰面板 + 黑；唯一的高饱和橙 #FF4F00 只标「正在发生」；工具五类各一个按键色；数字一律等宽；面板用 1px 黑线分区
+- 主角：小精灵住在深色显示屏里；会话的 107 次工具调用排成音序器步进（由事件日志逐条还原，含 4 次子 Agent 启动、2 次压缩）
+- form 来自内容：Agent 的一轮工作本来就是一串离散的步骤
+- 过头检验：把音序器换成普通列表，107 次调用变成 107 行，信息反而更糊，所以保留
+-->
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700;900&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<script src="data.js"></script>
+<style>
+:root{
+  --alu:#e3e3df; --alu2:#d6d6d1; --paper:#f7f7f3; --ink:#111; --ink2:#3b3b38; --muted:#5a5a55; --screen:#141414; --screen-text:#ececE6;
+  --orange:#ff4f00; --c-shell:#111; --c-read:#3f6bd8; --c-mem:#f2b600; --c-web:#2a9d6f; --c-mcp:#8c8c86; --c-off:#c7c7c1;
+  --sans:"Noto Sans SC","PingFang SC",sans-serif; --mono:"JetBrains Mono",ui-monospace,monospace;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:var(--alu);color:var(--ink);font:14px/1.6 var(--sans)}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+.app{height:100dvh;display:grid;grid-template-rows:212px minmax(0,1fr);gap:0;padding:14px;row-gap:14px}
+.mod{border:1px solid var(--ink);border-radius:6px;background:var(--alu);position:relative;min-height:0}
+.lbl{font:500 12px var(--mono);color:var(--ink2);letter-spacing:.04em}
+
+/* 仪器条 */
+.deck{display:grid;grid-template-columns:300px minmax(0,1fr) 190px 210px;gap:14px}
+.display{background:var(--screen);border-color:var(--screen);border-radius:10px;display:grid;grid-template-columns:132px 1fr;align-items:center;padding:14px;color:var(--screen-text);overflow:hidden}
+.display .stage{width:120px;height:120px;border-radius:8px;background:#ededE8;display:grid;place-items:center}
+.display .stage img{width:106px;height:106px;animation:bob 3s ease-in-out infinite}
+.display[data-live] .stage img{animation-duration:.9s}
+@keyframes bob{50%{transform:translateY(-4px)}}
+.readout{padding-left:16px;font-family:var(--mono)}
+.readout .phase{font:700 15px/1.4 var(--mono);color:var(--orange);text-transform:uppercase;letter-spacing:.03em}
+.readout .tool{font:500 18px/1.4 var(--mono);margin:6px 0;word-break:break-all}
+.readout .sub{font-size:12px;color:#b9b9b2}
+.seq{padding:14px 16px 12px;display:flex;flex-direction:column}
+.seq .top{display:flex;justify-content:space-between;align-items:baseline}
+.steps{display:grid;grid-template-columns:repeat(auto-fill,minmax(11px,1fr));gap:4px 3px;margin:12px 0 10px;align-content:start}
+.steps i{height:24px;border-radius:2px;background:var(--c-off);position:relative}
+.steps i.s{background:var(--c-shell)}.steps i.r{background:var(--c-read)}.steps i.k,.steps i.w{background:var(--c-mem)}.steps i.q{background:var(--c-web)}.steps i.m{background:var(--c-mcp)}
+.steps i.A{background:transparent}
+.steps i.A:after{content:"";position:absolute;left:0;top:6px;border-left:12px solid var(--orange);border-top:6px solid transparent;border-bottom:6px solid transparent;opacity:.85}
+.steps i.cut{background:linear-gradient(90deg,transparent 45%,var(--ink) 45% 60%,transparent 60%)}
+.steps i.cur{outline:2px solid var(--orange);outline-offset:1px}
+.steps i.dim{opacity:.18}
+.steps i.live{animation:pulse .5s ease-in-out infinite alternate}
+@keyframes pulse{to{transform:scaleY(.7)}}
+.legend{display:flex;flex-wrap:wrap;gap:6px 16px;font:12px var(--mono);color:var(--ink2);margin-top:auto}
+.legend span{display:flex;align-items:center;gap:6px}
+.legend b{width:10px;height:10px;border-radius:2px;display:inline-block}
+.dial{display:grid;place-items:center;padding:10px 8px;text-align:center}
+.dial svg{display:block}
+.dial .num{font:700 20px var(--mono)}
+.ctrl{padding:14px 16px;display:flex;flex-direction:column;gap:12px}
+.switch{display:flex;align-items:center;gap:12px;text-align:left}
+.switch .track{width:54px;height:28px;border:1px solid var(--ink);border-radius:14px;background:var(--alu2);position:relative;flex:none}
+.switch .track:after{content:"";position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:50%;background:var(--ink);transition:left .2s}
+.switch[aria-checked=true] .track{background:var(--orange)}
+.switch[aria-checked=true] .track:after{left:29px}
+.switch b{display:block;font-weight:700}
+.switch small{font-size:12px;color:var(--muted)}
+.counter{font:700 22px var(--mono);letter-spacing:-.02em}
+.counter + .lbl{margin-top:-10px}
+
+/* 下半区 */
+.bench{display:grid;grid-template-columns:264px minmax(0,1fr) 330px;gap:14px;min-height:0}
+.list{display:flex;flex-direction:column;padding:12px 0 0;overflow:hidden}
+.list .lbl{padding:0 14px 8px;display:flex;justify-content:space-between}
+.newtask{margin:0 14px 10px;border:1px solid var(--ink);border-radius:4px;padding:9px 12px;display:flex;justify-content:space-between;font-weight:700;background:var(--paper)}
+.newtask:hover{background:var(--ink);color:var(--paper)}
+.newtask kbd{font:12px var(--mono)}
+.cart{display:block;width:100%;text-align:left;padding:10px 14px;border-top:1px solid var(--alu2)}
+.cart[aria-current]{background:var(--paper)}
+.cart .t{font-size:14px;line-height:1.5;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.cart .m{display:flex;align-items:center;gap:8px;font:12px var(--mono);color:var(--muted);margin-top:4px}
+.cart .m i{height:6px;background:var(--ink);border-radius:1px;display:block}
+.led{width:8px;height:8px;border-radius:50%;background:var(--c-off);flex:none;box-shadow:inset 0 0 0 1px rgba(0,0,0,.25)}
+.led.on{background:var(--orange)}.led.ok{background:var(--c-web)}
+.memkey{margin-top:auto;border-top:1px solid var(--ink);padding:12px 14px;text-align:left;display:flex;justify-content:space-between;align-items:center}
+.memkey[aria-current]{background:var(--paper)}
+.memkey b{display:block}
+.memkey span{font:12px var(--mono);color:var(--muted)}
+
+.talk{background:var(--paper);display:flex;flex-direction:column;overflow:hidden}
+.talk .head{display:flex;justify-content:space-between;align-items:center;padding:10px 18px;border-bottom:1px solid var(--ink)}
+.talk .head h1{font:700 15px/1.5 var(--sans);margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:70%}
+.talk .scroll{overflow:auto;flex:1;min-height:0;padding:20px 28px}
+.ask{display:grid;grid-template-columns:auto 1fr;gap:12px;align-items:start;margin-bottom:16px}
+.ask .tag{font:700 12px var(--mono);background:var(--ink);color:var(--paper);padding:2px 7px;border-radius:3px;margin-top:3px}
+.ask pre{margin:0;font:14px/1.7 var(--mono);white-space:pre-wrap}
+.ask time{display:block;font:12px var(--mono);color:var(--muted)}
+.runline{display:flex;align-items:center;gap:10px;font:12.5px var(--mono);color:var(--ink2);border:1px solid var(--ink);border-radius:4px;padding:7px 10px;margin:0 0 18px}
+.runline .mini{display:flex;gap:2px}
+.runline .mini i{width:8px;height:16px;border-radius:1px}
+.runline .sp{flex:1}
+.runline button{white-space:nowrap;border:1px solid var(--ink);border-radius:3px;padding:1px 8px;background:var(--alu)}
+.answer{font-size:15.5px;line-height:1.9}
+.answer p{margin:0 0 .9em}
+.answer code{font:14px var(--mono);background:var(--alu);padding:1px 5px;border-radius:3px}
+.answer ul{padding-left:1.2em;margin:0 0 .9em}
+.answer blockquote{margin:0 0 .9em;padding-left:12px;border-left:3px solid var(--c-mem)}
+.answer h3{font-size:17px;margin:1.2em 0 .4em}
+.caret{display:inline-block;width:9px;height:1.05em;background:var(--orange);vertical-align:-.15em;animation:blink 1s steps(1) infinite}
+@keyframes blink{50%{opacity:0}}
+.compose{border-top:1px solid var(--ink);display:grid;grid-template-columns:1fr auto;gap:12px;align-items:center;padding:12px 14px 12px 18px;background:var(--alu)}
+.compose textarea{border:1px solid var(--ink);border-radius:4px;background:var(--paper);font:14px/1.6 var(--sans);padding:10px 12px;resize:none;outline:0;width:100%}
+.compose .row{display:flex;gap:14px;font:12px var(--mono);color:var(--ink2);margin-top:6px}
+.go{width:56px;height:56px;border-radius:50%;background:var(--orange);border:1px solid var(--ink);font:700 13px var(--mono);color:#111;box-shadow:0 3px 0 var(--ink)}
+.go:active{transform:translateY(2px);box-shadow:0 1px 0 var(--ink)}
+
+.rack{display:grid;grid-template-rows:auto minmax(0,1fr);gap:14px;min-height:0}
+.subs{padding:12px 14px}
+.subs .it{display:grid;grid-template-columns:auto 1fr;gap:10px;align-items:start;padding:7px 0;border-top:1px solid var(--alu2);font-size:14px;line-height:1.55}
+.subs .it:first-of-type{border-top:0}
+.subs .it b{font:700 12px var(--mono);display:block}
+.mem{padding:12px 14px;overflow:auto}
+.memit{display:flex;gap:10px;align-items:center;width:100%;text-align:left;border:1px solid var(--ink);border-radius:4px;padding:8px 10px;margin-top:8px;background:var(--paper)}
+.memit .k{width:12px;height:22px;border-radius:2px;background:var(--c-mem);flex:none}
+.memit b{display:block;font-size:13.5px}
+.memit span{font:12px var(--mono);color:var(--muted)}
+.memit.wait{opacity:.35}
+.note{font:12px/1.7 var(--mono);color:var(--ink2);margin-top:12px}
+
+/* 记忆视图 */
+.store{display:none}
+[data-view=memory] .bench{display:none}
+[data-view=memory] .store{display:grid;grid-template-columns:minmax(0,1fr) 520px;gap:14px;min-height:0}
+.keys{padding:14px;overflow:auto}
+.keys .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:10px;margin-top:12px}
+.keycard{border:1px solid var(--ink);border-radius:5px;background:var(--paper);padding:10px 12px;text-align:left;display:flex;flex-direction:column;gap:6px;min-height:110px;box-shadow:0 2px 0 var(--ink)}
+.keycard[aria-current]{background:var(--ink);color:var(--paper)}
+.keycard[aria-current] span{color:#c9c9c2}
+.keycard b{font-size:14px;line-height:1.45}
+.keycard span{font:12px var(--mono);color:var(--muted);margin-top:auto;display:flex;align-items:center;gap:6px}
+.keycard .dots{display:flex;gap:3px}
+.keycard .dots i{width:6px;height:6px;border-radius:50%;background:currentColor}
+.reader{background:var(--paper);overflow:auto;padding:18px 26px}
+.reader h2{font:900 22px/1.4 var(--sans);margin:4px 0}
+.reader .meta{font:12px var(--mono);color:var(--muted);margin-bottom:14px}
+.src{border:1px solid var(--ink);border-radius:4px;padding:8px 10px;margin-top:8px;display:flex;justify-content:space-between;font:12.5px var(--mono)}
+
+@media (max-width:1200px){.deck{grid-template-columns:240px minmax(0,1fr) 170px}.ctrl{display:none}.bench{grid-template-columns:220px minmax(0,1fr)}.rack{display:none}}
+@media (max-width:760px){
+  .app{padding:8px;grid-template-rows:auto minmax(0,1fr);row-gap:8px}
+  .deck{grid-template-columns:1fr 112px;gap:8px}
+  .display{grid-template-columns:72px 1fr;padding:8px}
+  .display .stage{width:68px;height:68px}.display .stage img{width:60px;height:60px}
+  .readout{padding-left:10px}.readout .tool{font-size:14px}
+  .seq{grid-column:1/-1;grid-row:2;padding:10px}
+  .steps{grid-template-columns:repeat(auto-fill,minmax(7px,1fr))}.steps i{height:18px}
+  .seq .top span:last-child,.compose .row{display:none}
+  .runline{flex-wrap:wrap}
+  .legend{gap:4px 10px}
+  .dial{padding:4px}.dial svg{width:96px;height:96px}
+  .bench{grid-template-columns:1fr}.list{display:none}
+  .talk .scroll{padding:14px 14px}
+  .compose{padding:10px}
+  [data-view=memory] .store{grid-template-columns:1fr}.reader{display:none}
+}
+</style></head>
+<body>
+<div class="app" id="app" data-view="talk">
+  <section class="deck" aria-label="运行状态">
+    <div class="mod display" id="display" role="status" aria-live="polite">
+      <div class="stage"><img src="assets/bloub.svg" alt="QRClaw 小精灵"></div>
+      <div class="readout"><div class="phase" id="phase">本轮完成</div><div class="tool" id="tool">8 次调用</div><div class="sub" id="sub">16:33–16:38 · 4分46秒</div></div>
+    </div>
+    <div class="mod seq">
+      <div class="top"><span class="lbl">步进 · 本会话 107 次工具调用</span><span class="lbl">▲ 子 Agent　｜ 上下文整理　□ 本轮</span></div>
+      <div class="steps" id="steps" aria-label="工具调用序列"></div>
+      <div class="legend" id="legend"></div>
+    </div>
+    <div class="mod dial" title="上下文估算 144,571 / 485,000 tokens">
+      <svg width="132" height="132" viewBox="0 0 132 132" aria-hidden="true">
+        <circle cx="66" cy="66" r="52" fill="none" stroke="#c7c7c1" stroke-width="12" stroke-dasharray="245 82" transform="rotate(135 66 66)"/>
+        <circle cx="66" cy="66" r="52" fill="none" stroke="#111" stroke-width="12" stroke-dasharray="73 254" transform="rotate(135 66 66)"/>
+        <line x1="66" y1="8" x2="66" y2="22" stroke="#ff4f00" stroke-width="3" transform="rotate(108 66 66)"/>
+        <text x="66" y="66" text-anchor="middle" font-family="JetBrains Mono" font-weight="700" font-size="20">29.8%</text>
+        <text x="66" y="86" text-anchor="middle" font-family="JetBrains Mono" font-size="11" fill="#3b3b38">上下文</text>
+      </svg>
+      <div class="lbl">144,571 / 485,000</div><div class="lbl">橙线 90% 自动整理</div>
+    </div>
+    <div class="mod ctrl">
+      <button class="switch" type="button" role="switch" aria-checked="false" id="plan"><span class="track"></span><span><b>Plan 模式</b><small>下次发送生效</small></span></button>
+      <div class="counter">6,089,838</div><div class="lbl">累计 tokens</div>
+      <div class="lbl">已整理 2 次 · 4 个子 Agent</div>
+    </div>
+  </section>
+
+  <section class="bench" aria-label="工作区">
+    <nav class="mod list" aria-label="会话">
+      <button class="newtask" type="button">新任务<kbd>⌘N</kbd></button>
+      <div class="lbl"><span>会话</span><span>4</span></div>
+      <div id="carts"></div>
+      <button class="memkey" type="button" data-go="memory"><span><b>记忆</b><span>15 页 · 1 项待整理</span></span><span class="led ok"></span></button>
+    </nav>
+
+    <article class="mod talk" aria-label="对话">
+      <div class="head"><h1 id="title"></h1><span class="lbl">99 条消息</span></div>
+      <div class="scroll" id="scroll">
+        <div class="ask"><span class="tag">你</span><div><time id="askAt"></time><pre id="ask"></pre></div></div>
+        <div class="runline"><span class="mini" id="mini"></span><span id="runText">8 次调用 · 4 分 46 秒 · 写入 2 页记忆</span><span class="sp"></span><button type="button" id="replay">▶ 回放</button></div>
+        <div class="answer" id="answer" aria-live="polite"></div>
+      </div>
+      <form class="compose" onsubmit="event.preventDefault()">
+        <div><textarea rows="2" aria-label="消息" placeholder="接着说，或者交代新任务……"></textarea><div class="row"><span>Enter 发送</span><span>Shift+Enter 换行</span><span>编辑 / 删除上一条</span></div></div>
+        <button class="go" type="submit" aria-label="发送">发送</button>
+      </form>
+    </article>
+
+    <div class="rack">
+      <section class="mod subs" aria-label="子 Agent"><div class="lbl">子 Agent · 4 · 全部完成</div><div id="subs"></div></section>
+      <section class="mod mem" aria-label="本轮记忆"><div class="lbl">本轮写入记忆</div><div id="wrote"></div>
+        <div class="note"><div>还有 2 条正文等待提取</div><div>已完成 5 批</div><div>闲置 2 分钟后自动处理</div></div></section>
+    </div>
+  </section>
+
+  <section class="store" aria-label="记忆">
+    <div class="mod keys"><div class="lbl" style="display:flex;justify-content:space-between"><span>记忆 · 15 页 · 绿灯可用 / 灰灯来源未追溯</span><button type="button" data-go="talk" style="text-decoration:underline">回到对话</button></div><div class="grid" id="keys"></div></div>
+    <article class="mod reader" id="reader"></article>
+  </section>
+</div>
+
+<script>
+const Q = window.QR, $ = id => document.getElementById(id), fmt = n => n.toLocaleString('en-US')
+const turnLen = Q.turn.tools.length
+const seq = [...Q.seq]
+const toolIdx = seq.map((c, i) => 'srkwqm'.includes(c) ? i : -1).filter(i => i >= 0)
+const curStart = toolIdx[toolIdx.length - turnLen]
+
+function drawSteps(done = turnLen, live = -1) {
+  $('steps').innerHTML = seq.map((c, i) => {
+    if (c === '|') return '<i class="cut" title="上下文整理"></i>'
+    if (c === 'A') return '<i class="A" title="启动子 Agent"></i>'
+    const inTurn = i >= curStart, k = toolIdx.indexOf(i) - (toolIdx.length - turnLen)
+    const dim = inTurn && k >= done && k !== live
+    return `<i class="${c}${inTurn ? ' cur' : ''}${dim ? ' dim' : ''}${k === live ? ' live' : ''}"></i>`
+  }).join('')
+}
+drawSteps()
+const groups = [['Shell', 's', 'var(--c-shell)'], ['读取', 'r', 'var(--c-read)'], ['记忆', 'kw', 'var(--c-mem)'], ['联网', 'q', 'var(--c-web)'], ['MCP', 'm', 'var(--c-mcp)']]
+$('legend').innerHTML = groups.map(([n, cs, col]) => `<span><b style="background:${col}"></b>${n} ${seq.filter(c => cs.includes(c)).length}</span>`).join('')
+$('mini').innerHTML = Q.seq.slice(-turnLen).split('').map(c => `<i style="background:${groups.find(g => g[1].includes(c))[2]}"></i>`).join('')
+
+$('carts').innerHTML = Q.sessions.map((s, i) => `<button class="cart" type="button" data-go="talk" ${i === 0 ? 'aria-current="page"' : ''}>
+  <div class="t">${s.title}</div><div class="m"><span class="led ${s.unread ? 'on' : ''}" title="${s.unread ? '有未读回复' : ''}"></span>${s.messages ? `<i style="width:${Math.max(4, s.tools / 155 * 90)}px"></i>${s.tools} 次` : '空白'}<span style="margin-left:auto">${s.updated.replace(/(\d+)月(\d+)日.*/, '$1/$2')}</span></div></button>`).join('')
+$('title').textContent = Q.session.title
+$('askAt').textContent = Q.turn.at
+$('ask').textContent = Q.turn.user
+$('answer').innerHTML = md(Q.turn.reply)
+$('subs').innerHTML = Q.subagents.map(s => `<div class="it"><span class="led ok" style="margin-top:6px"></span><div><b>${s.id}</b>${s.task}</div></div>`).join('')
+function drawWrote(done = turnLen) {
+  $('wrote').innerHTML = Q.turn.wrote.map(n => `<button type="button" class="memit ${Q.turn.tools.findIndex(c => c.page === n) < done ? '' : 'wait'}" data-page="${n}"><span class="k"></span><span><b>${n}</b><span>write_wiki_page · ${Q.turn.tools.find(c => c.page === n).d}</span></span></button>`).join('')
+}
+drawWrote()
+
+function show(phase, tool, sub, live) { $('phase').textContent = phase; $('tool').textContent = tool; $('sub').textContent = sub; $('display').toggleAttribute('data-live', live) }
+let timer
+$('replay').onclick = () => {
+  clearInterval(timer); let step = 0
+  $('answer').innerHTML = '<span class="caret"></span>'
+  const tick = () => {
+    const c = Q.turn.tools[step]
+    drawSteps(step, step); drawWrote(step)
+    show('调用工具 ' + (step + 1) + '/' + turnLen, c.t, c.at + (c.page ? ' → ' + c.page : ''), true)
+  }
+  tick()
+  timer = setInterval(() => {
+    step++
+    if (step < turnLen) return tick()
+    clearInterval(timer); drawSteps(); drawWrote(); show('正在回复', '整理结论', '16:38 · 写入 2 页记忆之后', true)
+    let n = 0
+    timer = setInterval(() => {
+      n += 14; $('answer').innerHTML = md(Q.turn.reply.slice(0, n)) + '<span class="caret"></span>'
+      if (n >= Q.turn.reply.length) { clearInterval(timer); $('answer').innerHTML = md(Q.turn.reply); show('本轮完成', '8 次调用', '16:33–16:38 · 4分46秒', false) }
+    }, 40)
+  }, 650)
+}
+
+function openMemory(name = Q.page.name) {
+  app.dataset.view = 'memory'
+  $('keys').innerHTML = Q.memory.map(m => `<button type="button" class="keycard" data-page="${m.name}" ${m.name === name ? 'aria-current="true"' : ''}><b>${m.name}</b><span><span class="led ${m.status === 'ready' ? 'ok' : ''}"></span>${m.updated.replace(/(\d+)月(\d+)日/, '$1/$2')}<span class="dots">${'<i></i>'.repeat(Math.min(m.sources, 10))}</span></span></button>`).join('')
+  const m = Q.memory.find(x => x.name === name), full = name === Q.page.name
+  $('reader').innerHTML = `<div class="lbl">${m.status === 'ready' ? '可用' : '来源未追溯'}${full ? ' · 版本 ' + Q.page.revision : ''} · ${m.tags.join(' / ')}</div><h2>${name}</h2><div class="meta">更新于 ${m.updated} · ${m.sources} 个来源</div>
+    <div class="answer">${full ? md(Q.page.content) : '<p>' + m.desc + '</p>'}</div>
+    ${full ? `<div class="lbl" style="margin-top:16px">来源</div>${Q.page.sources.map(s => `<div class="src"><span>${s.role} · ${s.at}</span><button type="button" data-go="talk" style="text-decoration:underline">回到对话</button></div>`).join('')}
+    <div class="lbl" style="margin-top:16px">链接 · ${Q.page.links.join(' / ')}</div>` : ''}`
+}
+document.addEventListener('click', e => {
+  const p = e.target.closest('[data-page]'); if (p) return openMemory(p.dataset.page)
+  const g = e.target.closest('[data-go]'); if (g) { if (g.dataset.go === 'memory') openMemory(); else app.dataset.view = 'talk' }
+  if (e.target.closest('#plan')) { const s = $('plan'); s.setAttribute('aria-checked', s.getAttribute('aria-checked') !== 'true') }
+})
+if (location.hash === '#memory') openMemory()
+</script>
+</body></html>

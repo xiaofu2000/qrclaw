@@ -7,7 +7,7 @@ WikiQueryNode —— 计划目标触发式 Wiki 知识精排注入节点
 
 核心流程：
   1. 接收 user_input + plan_goal 作为查询参数
-  2. 调用 wiki.select_relevant_pages() 两阶段精排（关键词初筛 + LLM 精选）
+  2. 调用 wiki.select_relevant_pages() 从页面目录中精选相关页面
   3. 调用 wiki.get_page() 获取选中页面的完整正文
   4. 返回 [{name, content, description, tags}] 列表，供注入使用
 
@@ -60,6 +60,11 @@ def _build_injected_context(pages: list[dict]) -> str:
             sections.append(f"**摘要**: {page['description']}")
         if page.get("tags"):
             sections.append(f"**标签**: {', '.join(page['tags'])}")
+        if page.get("related"):
+            sections.append(f"**关联**: {', '.join(page['related'])}")
+        sections.append(f"**来源状态**: {page.get('source_status', '来源未追溯')}；版本 {page.get('revision', 0)}")
+        if page.get("next_offset") is not None:
+            sections.append(f"正文已分页；需要后文时用 read_wiki_page(name={page['name']!r}, offset={page['next_offset']}) 继续读取。")
         sections.append("")
         sections.append(page["content"])
         sections.append("\n---\n")
@@ -125,7 +130,7 @@ class WikiQueryNode:
         执行 Wiki 精排查询
 
         Args:
-            user_input: 用户原始输入（参与关键词初筛）
+            user_input: 用户原始输入（作为检索查询的补充）
             plan_goal: plan.goal 任务目标描述（主要查询参数）
             messages: 主 agent 的 messages 列表（继承对话上下文，用于 LLM 精选）
 
@@ -141,7 +146,7 @@ class WikiQueryNode:
 
         logger.info(f"WikiQueryNode: 开始查询 query={query!r}")
 
-        # 第一步：LLM 精排选择相关页面（两阶段）
+        # 第一步：根据 Wiki 目录选择相关页面
         selected = self.wiki.select_relevant_pages(
             query=query,
             messages=messages or [],
@@ -157,12 +162,19 @@ class WikiQueryNode:
         # 第二步：构建页面详情列表（已包含正文）
         pages_detail: list[dict] = []
         for page in selected:
+            from qrclaw.tools.wiki_tools import read_wiki_content
+            readable = read_wiki_content(self.wiki, page.name)
+            if "error" in readable or readable.get("duplicate"):
+                continue
             pages_detail.append({
                 "name": page.name,
-                "content": page.content,
+                "content": readable["content"],
                 "description": page.description,
                 "tags": page.tags,
                 "related": page.related,
+                "next_offset": readable["next_offset"],
+                "source_status": readable["source_status"],
+                "revision": readable["revision"],
             })
 
         # 第三步：构建可注入的上下文字符串

@@ -2,6 +2,7 @@
 Agent 管理工具
 """
 from pathlib import Path
+from qrclaw.home import qrclaw_home
 import shutil
 import yaml
 from pydantic import BaseModel, Field
@@ -12,7 +13,7 @@ from qrclaw.logger import get_logger
 logger = get_logger("qrclaw.tools.agent_tools")
 
 # 权限配置文件路径
-PERMISSIONS_FILE = Path.home() / ".qrclaw" / "permissions.yaml"
+PERMISSIONS_FILE = qrclaw_home() / "permissions.yaml"
 
 
 class CreateAgentArgs(BaseModel):
@@ -98,8 +99,7 @@ def create_agent(name: str) -> str:
     ├── sessions/    # 会话历史
     ├── logs/        # 日志文件
     ├── skills/      # 技能脚本
-    └── memory/      # 记忆目录
-        └── MEMORY.md    # 记忆索引
+    └── memory/      # Wiki 记忆目录
 
     新创建的 Agent 默认启用沙箱（Docker 隔离）。
     如需完全信任，请在 ~/.qrclaw/permissions.yaml 中设置 sandbox.enabled: false。
@@ -126,10 +126,6 @@ def create_agent(name: str) -> str:
         (agent_dir / "skills").mkdir(parents=True, exist_ok=True)
         (agent_dir / "memory").mkdir(parents=True, exist_ok=True)
 
-        # 创建 MEMORY.md（新版：在 memory/ 目录下）
-        memory_file = agent_dir / "memory" / "MEMORY.md"
-        memory_file.write_text("# QRClaw 记忆索引\n\n", encoding="utf-8")
-
         # 创建 AGENT.md 模板
         agent_file = agent_dir / "AGENT.md"
         agent_file.write_text(
@@ -144,7 +140,7 @@ def create_agent(name: str) -> str:
         _add_agent_permissions(name, sandbox_enabled=True)
 
         logger.info(f"Agent '{name}' 创建成功: {agent_dir}")
-        return f"✅ Agent '{name}' 创建成功\n\n工作目录: {agent_dir}\n\n目录结构:\n- sessions/  (会话历史)\n- logs/      (日志文件)\n- skills/    (技能脚本)\n- memory/    (记忆目录)\n  - MEMORY.md (记忆索引)\n\n默认配置（已写入 permissions.yaml）:\n- sandbox.enabled: true（启用沙箱）\n\n如需完全信任此 agent，请在 ~/.qrclaw/permissions.yaml 中设置 sandbox.enabled: false"
+        return f"✅ Agent '{name}' 创建成功\n\n工作目录: {agent_dir}\n\n目录结构:\n- sessions/  (会话历史)\n- logs/      (日志文件)\n- skills/    (技能脚本)\n- memory/    (Wiki 记忆目录)\n\n默认配置（已写入 permissions.yaml）:\n- sandbox.enabled: true（启用沙箱）\n\n如需完全信任此 agent，请在 ~/.qrclaw/permissions.yaml 中设置 sandbox.enabled: false"
 
     except Exception as e:
         error_msg = f"错误：创建 Agent 失败: {e}"

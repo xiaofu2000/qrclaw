@@ -2,7 +2,7 @@
 Prompt templates and long-form instruction text.
 
 This module only stores reusable prompt text. Message assembly lives in
-qrclaw.memory.context.message_builder.
+qrclaw.memory.context.prompt.builder.
 """
 from __future__ import annotations
 

@@ -59,6 +59,8 @@ def main() -> None:
     from qrclaw.heartbeat import get_default_heartbeat_content, execute_heartbeat_tasks
 
     # 3. 创建 Session（路径由 workspace 决定）
+    from qrclaw.server.session_service import SessionService
+    SessionService(workspace).recover_session_changes()
     # resume=True 且不传 session_id 时，自动恢复最近的会话
     session = Session(
         sessions_dir=workspace.sessions_dir,
@@ -88,10 +90,11 @@ def main() -> None:
 
         if HEARTBEAT_ENABLED:
             def on_heartbeat():
-                """心跳触发时，后台执行维护任务"""
-                console.print("\n[bold yellow]⏰ 心跳触发[/bold yellow] - 后台执行维护任务...\n")
+                """心跳触发时在后台执行任务；没有任务时不打扰终端。"""
                 try:
                     result = execute_heartbeat_tasks(workspace)
+                    if not result:
+                        return
                     console.print(f"\n[bold green]✅ 心跳任务完成[/bold green]\n[dim]{result[:200]}{'...' if len(result) > 200 else ''}[/dim]\n")
                 except Exception as e:
                     console.print(f"\n[bold red]❌ 心跳任务失败[/bold red]: {e}\n")
@@ -148,6 +151,8 @@ def main() -> None:
             break
 
         if user_input == "clear":
+            from qrclaw.server.session_service import SessionService
+            SessionService(workspace).delete_session(session.session_id)
             session.clear()
             console.print("[dim]会话已清除[/dim]\n")
             continue

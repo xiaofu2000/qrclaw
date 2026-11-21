@@ -4,10 +4,11 @@ Wiki Extraction Module - 从 memory_extraction.py 拆分出的提取逻辑
 职责：
 - 提示词模板 (prompts.py)
 - Schema 定义 (schemas.py)
-- 阈值策略 (strategies.py)
+- 消息过滤与格式化 (strategies.py)
 - LLM 调用 (llm.py)
 - 配置常量 (config.py)
-- 提取索引 (indexer.py)
+- 提取进度 (indexer.py)
+- 写入执行 (runner.py)
 """
 
 from qrclaw.memory.wiki.extraction.config import ExtractionConfig
@@ -21,7 +22,6 @@ try:
     from qrclaw.memory.wiki.extraction.llm import WikiLLMAnalyzer
 except ImportError:
     WikiLLMAnalyzer = None  # type: ignore
-from qrclaw.memory.wiki.extraction.strategies import should_extract
 from qrclaw.memory.wiki.extraction.indexer import ExtractionIndexer
 from qrclaw.memory.wiki.extraction.runner import ExtractionRunner
 
@@ -31,7 +31,6 @@ __all__ = [
     "ConsolidatePageSchema",
     "ExtractionSchema",
     "WikiLLMAnalyzer",
-    "should_extract",
     "ExtractionIndexer",
     "ExtractionRunner",
 ]

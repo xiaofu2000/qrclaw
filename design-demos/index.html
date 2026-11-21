@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>QRClaw 三个方向</title>
+<style>
+:root{--bg:#f4f4f2;--ink:#1b1b1b;--muted:#5c5c58;--line:#dcdcd7;--link:#0a5fa8}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--bg:#161616;--ink:#ececea;--muted:#a3a39d;--line:#2d2d2b;--link:#6cb6f0}}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.75 -apple-system,"PingFang SC","Noto Sans SC",sans-serif}
+main{max-width:1240px;margin:0 auto;padding:40px 24px 80px}
+h1{font-size:26px;margin:0 0 6px}
+.lead{color:var(--muted);max-width:760px;margin:0 0 36px}
+section{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:28px;padding:30px 0;border-top:1px solid var(--line)}
+section img{width:100%;display:block;border:1px solid var(--line);border-radius:6px}
+.pair{display:grid;grid-template-columns:minmax(0,1fr) 150px;gap:12px;align-items:start}
+.pair + .pair{margin-top:12px}
+h2{font-size:20px;margin:0 0 4px}
+.src{color:var(--muted);font-size:14px;margin-bottom:12px}
+dl{margin:0;font-size:14px}
+dt{font-weight:600;margin-top:10px}
+dd{margin:0;color:var(--muted)}
+a{color:var(--link)}
+.open{display:inline-block;margin-top:16px;font-weight:600}
+.alts img{max-width:100%;border:1px solid var(--line);border-radius:6px}
+@media (max-width:900px){section{grid-template-columns:1fr}.pair{grid-template-columns:1fr 110px}}
+</style></head>
+<body><main>
+<h1>QRClaw 工作台：三个方向</h1>
+<p class="lead">三版用的是同一段真实内容：会话「你为什么不用 codegraph…」里问「QRClaw 有没有适配 npx skills add」的那一轮，一共 8 次工具调用，写入了 2 页记忆。每版都能点「回放这一轮」，按事件日志的真实顺序重演工具调用和流式回复；第二屏分别是记忆页或收件箱。会话的统计数字是最终值，比如 99 条消息。</p>
+
+<section>
+  <div>
+    <div class="pair"><img src="shots/dir-1-desktop.png" alt="方向 A 桌面主屏"><img src="shots/dir-1-mobile.png" alt="方向 A 手机"></div>
+    <div class="pair"><img src="shots/dir-1-second.png" alt="方向 A 记忆页"><span></span></div>
+  </div>
+  <div>
+    <h2>A · 工作文档</h2>
+    <div class="src">最佳设计师：iA（Oliver Reichenstein），参考 iA Writer 的 Focus Mode</div>
+    <dl>
+      <dt>主张</dt><dd>回复本身就是产品。会话是一份要读的文档：衬线正文 17px，更早的轮次调灰，上下文整理显示成一道章节分隔线。</dd>
+      <dt>工作过程放在哪</dt><dd>右侧页边批注：这一轮调了哪些工具、各用了多久，写进了哪两页记忆（可以直接点进去），还有多少正文在等提取。</dd>
+      <dt>form 来自内容的哪里</dt><dd>你的回复动辄上千字、带路径和代码，首先要读得舒服。</dd>
+      <dt>代价</dt><dd>同时管理多个会话最弱；工具调用多的时候，页边会很长。</dd>
+    </dl>
+    <a class="open" href="dir-1.html">打开 A 的原型</a>
+  </div>
+</section>
+
+<section>
+  <div>
+    <div class="pair"><img src="shots/dir-2-desktop.png" alt="方向 C 桌面主屏"><img src="shots/dir-2-mobile.png" alt="方向 C 手机"></div>
+    <div class="pair"><img src="shots/dir-2-second.png" alt="方向 C 收件箱"><span></span></div>
+  </div>
+  <div>
+    <h2>C · 工作项</h2>
+    <div class="src">现实参照：linear.app 的 issue 详情页（refs/board-1.jpg）</div>
+    <dl>
+      <dt>主张</dt><dd>会话是一个任务。中间是 Activity 流：你的消息和回复放大，工具、子 Agent、压缩都压成一行灰字，可以展开；右侧属性栏放状态、上下文、工具统计、子 Agent、留下的记忆和待提取。</dd>
+      <dt>首页</dt><dd>收件箱，按「运行中 / 等你查看 / 还没开始」分组，每行带调用次数、子 Agent 数和上下文占比。</dd>
+      <dt>form 来自内容的哪里</dt><dd>你同时开着几个持续好几天的长任务（99 条、298 条消息），要管理的是任务，不是消息。</dd>
+      <dt>代价</dt><dd>最「工具化」，陪伴感最弱，小精灵只是一个头像。记忆库这版没画，点了只会出一条提示。</dd>
+    </dl>
+    <p class="src" style="margin-top:14px">已选定（11月6日）：补了浅色主题，左下角可在「跟随系统 / 浅色 / 深色」间切换；头像和左上角小精灵放大，字号和行距放松。两套主题的截图见 shots/c-light-*.png、shots/c-dark-*.png。</p>
+    <a class="open" href="dir-2.html">打开 C 的原型</a>
+  </div>
+</section>
+
+<section>
+  <div>
+    <div class="pair"><img src="shots/dir-3-desktop.png" alt="方向 B 桌面主屏"><img src="shots/dir-3-mobile.png" alt="方向 B 手机"></div>
+    <div class="pair"><img src="shots/dir-3-second.png" alt="方向 B 记忆页"><span></span></div>
+  </div>
+  <div>
+    <h2>B · 仪器</h2>
+    <div class="src">最佳设计师：Teenage Engineering（OP-1 / TX-6 的面板思路）</div>
+    <dl>
+      <dt>主张</dt><dd>过程是主角。顶部是一条仪器面板：小精灵住在显示屏里，读出当前在调用什么；会话的 107 次工具调用排成音序器，按 Shell、读取、记忆、联网、MCP 着色，子 Agent 和上下文整理各有标记；另有上下文表盘和 Plan 拨杆。</dd>
+      <dt>记忆</dt><dd>15 页做成按键卡片，绿灯表示可用，灰灯表示来源未追溯，圆点数量是来源数。</dd>
+      <dt>form 来自内容的哪里</dt><dd>Agent 的一轮工作本来就是一串离散的步骤，看一眼就知道它干了多少、主要在干什么。</dd>
+      <dt>代价</dt><dd>三版里最用力的一版，阅读区最窄。</dd>
+    </dl>
+    <a class="open" href="dir-3.html">打开 B 的原型</a>
+  </div>
+</section>
+
+<section class="alts" style="grid-template-columns:1fr">
+  <div>
+    <h2>另外三个备选</h2>
+    <p class="src">D 是 Warp 的工厂点阵，E 是秒数轮盘抽到的像素横版，F 是田中一光的几何构成。看中哪个，可以做成完整版。为什么没选，见 directions.md。</p>
+    <img src="thumbs.png" alt="六个候选缩略图">
+  </div>
+</section>
+</main></body></html>

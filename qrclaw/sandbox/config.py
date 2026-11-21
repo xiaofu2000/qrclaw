@@ -6,11 +6,12 @@ Docker 沙箱启用时，物理隔离已经解决了安全问题。
 """
 import yaml
 from pathlib import Path
+from qrclaw.home import qrclaw_home
 from typing import List, Literal, Optional
 from pydantic import BaseModel, Field
 
 # 配置文件路径
-PERMISSIONS_FILE = Path.home() / ".qrclaw" / "permissions.yaml"
+PERMISSIONS_FILE = qrclaw_home() / "permissions.yaml"
 
 
 # ========== 配置模型 ==========

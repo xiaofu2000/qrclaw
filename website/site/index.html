@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#030916">
+  <title>QRClaw — 把任务交给它，把经验留下来</title>
+  <meta name="description" content="QRClaw 是你的本地 AI 工作伙伴。通过对话执行任务，查看工具与子任务的工作过程，用可追溯的 Wiki 记忆积累经验。支持 Web、CLI 和 OpenAI 兼容 API。">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="QRClaw — 把任务交给它，把经验留下来">
+  <meta property="og:description" content="能执行，也能记住。属于你的本地 AI Agent。">
+  <meta property="og:image" content="https://qrclaw.aaav91.chatgpt.site/assets/brain/poster-desktop.png">
+  <meta property="og:url" content="https://qrclaw.aaav91.chatgpt.site/">
+  <meta name="twitter:card" content="summary_large_image">
+  <link rel="canonical" href="https://qrclaw.aaav91.chatgpt.site/">
+  <link rel="icon" type="image/svg+xml" href="assets/mark.svg">
+  <link rel="preload" href="assets/fonts/noto-sans-sc-headings.ttf" as="font" type="font/ttf" crossorigin>
+  <link rel="preload" href="assets/fonts/satoshi-700.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="styles/main.css">
+  <link rel="stylesheet" href="styles/brain-home.css?v=native-20261020">
+  <script type="module" src="scripts/app.js?v=native-20261020"></script>
+<noscript><style>.hero{height:100svh}.loop-controls,.motion-toggle{display:none}</style></noscript>
+</head>
+<body>
+  <a class="skip-link" href="#main">跳到主要内容</a>
+  <header class="site-header">
+    <div class="nav-wrap">
+      <a class="brand" href="#top" aria-label="QRClaw 首页"><img src="assets/mark.svg" width="32" height="32" alt="">QRClaw</a>
+      <nav aria-label="主导航" id="main-nav">
+        <a href="#workflow">工作方式</a><a href="#memory">长期记忆</a><a href="#extensions">开放能力</a>
+        <a class="nav-cta" href="#start">开始使用 <svg class="ui-arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 18 18 6M6 6h12v12"/></svg></a>
+      </nav>
+      <button class="menu-button" aria-label="打开导航" aria-controls="main-nav" aria-expanded="false"><span></span><span></span></button>
+    </div>
+  </header>
+
+  <main id="main">
+    <section class="hero" id="top" aria-labelledby="hero-title">
+      <div class="scene-stage">
+        <div class="hero-art" aria-hidden="true">
+          <picture class="brain-poster"><source media="(max-width:900px)" srcset="assets/brain/poster-mobile.png"><img src="assets/brain/poster-desktop.png" alt="" width="1440" height="900"></picture>
+          <canvas id="brain-canvas"></canvas>
+        </div>
+        <p id="brain-status" role="status">正在准备三维画面…</p>
+        <div class="hero-copy" data-chapter="0">
+          <h1 id="hero-title">让想法，<br>开始执行。</h1>
+          <p class="hero-intro">你的本地 AI 工作伙伴。</p>
+          <div class="hero-actions"><a class="text-link light" href="#start">开始使用 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14m-6-6 6 6-6 6"/></svg></a></div>
+        </div>
+        <div class="scene-copy chapter-one" data-chapter="1" hidden>
+          <h2>把一件大事，<br>拆成下一步。</h2>
+          <p>简单任务直接执行，复杂工作按需规划。</p>
+        </div>
+        <div class="scene-copy chapter-two" data-chapter="2" hidden>
+          <h2>工具在行动，<br>你始终看得见。</h2>
+          <p>每一次工具调用，都有过程和结果可查。</p>
+        </div>
+        <div class="scene-copy chapter-three" data-chapter="3" hidden>
+          <h2>完成这一次，<br>记住下一次。</h2>
+          <p>把有用的经验，留给下一次工作。</p>
+          <a class="text-link light" href="#workflow">进入真实工作台演示 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14m-6-6 6 6-6 6"/></svg></a>
+        </div>
+        <div class="scene-bridge" aria-hidden="true"><div class="bridge-bar"><span>QRClaw</span><span>你的本地工作空间</span></div><img src="assets/product-result.webp" width="1440" height="1000" alt=""></div>
+        <div class="hero-loop container">
+          <div class="loop-stages"><div class="loop-controls" role="group" aria-label="跳转工作原理阶段">
+            <button class="loop-step active" data-phase="0" aria-label="01 唤醒" title="唤醒" aria-pressed="true"><span class="step-number">01</span><i></i></button>
+            <button class="loop-step" data-phase="1" aria-label="02 拆解" title="拆解" aria-pressed="false"><span class="step-number">02</span><i></i></button>
+            <button class="loop-step" data-phase="2" aria-label="03 执行" title="执行" aria-pressed="false"><span class="step-number">03</span><i></i></button>
+            <button class="loop-step" data-phase="3" aria-label="04 记忆" title="记忆" aria-pressed="false"><span class="step-number">04</span><i></i></button>
+          </div><p class="sr-only" id="phase-description">向下滚动，展开一次任务的工作原理。</p></div>
+          <button class="motion-toggle" id="motion-toggle" aria-pressed="false" aria-label="暂停页面动画"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M7 5v10M13 5v10"/></svg><span class="sr-only">暂停动画</span></button>
+        </div>
+      </div>
+    </section>
+
+    <section class="workflow section container" id="workflow" aria-labelledby="workflow-title">
+      <div class="section-heading">
+        <h2 id="workflow-title">这次，<br>让真实结果说话。</h2>
+        <p>简单任务直接执行，复杂工作可以开启 Plan。<br>从工具调用到最终回复，过程始终有迹可循。</p>
+      </div>
+      <div class="product-story">
+        <div class="story-steps" role="tablist" aria-label="产品演示步骤" aria-orientation="horizontal">
+          <button role="tab" aria-selected="true" aria-controls="product-panel" id="story-tab-0" data-scene="0" class="story-step active"><span>01</span><div><h3>说出你想完成的事</h3><p>交代目标和要求，Agent 结合上下文开始工作。</p></div></button>
+          <button role="tab" aria-selected="false" aria-controls="product-panel" id="story-tab-1" data-scene="1" tabindex="-1" class="story-step"><span>02</span><div><h3>打开过程，了解进展</h3><p>查看工具执行与结果；任务拆分后，还能跟进子 Agent。</p></div></button>
+          <button role="tab" aria-selected="false" aria-controls="product-panel" id="story-tab-2" data-scene="2" tabindex="-1" class="story-step"><span>03</span><div><h3>拿到结果，继续推进</h3><p>围绕交付继续对话，把有价值的经验沉淀下来。</p></div></button>
+          <div class="story-playback"><button id="story-play" class="text-link" aria-pressed="false"><span class="play-icon" aria-hidden="true"></span><span>自动播放步骤</span></button><span>真实界面 · 示例任务</span></div>
+        </div>
+        <div class="product-panel" id="product-panel" role="tabpanel" aria-labelledby="story-tab-0" tabindex="0">
+          <div class="window-bar"><span class="window-dots" aria-hidden="true"><i></i><i></i><i></i></span><span>QRClaw 工作台</span><span id="scene-name">交代任务</span></div>
+          <a class="product-image-wrap" id="product-full" href="assets/product-task.webp" target="_blank" rel="noreferrer" aria-label="在新标签页查看当前产品界面大图"><img id="product-image" src="assets/product-task.webp" alt="QRClaw 工作台中的示例任务对话" width="1440" height="1000" loading="lazy"><span class="image-expand">查看大图 <svg class="ui-arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 18 18 6M6 6h12v12"/></svg></span></a>
+          <div class="product-caption"><span class="status-dot"></span><p id="scene-caption">在独立演示工作空间中，整理项目笔记并输出工作摘要。</p><span class="caption-index" id="scene-index">01 / 03</span></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="memory-section section" id="memory" aria-labelledby="memory-title">
+      <div class="container">
+        <div class="memory-intro">
+          <h2 id="memory-title">对话会结束，<br><span>有用的经验会留下。</span></h2>
+          <div><p>项目背景、输出偏好、技术决策。<br>QRClaw 用 Wiki 把值得保留的内容串起来，让下一次工作有据可依。</p><a class="text-link" href="#memory-detail">看看记忆如何积累 <svg class="ui-arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 18 18 6M6 6h12v12"/></svg></a></div>
+        </div>
+        <div class="memory-experience" id="memory-detail">
+          <div class="memory-map">
+            <svg class="memory-lines" viewBox="0 0 600 450" preserveAspectRatio="xMidYMid meet" aria-hidden="true"><path d="M85 100C250 100 140 235 295 235S410 90 515 90M90 350C220 350 185 235 295 235S410 355 515 355M295 235V55M295 235V410"/></svg>
+            <div class="memory-core"><img src="assets/mark.svg" alt="" width="56" height="56"><strong>你的 Wiki</strong><span>连接每一次工作</span></div>
+            <button class="memory-node node-preference active" data-memory="0" aria-pressed="true"><span class="node-symbol">Aa</span><span>输出偏好</span></button>
+            <button class="memory-node node-project" data-memory="1" aria-pressed="false"><svg class="node-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7V5a2 2 0 0 1 2-2h5l3 4h6a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z"/></svg><span>项目背景</span></button>
+            <button class="memory-node node-decision" data-memory="2" aria-pressed="false"><span class="node-symbol">{ }</span><span>技术决策</span></button>
+            <div class="memory-node node-session"><svg class="node-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 11.5a8.4 8.4 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.4 8.4 0 0 1-3.8-.9L3 21l1.9-5.7a8.4 8.4 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.4 8.4 0 0 1 3.8-.9h.5a8.5 8.5 0 0 1 8 8v.5Z"/></svg><span>下一次对话</span></div>
+            <p class="map-caption">点击节点，探索记忆关联 · 内容示意</p>
+          </div>
+          <article class="memory-note" aria-labelledby="memory-note-title">
+            <div class="note-top"><span>Wiki / <span id="memory-slug">输出偏好</span></span><span>记忆示意</span></div>
+            <h3 id="memory-note-title">先给结论，再讲依据。</h3>
+            <p id="memory-note-copy">你偏好简洁的中文摘要：先说明结论，再列出依据与待办。后续任务可以检索这条偏好，减少重复交代。</p>
+            <div class="note-source"><span>来源可追溯</span><p id="memory-source">关联到提出这项偏好的原始对话</p></div>
+            <div class="note-tags" id="memory-tags"><span>用户偏好</span><span>输出格式</span></div>
+            <p class="note-foot">可以查看、编辑、删除。<br>记忆提取有触发条件，重要信息也可主动保存。</p>
+          </article>
+        </div>
+        <details class="memory-screenshot"><summary>查看真实记忆管理界面 <svg class="ui-plus" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M12 5v14"/></svg></summary><a href="assets/product-memory.webp" target="_blank" rel="noreferrer" aria-label="在新标签页查看记忆管理界面大图"><img src="assets/product-memory.webp" width="1440" height="1000" alt="QRClaw 记忆库的页面、正文与来源管理界面，使用演示数据" loading="lazy"></a></details>
+      </div>
+    </section>
+
+    <section class="extensions section" id="extensions" aria-labelledby="extensions-title">
+      <div class="container extensions-layout">
+        <div class="extension-copy"><h2 id="extensions-title">你的工作方式，<br>不必设限。</h2><p>把已经在用的工具接进来，<br>把熟悉的工作方法变成可复用的能力。</p><a class="button button-white" href="https://github.com/xiaofu2000/qrclaw/tree/dev-webui#readme" target="_blank" rel="noreferrer">阅读接入文档 <svg class="ui-arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 18 18 6M6 6h12v12"/></svg></a></div>
+        <div class="extension-list">
+          <article><span class="capability-name">MCP</span><div><h3>工具，按需发现。</h3><p>连接 MCP 服务，按任务查找工具与参数。可用能力由你的配置决定。</p></div></article>
+          <article><span class="capability-name">Skills</span><div><h3>方法，可以复用。</h3><p>把任务知识和执行约定整理为技能，在需要时读取并使用。</p></div></article>
+          <article><span class="capability-name">Agents</span><div><h3>复杂工作，拆开推进。</h3><p>将独立子任务交给子 Agent，在主工作台查看进展与结果。</p></div></article>
+        </div>
+      </div>
+    </section>
+
+    <section class="entry-section section container" aria-labelledby="entry-title">
+      <div class="section-heading"><h2 id="entry-title">同一个 Agent，<br>进入你的不同工作流。</h2><p>在浏览器里工作，在终端里交流，<br>也可以连接支持 OpenAI 兼容接口的客户端。</p></div>
+      <div class="entry-tabs" role="tablist" aria-label="使用方式">
+        <button id="entry-tab-web" data-entry="web" role="tab" aria-selected="true" aria-controls="entry-panel">Web 工作台<span>可视化地掌握全局</span></button>
+        <button id="entry-tab-cli" data-entry="cli" role="tab" aria-selected="false" aria-controls="entry-panel" tabindex="-1">命令行<span>留在你熟悉的终端</span></button>
+        <button id="entry-tab-api" data-entry="api" role="tab" aria-selected="false" aria-controls="entry-panel" tabindex="-1">兼容 API<span>连接已有的应用</span></button>
+      </div>
+      <div class="entry-panel" id="entry-panel" role="tabpanel" aria-labelledby="entry-tab-web" tabindex="0"><div><h3 id="entry-heading">把工作过程展开来看。</h3><p id="entry-copy">会话、执行过程和记忆管理在同一工作台。启动本地服务，然后打开浏览器。</p><a class="text-link" href="#start">先完成安装与模型配置 <svg class="ui-arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 18 18 6M6 6h12v12"/></svg></a></div><div class="terminal"><div class="terminal-head"><span id="entry-file">启动 Web 工作台</span><button class="copy-button" data-copy="entry-code" aria-label="复制当前使用方式命令">复制</button></div><pre><code id="entry-code">uv run qrclaw serve
+
+# 浏览器打开
+# http://127.0.0.1:8765</code></pre></div></div>
+    </section>
+
+    <section class="start-section section" id="start" aria-labelledby="start-title">
+      <div class="container start-layout">
+        <div><h2 id="start-title">下一件事，<br>交给 QRClaw。</h2><p>从你的电脑开始，<br>建立自己的 AI 工作空间。</p><a class="github-link" href="https://github.com/xiaofu2000/qrclaw" target="_blank" rel="noreferrer"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 19c-4.3 1.4-4.3-2.5-6-3m12 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 19 4.77 5.07 5.07 0 0 0 18.91 1S17.73.65 15 2.48a13.38 13.38 0 0 0-7 0C5.27.65 4.09 1 4.09 1A5.07 5.07 0 0 0 4 4.77 5.44 5.44 0 0 0 2.5 8.55c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 8 18.13V22"/></svg>在 GitHub 查看源码 <svg class="ui-arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 18 18 6M6 6h12v12"/></svg></a><p class="requirements">需要 Python 3.11+、Git 与 <a href="https://docs.astral.sh/uv/getting-started/installation/" target="_blank" rel="noreferrer">uv</a>。<br>准备好你选择的模型服务的 API Key。</p></div>
+        <div class="installation">
+          <div class="install-step"><div class="install-label"><span>1</span><h3>获取源码，安装依赖</h3></div><div class="terminal"><div class="terminal-head"><span>终端</span><button class="copy-button" data-copy="install-code" aria-label="复制安装命令">复制</button></div><pre><code id="install-code">git clone --branch dev-webui https://github.com/xiaofu2000/qrclaw.git
+cd qrclaw
+uv sync
+uv run qrclaw --help</code></pre></div><p>首次运行会创建配置文件。此命令使用与官网演示一致的 dev-webui 分支。</p></div>
+          <div class="install-step"><div class="install-label"><span>2</span><h3>连接你选择的模型</h3></div><div class="terminal"><div class="terminal-head"><span>~/.qrclaw/config.yaml</span><button class="copy-button" data-copy="config-code" aria-label="复制模型配置示例">复制</button></div><pre><code id="config-code">llm:
+  api_key: "你的 API Key"
+  model: "openai/deepseek-flash"
+  base_url: "https://api.deepseek.com"</code></pre></div><p>以上为配置示例；模型名称和接口地址以服务商文档为准。</p></div>
+          <div class="install-step"><div class="install-label"><span>3</span><h3>打开你的工作台</h3></div><div class="terminal"><div class="terminal-head"><span>终端</span><button class="copy-button" data-copy="launch-code" aria-label="复制启动命令">复制</button></div><pre><code id="launch-code">uv run qrclaw serve</code></pre></div><p>然后访问 <code>http://127.0.0.1:8765</code>，开始第一项任务。</p></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="faq-section section container" aria-labelledby="faq-title"><h2 id="faq-title">开始之前，<br>你可能想知道。</h2><div class="faq-list">
+      <details><summary>本地运行，意味着完全离线吗？<svg class="ui-plus" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M12 5v14"/></svg></summary><p>QRClaw 的程序、工作空间、会话和记忆保存在本地。模型推理取决于你配置的服务；连接远程模型 API 时，相关请求会发送给服务商。联网工具也会访问外部服务。</p></details>
+      <details><summary>使用 QRClaw 需要付费吗？<svg class="ui-plus" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M12 5v14"/></svg></summary><p>QRClaw 的源码使用 MIT 开源许可。模型 API、你接入的第三方服务或部署资源可能产生费用，由对应服务商收取。</p></details>
+      <details><summary>它会记住所有对话吗？<svg class="ui-plus" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M12 5v14"/></svg></summary><p>不会把每句话都存为长期记忆。自动提取会在满足轮数、闲置时间或正文长度等条件后执行，再由模型判断哪些信息值得保留。你也可以明确要求保存重要信息，并在记忆库查看、修改或删除。</p></details>
+      <details><summary>能执行哪些操作？<svg class="ui-plus" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M12 5v14"/></svg></summary><p>可用能力包括文件处理、Shell、网页工具、记忆与接入的 MCP 工具，具体取决于配置。CLI 和本机 API 会自动执行工具调用；默认 Agent 未启用 Docker 沙箱，请在信任任务来源的环境中使用。</p></details>
+      <details><summary>可以接到其他客户端吗？<svg class="ui-plus" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M12 5v14"/></svg></summary><p>可以。QRClaw 提供 OpenAI 兼容 API，本地默认地址是 <code>http://127.0.0.1:8765/v1</code>，模型名为 <code>qrclaw-agent</code>。若开放到非本机地址，需要配置访问令牌和相应访问控制。</p></details>
+    </div></section>
+  </main>
+  <footer class="footer"><div class="container"><div class="footer-top"><a class="brand" href="#top"><img src="assets/mark.svg" width="36" height="36" alt="">QRClaw</a><p>让每一次工作，<br>成为下一次的起点。</p><div><a href="https://github.com/xiaofu2000/qrclaw" target="_blank" rel="noreferrer">GitHub <svg class="ui-arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 18 18 6M6 6h12v12"/></svg></a><a href="https://github.com/xiaofu2000/qrclaw/tree/dev-webui#readme" target="_blank" rel="noreferrer">文档 <svg class="ui-arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 18 18 6M6 6h12v12"/></svg></a><a href="https://github.com/xiaofu2000/qrclaw/issues" target="_blank" rel="noreferrer">反馈 <svg class="ui-arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 18 18 6M6 6h12v12"/></svg></a></div></div><div class="footer-bottom"><span>© 2026 QRClaw</span><span>本地运行 · 开放扩展 · 长期记忆</span><a href="credits.html">开源与素材说明</a></div></div></footer>
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+</body>
+</html>

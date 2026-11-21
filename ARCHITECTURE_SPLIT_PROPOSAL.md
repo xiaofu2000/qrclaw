@@ -3,6 +3,7 @@
 **编制日期**: 2026-04-12  
 **依据**: Step 1-5 战报综合分析  
 **目标**: 为 memory_extraction.py 和 memory/ 模块的架构拆分提供决策依据
+**状态**: 历史文档。文中的 `MemoryManager`、`memory/core/`、`MEMORY.md` 索引及各兼容层已移除，长期记忆统一由 `qrclaw/memory/wiki/` 的 `WikiMemory` 负责；提取逻辑已拆到 `qrclaw/memory/wiki/extraction/`。下文的行数和路径反映的是编制时的代码。
 
 ---
 

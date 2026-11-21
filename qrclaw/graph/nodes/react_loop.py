@@ -13,9 +13,10 @@ from rich.text import Text
 from rich.markdown import Markdown
 from qrclaw.config import MAX_ITERATIONS, _MODEL_MAX_TOKENS, COMPRESS_THRESHOLD
 from qrclaw.tools.registry import get_schemas, get_schemas_for_sub_agent
+from qrclaw.tools.call_context import collect_tool_detail, current_call_id, tool_call
 from qrclaw.memory.context.session import Session
 from qrclaw.memory.context.session import SessionEvent
-from qrclaw.memory.context.context_manager import get_context_manager
+from qrclaw.memory.context.runtime.manager import get_context_manager
 from qrclaw.llm_service import LLMService, get_llm_service
 from qrclaw.workspace import Workspace
 from qrclaw.logger import get_logger
@@ -133,10 +134,12 @@ def run_react_loop(
                 assistant_msg_saved = True
 
             try:
-                if on_tool_call:
-                    result = on_tool_call(name, arguments)
-                else:
-                    result = ToolRunner().run(name, arguments)
+                # 调用 ID 让过程事件与保存的工具结果消息一一对应。
+                with tool_call(tc.id):
+                    if on_tool_call:
+                        result = on_tool_call(name, arguments)
+                    else:
+                        result = ToolRunner().run(name, arguments)
             except Exception as e:
                 result = f"工具执行失败: {str(e)}"
                 logger.error(f"工具执行失败: {name}, 错误: {e}", exc_info=True)
@@ -183,6 +186,8 @@ class ReactLoopNode:
                 extractor = MemoryExtractionNode(memory, session=session)
                 self._memory_integrations[key] = MemoryExtractionIntegration(extractor)
                 logger.debug("MemoryExtractionIntegration 已初始化")
+            # API 每次加载新 Session 对象；主动记忆必须使用当前请求的消息，不能沿用旧快照。
+            self._memory_integrations[key].extractor.session = session
             return self._memory_integrations[key]
 
     def resume_memory_extractions(self, workspace: Workspace) -> None:
@@ -228,18 +233,20 @@ class ReactLoopNode:
         tool_runner = ToolRunner(console=console, auto_confirm=auto_confirm)
 
         def run_tool(name: str, arguments: str) -> str:
-            """记录工具状态，不把参数或结果写入过程事件。"""
+            """记录工具状态与调用 ID；不写参数和结果正文，只附带工具主动上报的结构化结果。"""
+            base = {"tool": name, **({"call_id": call_id} if (call_id := current_call_id()) else {})}
             session.add_event(SessionEvent(kind="tool_status", title="工具开始", content=name,
-                                           meta={"state": "started", "tool": name}))
-            try:
-                result = tool_runner.run(name, arguments)
-            except Exception:
-                session.add_event(SessionEvent(kind="tool_status", title="工具失败", content=name,
-                                               meta={"state": "failed", "tool": name}))
-                raise
+                                           meta={"state": "started", **base}))
+            with collect_tool_detail() as detail:
+                try:
+                    result = tool_runner.run(name, arguments)
+                except Exception:
+                    session.add_event(SessionEvent(kind="tool_status", title="工具失败", content=name,
+                                                   meta={"state": "failed", **base}))
+                    raise
             failed = getattr(tool_runner, "last_error", False)
             session.add_event(SessionEvent(kind="tool_status", title="工具失败" if failed else "工具完成",
-                                           content=name, meta={"state": "failed" if failed else "completed", "tool": name}))
+                                           content=name, meta={"state": "failed" if failed else "completed", **base, **detail}))
             return result
 
         def _on_assistant_message(message: dict) -> None:

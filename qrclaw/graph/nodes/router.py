@@ -19,7 +19,7 @@ from pydantic import BaseModel, Field
 from qrclaw.prompts import ROUTE_INSTRUCTION
 from qrclaw.providers.litellm_provider import LiteLLMProvider
 from qrclaw.llm_service import get_llm_service
-from qrclaw.memory.context.context_manager import get_context_manager
+from qrclaw.memory.context.runtime.manager import get_context_manager
 from qrclaw.graph.nodes.wiki_query import WikiQueryNode
 from qrclaw.logger import get_logger
 

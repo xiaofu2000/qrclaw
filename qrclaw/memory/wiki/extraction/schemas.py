@@ -21,6 +21,7 @@ class WikiPageSchema(BaseModel):
     description: str = Field(default="", description="页面描述")
     tags: list[str] = Field(default_factory=list, description="标签列表")
     related: list[str] = Field(default_factory=list, description="关联页面")
+    source_ids: list[str] = Field(default_factory=list, description="支持本页事实的来源 ID，只能选择输入提供的 ID")
 
 
 class ConsolidatePageSchema(BaseModel):
@@ -29,6 +30,7 @@ class ConsolidatePageSchema(BaseModel):
     content: str = Field(..., description="整理后的正文")
     description: str = Field(default="", description="整理后的描述")
     tags: list[str] = Field(default_factory=list, description="整理后的标签")
+    related: list[str] = Field(default_factory=list, description="整理后的完整关联页面，空列表表示清除旧引用")
 
 
 class ExtractionSchema(BaseModel):

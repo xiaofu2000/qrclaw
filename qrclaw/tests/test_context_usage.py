@@ -7,7 +7,7 @@ from unittest.mock import PropertyMock, patch
 import pytest
 from fastapi.testclient import TestClient
 
-from qrclaw.memory.context.context_manager import init_context_manager
+from qrclaw.memory.context.runtime.manager import init_context_manager
 from qrclaw.memory.context.session import Session
 from qrclaw.providers.base import LLMResponse
 from qrclaw.server.app import create_app
@@ -43,6 +43,48 @@ def test_context_config_defaults_overrides_and_validation(temp_dir, monkeypatch,
         assert (loaded["_MODEL_MAX_TOKENS"], loaded["COMPRESS_THRESHOLD"]) == expected
 
 
+@pytest.mark.parametrize("overrides, env, expected", [
+    ({}, {}, 58200),
+    ({"llm": {"max_tokens": 10000}}, {}, 1200),
+    ({"llm": {"max_tokens": 10000}}, {"MODEL_MAX_TOKENS": "20000"}, 2400),
+    ({"compress": {"recent_max_tokens": 4096}}, {}, 4096),
+    ({"compress": {"recent_max_tokens": 4096}}, {"COMPRESS_RECENT_MAX_TOKENS": "8000"}, 8000),
+])
+def test_recent_budget_follows_window_unless_configured(temp_dir, monkeypatch, overrides, env, expected):
+    """压缩后保留的近期原文默认为窗口 12%，随窗口变化；显式配置的固定值优先。"""
+    from qrclaw import config, config_manager
+    config_file = temp_dir / "config.yaml"
+    config_file.write_text(json.dumps(overrides), encoding="utf-8")
+    monkeypatch.setattr(config_manager, "CONFIG_DIR", temp_dir)
+    monkeypatch.setattr(config_manager, "CONFIG_FILE", config_file)
+    for key in ("MODEL_MAX_TOKENS", "COMPRESS_RECENT_MAX_TOKENS"):
+        monkeypatch.delenv(key, raising=False)
+    for key, value in env.items():
+        monkeypatch.setenv(key, value)
+    loaded = runpy.run_path(config.__file__)
+    assert loaded["COMPRESS_RECENT_MAX_TOKENS"] == expected
+    assert "COMPRESS_SUMMARY_MAX_TOKENS" not in loaded
+
+
+def test_pick_recent_defaults_to_configured_budget():
+    """不传预算时按 COMPRESS_RECENT_MAX_TOKENS 保留，且不会把工具结果与调用拆开。"""
+    from qrclaw.memory.compression import compressor
+    messages = [
+        {"role": "user", "content": "旧问题"},
+        {"role": "assistant", "content": "", "tool_calls": [{"id": "t1", "type": "function",
+                                                              "function": {"name": "read", "arguments": "{}"}}]},
+        {"role": "tool", "tool_call_id": "t1", "content": "结果"},
+        {"role": "user", "content": "新问题"},
+    ]
+    sizes = {id(m): t for m, t in zip(messages, (10, 50, 5, 5))}
+    with patch.object(compressor, "_msg_token_count", side_effect=lambda m: sizes[id(m)]), \
+         patch.object(compressor, "COMPRESS_RECENT_MAX_TOKENS", 12):
+        recent, old = compressor._pick_recent(messages)
+    # 预算 12 能装下 tool 结果和新问题，但装不下对应的 tool_calls，孤立的 tool 结果要挪回待压缩部分。
+    assert recent == messages[3:]
+    assert old == messages[:3]
+
+
 @pytest.mark.parametrize("tokens, should_compress", [(291001, False), (436500, False), (436501, True)])
 def test_compression_only_above_ninety_percent(temp_dir, tokens, should_compress):
     """超过旧的 60% 不压缩，只有超过新阈值才调用摘要。"""
@@ -75,7 +117,7 @@ def test_context_usage_includes_prompt_and_tools_without_cumulative_usage(temp_d
     session.update_tokens(900000, 100000, 1000000)
     restored = Session(workspace.sessions_dir, session.session_id)
     assert restored.context_tokens == before
-    with TestClient(create_app(workspace), client=("127.0.0.1", 50000)) as client:
+    with TestClient(create_app(workspace), base_url="http://127.0.0.1", client=("127.0.0.1", 50000)) as client:
         detail = client.get("/v1/sessions/usage").json()
     assert detail["context_tokens"] == before
     assert detail["total_tokens"] == 1000000
@@ -118,7 +160,7 @@ def test_compression_events_and_history_survive_reload(temp_dir, failed):
         assert progress[-1]["meta"]["after_tokens"] == saved.context_tokens
         assert progress[-1]["meta"]["after_tokens"] < progress[-1]["meta"]["before_tokens"]
         assert progress[-1]["meta"]["after_message_count"] == len(saved.messages)
-    with TestClient(create_app(workspace), client=("127.0.0.1", 50000)) as client:
+    with TestClient(create_app(workspace), base_url="http://127.0.0.1", client=("127.0.0.1", 50000)) as client:
         stream = client.get("/v1/sessions/compress/events/stream?after=-1").text
     assert '"kind": "compression"' in stream
     assert "旧任务细节" not in stream

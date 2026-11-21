@@ -1,14 +1,15 @@
 import json
 import uuid
+from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
 from filelock import FileLock
 
 from qrclaw.logger import get_logger
-from qrclaw.memory.context.session.events import SessionEvent
+from qrclaw.memory.context.session.events import SessionEvent, with_status_code
 from qrclaw.memory.token_utils import count_messages_tokens
 
-logger = get_logger("qrclaw.memory.session")
+logger = get_logger("qrclaw.memory.context.session")
 USAGE_KEYS = ("prompt_tokens", "completion_tokens", "total_tokens")
 
 
@@ -35,6 +36,20 @@ def _normalize_message(message: dict) -> dict:
     return message
 
 
+def latest_reply_id(messages: list[dict], history_version: int = 0) -> str | None:
+    """返回末轮正文回复的稳定标识，工具调用和执行报告不作为已读目标。"""
+    user_index = next((i for i in range(len(messages) - 1, -1, -1) if messages[i].get("role") == "user"), -1)
+    if user_index < 0:
+        return None
+    for index in range(len(messages) - 1, user_index, -1):
+        message = messages[index]
+        if (message.get("role") == "assistant" and message.get("kind") != "execution_report"
+                and not message.get("tool_calls") and isinstance(message.get("content"), str)
+                and message["content"].strip()):
+            return message.get("uuid") or f"legacy:{history_version}:{index}"
+    return None
+
+
 def list_sessions(sessions_dir: Path) -> list[dict]:
     sessions_dir.mkdir(parents=True, exist_ok=True)
     sessions = []
@@ -55,6 +70,7 @@ def list_sessions(sessions_dir: Path) -> list[dict]:
                 "title": title,
                 "message_count": len(messages),
                 "updated_at": mtime,
+                "last_reply_id": latest_reply_id(messages, data.get("history_version", 0) if isinstance(data, dict) else 0),
             })
         except Exception:
             pass
@@ -73,10 +89,13 @@ def get_last_session_id(sessions_dir: Path) -> str | None:
     return None
 
 
-def delete_session(session_id: str, sessions_dir: Path) -> bool:
+def delete_session(session_id: str, sessions_dir: Path, *, before_delete: Callable[[], None] | None = None) -> bool:
+    """在会话文件锁内先执行来源撤销，再删除文件。"""
     path = _session_path(sessions_dir, session_id)
     with FileLock(f"{path}.lock"):
         if path.exists():
+            if before_delete is not None:
+                before_delete()
             path.unlink()
             logger.info(f"删除会话: {session_id}")
             return True
@@ -115,6 +134,8 @@ class Session:
         self.total_tokens = 0
         self.usage = dict.fromkeys(USAGE_KEYS, 0)
         self.run_usage = dict.fromkeys(USAGE_KEYS, 0)
+        # 最近一次由本对象读取或写入的文件状态；文件未变时 _load 直接复用内存内容，不再整份解析。
+        self._disk_signature: tuple[int, ...] | None = None
 
         sessions_dir.mkdir(parents=True, exist_ok=True)
         self._path = _session_path(sessions_dir, self.session_id)
@@ -122,7 +143,7 @@ class Session:
 
     def add(self, message: dict):
         with FileLock(f"{self._path}.lock"):
-            self._load(strict=True)
+            self._load_for_update()
             message = _normalize_message(dict(message))
             if "uuid" not in message:
                 message["uuid"] = uuid.uuid4().hex[:12]
@@ -134,7 +155,7 @@ class Session:
 
     def add_event(self, event: SessionEvent | dict):
         with FileLock(f"{self._path}.lock"):
-            self._load(strict=True)
+            self._load_for_update()
             payload = event.__dict__ if isinstance(event, SessionEvent) else dict(event)
             payload.setdefault("created_at", datetime.now().isoformat())
             self.events.append(payload)
@@ -145,26 +166,30 @@ class Session:
             if not self._path.exists():
                 self._save()
 
-    def set_title(self, title: str) -> None:
-        """保存用户指定的会话标题。"""
+    def set_title(self, title: str, *, only_if_unset: bool = False) -> bool:
+        """保存会话标题；自动生成的标题用 only_if_unset，不覆盖用户在生成期间改好的名字。"""
         with FileLock(f"{self._path}.lock"):
             if not self._path.exists():
                 raise FileNotFoundError(self.session_id)
-            self._load(strict=True)
+            self._load_for_update()
+            if only_if_unset and self.title:
+                return False
             self.title = title
             self._save()
+            return True
 
-    def rewrite_latest_user_turn(self, message_id: str, content: str | None) -> set[str]:
+    def rewrite_latest_user_turn(self, message_id: str, content: str | None, *, before_save: Callable[[str, set[str], set[str]], None] | None = None) -> set[str]:
         """原子替换或删除最后一轮用户消息，并返回需清理的子会话 ID。"""
         with FileLock(f"{self._path}.lock"):
             if not self._path.exists():
                 raise FileNotFoundError(self.session_id)
-            self._load(strict=True)
+            self._load_for_update()
             index = next((i for i in range(len(self.messages) - 1, -1, -1)
                           if self.messages[i].get("role") == "user"), -1)
             if index < 0 or self.messages[index].get("uuid") != message_id:
                 raise ValueError("只能操作最后一条用户消息，请刷新会话")
             original = self.messages[index]
+            removed_ids = {m["uuid"] for m in self.messages[index:] if m.get("uuid")}
             if "turn_event_index" in original:
                 event_start = int(original["turn_event_index"])
             else:
@@ -187,7 +212,11 @@ class Session:
                 self.messages.append({**original, "content": content, "turn_event_index": len(self.events)})
             self.history_version += 1
             self.prompt_tokens = count_messages_tokens(self.messages)
-            self._save()
+            try:
+                self._save(before_replace=(lambda text: before_save(text, removed_ids, children)) if before_save is not None else None)
+            except Exception:
+                self._load(strict=True)
+                raise
             return children
 
     def start_run_usage(self):
@@ -201,14 +230,14 @@ class Session:
     def set_context_overhead(self, tokens: int) -> None:
         """保存本次执行的提示词和工具开销，供会话查询复用。"""
         with FileLock(f"{self._path}.lock"):
-            self._load(strict=True)
+            self._load_for_update()
             self.context_overhead_tokens = max(0, tokens)
             self._save()
 
     def update_tokens(self, prompt_tokens: int, completion_tokens: int, total_tokens: int):
         values = (prompt_tokens, completion_tokens, total_tokens)
         with FileLock(f"{self._path}.lock"):
-            self._load(strict=True)
+            self._load_for_update()
             for key, value in zip(USAGE_KEYS, values):
                 self.usage[key] += value
                 self.run_usage[key] += value
@@ -228,27 +257,52 @@ class Session:
             self.events = []
             self.title = None
             self.history_version = 0
+            self._disk_signature = None
             if self._path.exists():
                 self._path.unlink()
 
-    def _save(self):
+    def _save(self, *, before_replace: Callable[[str], None] | None = None):
+        """原子保存；可在替换前持久化与聊天删改绑定的来源撤销。"""
         temp_path = self._path.with_name(f".{self._path.name}.{uuid.uuid4().hex}.tmp")
         try:
-            temp_path.write_text(
-                json.dumps({"messages": self.messages, "events": self.events, "usage": self.usage,
+            text = json.dumps({"messages": self.messages, "events": self.events, "usage": self.usage,
                             "title": self.title, "history_version": self.history_version,
-                            "context_overhead_tokens": self.context_overhead_tokens}, ensure_ascii=False, indent=2),
-                encoding="utf-8"
-            )
+                            "context_overhead_tokens": self.context_overhead_tokens}, ensure_ascii=False, indent=2)
+            temp_path.write_text(text, encoding="utf-8")
+            if before_replace is not None:
+                before_replace(text)
             temp_path.replace(self._path)
+            self._disk_signature = self._stat_signature()
         except Exception as e:
+            # 内存可能含未落盘的改动，下次读取必须重新解析文件。
+            self._disk_signature = None
             logger.error(f"会话保存失败: {e}", exc_info=True)
             raise
         finally:
             temp_path.unlink(missing_ok=True)
 
+    def _stat_signature(self) -> tuple[int, ...] | None:
+        """文件身份与状态。写入都经原子替换，每次换成新文件（新 inode、新 ctime），
+        时间戳精度粗的文件系统上也能分辨出另一个对象刚写过的同样大小的内容。"""
+        try:
+            stat = self._path.stat()
+        except FileNotFoundError:
+            return None
+        return stat.st_ino, stat.st_mtime_ns, stat.st_ctime_ns, stat.st_size
+
+    def _load_for_update(self) -> None:
+        """修改前读取最新内容，并在保存成功前作废签名：改到一半抛异常时，
+        内存里的残缺状态不会被下次写入当成「与文件一致」而落盘。"""
+        self._load(strict=True)
+        self._disk_signature = None
+
     def _load(self, strict: bool = False):
-        if not self._path.exists():
+        signature = self._stat_signature()
+        if signature is not None and signature == self._disk_signature:
+            # 文件自上次读写后未被任何人改过，内存内容与文件一致。
+            return
+        self._disk_signature = None
+        if signature is None:
             self.messages = []
             self.events = []
             self.title = None
@@ -276,7 +330,8 @@ class Session:
                 history_version = 0
                 context_overhead_tokens = 0
             self.messages = [_normalize_message(m) for m in messages if m.get("role") != "system"]
-            self.events = [dict(event) for event in events]
+            # 旧会话的状态事件没有代码，读取时按原标题补齐，后续逻辑只看代码。
+            self.events = [with_status_code(dict(event)) for event in events]
             self.title = title if isinstance(title, str) and title else None
             self.history_version = int(history_version)
             self.prompt_tokens = count_messages_tokens(self.messages)
@@ -284,6 +339,7 @@ class Session:
             self.usage = {key: int(usage.get(key, 0)) for key in USAGE_KEYS}
             self.completion_tokens = self.usage["completion_tokens"]
             self.total_tokens = self.usage["total_tokens"]
+            self._disk_signature = signature
         except Exception as e:
             logger.error(f"加载会话失败: {e}", exc_info=True)
             if strict:

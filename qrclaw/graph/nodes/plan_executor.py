@@ -20,9 +20,9 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.text import Text
 from qrclaw.memory.context.session import Session
-from qrclaw.memory.context.step_result import StepResult
-from qrclaw.memory.context.events import SessionEvent
-from qrclaw.memory.context.context_manager import get_context_manager
+from qrclaw.memory.context.plan.step_result import StepResult
+from qrclaw.memory.context.session.events import SessionEvent, status_event
+from qrclaw.memory.context.runtime.manager import get_context_manager
 from qrclaw.workspace import Workspace
 from qrclaw.graph.executor import get_next_layer
 from qrclaw.graph.nodes.replanner import ReplannerNode
@@ -49,11 +49,11 @@ class PlanExecutorNode:
     ) -> str:
         ctx = get_context_manager()
         ps = ctx.plan_state
-        session.add_event(SessionEvent(kind="status", title="规划执行开始", content=ps.goal))
+        session.add_event(status_event("plan_started", ps.goal))
 
         def fail(reason: str) -> str:
             logger.error("规划执行失败: %s", reason)
-            session.add_event(SessionEvent(kind="status", title="规划执行失败", content=reason))
+            session.add_event(status_event("plan_failed", reason))
             ctx.clear_plan()
             return f"错误：规划执行失败：{reason}"
 
@@ -71,7 +71,7 @@ class PlanExecutorNode:
             try:
                 if is_serial:
                     step = layer[0]
-                    session.add_event(SessionEvent(kind="status", title="执行中", content=step.description))
+                    session.add_event(status_event("step_running", step.description))
                     console.print(f"[yellow]→ {step.description} (串行)[/yellow]")
                     child_id = prepare_sub_agent(session, workspace, f"step-{step.id}", step.description)
                     try:
@@ -83,7 +83,7 @@ class PlanExecutorNode:
                         raise
                     if sub_agent_snapshot(child_id):
                         record_sub_agent_end(workspace.sessions_dir, session.session_id, child_id, "completed")
-                    session.add_event(SessionEvent(kind="status", title="步骤完成", content=step.description))
+                    session.add_event(status_event("step_completed", step.description))
                     ctx.add_step_result(StepResult(
                         step_id=step.id,
                         description=step.description,
@@ -92,7 +92,7 @@ class PlanExecutorNode:
                 else:
                     console.print(f"[yellow]→ 并行执行 {len(layer)} 个步骤[/yellow]")
                     for step in layer:
-                        session.add_event(SessionEvent(kind="status", title="执行中", content=step.description))
+                        session.add_event(status_event("step_running", step.description))
                         console.print(f"  [dim]Step {step.id}:[/dim] {step.description}")
                     results = self._run_parallel(layer, ps.goal, ps.past_steps, workspace, run_sub_agent_fn, console, session)
                     for step in layer:
@@ -103,7 +103,7 @@ class PlanExecutorNode:
                         ))
             except Exception as e:
                 if is_serial:
-                    session.add_event(SessionEvent(kind="status", title="步骤失败", content=step.description))
+                    session.add_event(status_event("step_failed", step.description))
                 return fail(f"子任务执行失败：{e}")
 
             # 从剩余步骤中移除已完成的这一层
@@ -113,7 +113,7 @@ class PlanExecutorNode:
             # 不管 remaining 是否为空，都让 Replanner 评估一次
             # 避免最后一层并行完成后跳过 Replanner 直接交给主 agent
             console.print("\n[dim]🔄 重新评估剩余计划...[/dim]")
-            session.add_event(SessionEvent(kind="status", title="重规划中", content="正在评估剩余计划"))
+            session.add_event(status_event("replanning", "正在评估剩余计划"))
             try:
                 new_remaining = self.replanner.run()
             except Exception as e:
@@ -121,7 +121,7 @@ class PlanExecutorNode:
 
             if new_remaining is None:
                 console.print("[bold green]✅ Replanner 判断目标已达成[/bold green]\n")
-                session.add_event(SessionEvent(kind="status", title="重规划完成", content="目标已达成"))
+                session.add_event(status_event("replanned", "目标已达成"))
                 ps.remaining = []
                 break
 
@@ -229,7 +229,7 @@ class PlanExecutorNode:
                     record_sub_agent_end(workspace.sessions_dir, session.session_id, child_id, "completed")
                 with lock:
                     results[step.id] = result
-                session.add_event(SessionEvent(kind="status", title="步骤完成", content=step.description))
+                session.add_event(status_event("step_completed", step.description))
                 notify_queue.put(("ok", step.id, step.description, result))
             except Exception as e:
                 if sub_agent_snapshot(child_id):
@@ -237,7 +237,7 @@ class PlanExecutorNode:
                 logger.error(f"Step {step.id} 执行失败: {e}", exc_info=True)
                 with lock:
                     errors.append(f"Step {step.id}: {e}")
-                session.add_event(SessionEvent(kind="status", title="步骤失败", content=step.description))
+                session.add_event(status_event("step_failed", step.description))
                 notify_queue.put(("err", step.id, step.description, str(e)))
 
         threads = [

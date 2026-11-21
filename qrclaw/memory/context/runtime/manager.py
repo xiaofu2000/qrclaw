@@ -48,6 +48,7 @@ class ContextManager:
         self._lock = threading.Lock()
         self._plan = PlanController()
         self._prompt_cache = SystemPromptCache()
+        self._wiki_context = ""
 
     def add(self, message: dict):
         self.sessions.add(message)
@@ -57,10 +58,12 @@ class ContextManager:
             self._plan.set_plan(goal, steps, project_path)
 
     def set_wiki_context(self, wiki_context: str) -> None:
+        """本轮已读取正文保留到最终答复，避免结束计划后去重却找不到旧正文。"""
         with self._lock:
             if self._plan.state is None:
                 return
             self._plan.set_wiki_context(wiki_context)
+            self._wiki_context = wiki_context
         if wiki_context:
             self.invalidate_cache()
 
@@ -89,10 +92,8 @@ class ContextManager:
         if cached is not None:
             return cached
 
-        wiki_context = ""
         with self._lock:
-            if self._plan.state is not None:
-                wiki_context = self._plan.state.wiki_context
+            wiki_context = self._wiki_context
 
         prompt = build_system_prompt(
             heartbeat_file=self.workspace.heartbeat_file,

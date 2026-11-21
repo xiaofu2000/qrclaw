@@ -1,21 +1,14 @@
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
-const { readFileSync } = require('node:fs')
-const vm = require('node:vm')
-const ts = require('typescript')
+const { loadModule } = require('./helpers/load.cjs')
 
-const source = readFileSync('src/lib/api.ts', 'utf8').replace(/^const baseUrl = .*$/m, "const baseUrl = ''")
-const compiled = ts.transpileModule(source, {
-  compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
-}).outputText
+const withoutBaseUrl = source => source.replace(/^const baseUrl = .*$/m, "const baseUrl = ''")
 
 function clientWithFrames(frames) {
   const bytes = new TextEncoder().encode(frames)
   const chunks = [...bytes].map(byte => Uint8Array.of(byte))
   const requests = []
-  const exports = {}
-  vm.runInNewContext(compiled, {
-    exports,
+  const exports = loadModule('src/lib/api.ts', { transform: withoutBaseUrl, globals: {
     TextDecoder,
     fetch: async (url, options) => {
       requests.push({ url, options })
@@ -28,7 +21,7 @@ function clientWithFrames(frames) {
         }) },
       }
     },
-  })
+  } })
   return { api: exports.createApiClient(), requests }
 }
 
@@ -74,4 +67,37 @@ test('编辑请求只发送一次并携带原消息 ID', async () => {
   assert.equal(JSON.parse(requests[0].options.body).edit_message_id, 'message-1')
   assert.equal(JSON.parse(requests[0].options.body).plan_enabled, true)
   assert.equal(JSON.parse(requests[0].options.body).messages[0].content, '新问题')
+})
+
+test('记忆接口编码名称、携带版本且冲突不重发写入', async () => {
+  const requests = []
+  const api = loadModule('src/lib/api.ts', { transform: withoutBaseUrl, globals: { TextDecoder, fetch: async (url, options) => {
+    requests.push({ url, options })
+    return { ok: options.method !== 'PATCH', status: 409, json: async () => ({ detail: '版本冲突' }) }
+  } } }).createApiClient()
+  await api.listWikiPages('中文 标签', 20)
+  assert.match(requests[0].url, /q=%E4%B8%AD%E6%96%87%20%E6%A0%87%E7%AD%BE&offset=20/)
+  await assert.rejects(api.editWikiPage('中文: 页', { content: '正文', description: '', tags: [], related: [], revision: 8, tagsText: '表单输入' }), error => error.status === 409)
+  assert.equal(requests.length, 2)
+  assert.equal(JSON.parse(requests[1].options.body).revision, 8)
+  assert.equal(JSON.parse(requests[1].options.body).tagsText, undefined)
+  await api.deleteWikiPage('中文: 页', 8)
+  assert.match(requests[2].url, /%E4%B8%AD%E6%96%87%3A%20%E9%A1%B5\?revision=8$/)
+  assert.equal(requests[2].options.method, 'DELETE')
+})
+
+test('会话读取可带游标只取新增部分，失败时给出服务端的中文原因和状态码', async () => {
+  const requests = []
+  const api = loadModule('src/lib/api.ts', { transform: withoutBaseUrl, globals: { TextDecoder, fetch: async (url, options) => {
+    requests.push({ url, options })
+    return url.includes('missing')
+      ? { ok: false, status: 404, json: async () => ({ detail: '会话不存在' }) }
+      : { ok: true, status: 200, json: async () => ({ id: 'A', messages: [] }) }
+  } } }).createApiClient()
+  await api.getSession('A')
+  await api.getSession('A', { historyVersion: 2, messages: 30, events: 41 })
+  assert.equal(requests[0].url, '/v1/sessions/A')
+  assert.equal(requests[1].url, '/v1/sessions/A?history_version=2&messages_from=30&events_from=41')
+  await assert.rejects(api.getSession('missing'), error => error.message === '会话不存在' && error.status === 404)
+  await assert.rejects(api.deleteSession('missing'), error => error.message === '会话不存在')
 })

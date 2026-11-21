@@ -5,14 +5,11 @@
 子 agent 共享父 agent 的工作空间（子 agent 是一次性的）。
 """
 from pathlib import Path
+from qrclaw.home import qrclaw_home
 import re
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from qrclaw.memory import WikiMemoryManager
 
 # 所有 agent 的根目录
-AGENTS_ROOT = Path.home() / ".qrclaw" / "agents"
+AGENTS_ROOT = qrclaw_home() / "agents"
 
 
 def is_valid_agent_id(agent_id: str) -> bool:
@@ -46,16 +43,6 @@ class Workspace:
         self.logs_dir.mkdir(parents=True, exist_ok=True)
         self.skills_dir.mkdir(parents=True, exist_ok=True)
         self.memory_dir.mkdir(parents=True, exist_ok=True)
-
-    def get_memory_manager(self) -> "WikiMemoryManager":
-        """
-        获取 WikiMemoryManager 实例（记忆管理器）
-        
-        Returns:
-            WikiMemoryManager: Wiki 架构的记忆管理器
-        """
-        from qrclaw.memory import WikiMemoryManager
-        return WikiMemoryManager.for_workspace(self.memory_dir)
 
     def sub_agent(self, sub_id: str) -> "Workspace":
         """

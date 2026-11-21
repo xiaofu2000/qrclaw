@@ -1,5 +1,5 @@
 """按会话持久化提取进度和待处理正文，避免重启、压缩后重复扫描。"""
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, fields
 from pathlib import Path
 from typing import Callable, TypeVar
 import json
@@ -16,8 +16,6 @@ class ExtractionState:
     """提取状态；seen 记录已接收版本，pending 保留尚未成功处理的正文。"""
 
     last_extraction_tokens: int = 0
-    last_extraction_tool_calls: int = 0
-    last_extraction_idx: int = 0
     total_extractions: int = 0
     last_extraction_time: float = 0.0
     last_attempt_time: float = 0.0
@@ -26,6 +24,8 @@ class ExtractionState:
     pending_messages: list[dict] = field(default_factory=list)
     preserved_message_ids: list[str] = field(default_factory=list)
     force_pending: bool = False
+    extraction_status: str = "idle"
+    last_error: str = ""
 
 
 class ExtractionIndexer:
@@ -59,20 +59,6 @@ class ExtractionIndexer:
                 self._save_state(state)
             return result
 
-    def record_extraction(self, tokens: int, tool_calls: int, message_count: int, current_time: float) -> None:
-        """保留原有统计入口，记录一次成功处理。"""
-        def change(state):
-            state.last_extraction_tokens = tokens
-            state.last_extraction_tool_calls = tool_calls
-            state.last_extraction_idx = message_count
-            state.total_extractions += 1
-            state.last_extraction_time = current_time
-        self.update(change)
-
-    def record_message_idx(self, idx: int) -> None:
-        """保存旧调用方使用的消息位置。"""
-        self.update(lambda state: setattr(state, "last_extraction_idx", idx))
-
     def reset(self) -> None:
         """显式重置进度，不在读取异常时自动覆盖原文件。"""
         with self.lock:
@@ -89,7 +75,11 @@ class ExtractionIndexer:
             return ExtractionState()
         try:
             data = json.loads(self.state_file.read_text(encoding="utf-8"))
-            state = ExtractionState(**data)
+            if not isinstance(data, dict):
+                raise ValueError("状态文件必须是对象")
+            # 旧版本写入的已废弃字段（如 last_extraction_idx）直接忽略，下次保存时自然移除。
+            known = {item.name for item in fields(ExtractionState)}
+            state = ExtractionState(**{key: value for key, value in data.items() if key in known})
             if (not isinstance(state.seen_messages, dict)
                     or not all(isinstance(k, str) and isinstance(v, str) for k, v in state.seen_messages.items())
                     or not isinstance(state.pending_messages, list)
@@ -99,10 +89,12 @@ class ExtractionIndexer:
                     or not isinstance(state.preserved_message_ids, list)
                     or not all(isinstance(i, str) for i in state.preserved_message_ids)
                     or not isinstance(state.force_pending, bool)
+                    or state.extraction_status not in ("idle", "pending", "processing", "completed", "failed")
+                    or not isinstance(state.last_error, str)
                     or not all(isinstance(getattr(state, name), (int, float))
                                and math.isfinite(getattr(state, name)) and getattr(state, name) >= 0
                                for name in ("last_extraction_time", "last_attempt_time", "last_activity_time", "total_extractions",
-                                            "last_extraction_tokens", "last_extraction_tool_calls", "last_extraction_idx"))):
+                                            "last_extraction_tokens"))):
                 raise ValueError("状态字段格式错误")
             return state
         except (ValueError, TypeError) as exc:

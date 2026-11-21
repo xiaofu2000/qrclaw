@@ -11,7 +11,7 @@ from typing import Optional
 
 from rich.console import Console
 
-from qrclaw.memory.context.context_manager import ContextManager
+from qrclaw.memory.context.runtime.manager import ContextManager
 from qrclaw.memory.context.session import Session
 from qrclaw.providers.base import LLMProvider
 from qrclaw.workspace import Workspace

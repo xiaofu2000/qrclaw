@@ -1,79 +1,18 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { createApiClient } from '../../lib/api'
-import type { ChatTimelineItem, Conversation, Message, SessionDetail, SessionSummary, SubAgentCard } from '../../lib/types'
+import type { Conversation, SessionDetail, SessionEvent, SessionSummary } from '../../lib/types'
+import {
+  buildTimeline, getAgentActivity, latestReplyId, loadReadReplies, mergeSessionDelta, normalizeMessages, saveReadReplies,
+  serverCounts, sessionCursor, sessionStats, subAgentCards, toConversation, turnEventStart, type ServerCounts,
+} from './chatModel'
+import { useIdSet } from './useIdSet'
 
 type ApiClient = ReturnType<typeof createApiClient>
 
-function toConversation(session: SessionSummary): Conversation {
-  return { id: session.id, title: session.title || '新对话', updatedAt: session.updated_at, messageCount: session.message_count }
-}
-
-function normalizeMessages(sessionId: string, messages: SessionDetail['messages']): Message[] {
-  const toolNames = new Map<string, string>()
-  return messages.flatMap((message, index) => {
-    for (const call of message.tool_calls ?? []) toolNames.set(call.id, call.function?.name ?? '工具')
-    if (message.role === 'assistant' && message.tool_calls?.length && !message.content) return []
-    return [{
-      id: `${sessionId}-${index}`,
-      uuid: message.uuid,
-      sourceIndex: index,
-      role: message.role as Message['role'],
-      kind: message.kind,
-      content: typeof message.content === 'string' ? message.content : JSON.stringify(message.content ?? ''),
-      toolName: message.tool_call_id ? toolNames.get(message.tool_call_id) : undefined,
-    }]
-  })
-}
-
-/** 旧会话没有轮次索引时，仅用完整的消息保存事件推断末轮过程起点。 */
-function turnEventStart(session: SessionDetail, userIndex: number): number {
-  const marker = session.messages[userIndex].turn_event_index
-  if (marker !== undefined) return marker
-  const prior = session.messages.slice(0, userIndex)
-    .filter(message => (message.role === 'assistant' || message.role === 'tool') && message.kind !== 'execution_report').length
-  const saved = (session.events ?? []).flatMap((event, index) => event.kind === 'message_saved' ? [index] : [])
-  const total = session.messages.filter(message => (message.role === 'assistant' || message.role === 'tool') && message.kind !== 'execution_report').length
-  return saved.length === total && prior > 0 ? saved[prior - 1] + 1 : 0
-}
-
-/** 从父会话事件还原每次子任务的卡片及最终状态。 */
-function subAgentCards(session: SessionDetail, childSessions: Record<string, SessionDetail>): SubAgentCard[] {
-  const cards: SubAgentCard[] = []
-  const byId = new Map<string, SubAgentCard>()
-  for (const event of session.events ?? []) {
-    if (!event || event.kind !== 'subagent') continue
-    const childSessionId = event.meta?.child_session_id
-    if (!childSessionId) continue
-    if (event.meta?.state === 'running') {
-      if (byId.has(childSessionId)) continue
-      const card: SubAgentCard = {
-        id: `subagent-${childSessionId}`, childSessionId, agentId: event.meta.agent_id ?? '子 Agent',
-        task: event.content ?? '', state: 'running', afterMessageIndex: event.meta.after_message_index ?? -1,
-      }
-      cards.push(card)
-      byId.set(childSessionId, card)
-    } else {
-      const card = byId.get(childSessionId)
-      if (card && (event.meta?.state === 'completed' || event.meta?.state === 'failed')) card.state = event.meta.state
-    }
-  }
-  return cards.map(card => card.state === 'running' && childSessions[card.childSessionId]?.run_status === 'idle'
-    ? { ...card, state: 'interrupted' } : card)
-}
-
-/** 按原始消息位置插入卡片，避免把子任务内容加入模型上下文。 */
-function buildTimeline(session: SessionDetail | null, messages: Message[], cards: SubAgentCard[]): ChatTimelineItem[] {
-  if (!session) return messages
-  const after = new Map<number, SubAgentCard[]>()
-  for (const card of cards) after.set(card.afterMessageIndex, [...(after.get(card.afterMessageIndex) ?? []), card])
-  const timeline: ChatTimelineItem[] = [...(after.get(-1) ?? [])]
-  let next = 0
-  for (let index = 0; index < session.messages.length; index++) {
-    while (messages[next]?.sourceIndex === index) timeline.push(messages[next++])
-    timeline.push(...(after.get(index) ?? []))
-  }
-  return timeline
-}
+/** 运行中会话的状态轮询间隔；详情只在完成或当前会话没有过程流时读取。 */
+const POLL_INTERVAL = 1200
+/** 首轮完成后等后台生成标题，再刷新一次会话列表。 */
+const TITLE_REFRESH_DELAY = 5000
 
 /** 按会话维护聊天、过程事件和断线恢复状态。 */
 export function useChatWorkspace(api: ApiClient) {
@@ -84,6 +23,7 @@ export function useChatWorkspace(api: ApiClient) {
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [activeId, setActiveId] = useState('')
   const [sessions, setSessions] = useState<Record<string, SessionDetail>>({})
+  const [readReplies, setReadReplies] = useState(loadReadReplies)
   const [streaming, setStreaming] = useState<Record<string, string>>({})
   const [childStreaming, setChildStreaming] = useState<Record<string, string>>({})
   const [selectedChildren, setSelectedChildren] = useState<Record<string, string>>({})
@@ -92,15 +32,16 @@ export function useChatWorkspace(api: ApiClient) {
   const [connectionError, setConnectionError] = useState('')
   const [connecting, setConnecting] = useState(true)
   const [creating, setCreating] = useState(false)
-  const [loadingIds, setLoadingIds] = useState<Set<string>>(new Set())
-  const [runningIds, setRunningIds] = useState<Set<string>>(new Set())
-  const [mutatingIds, setMutatingIds] = useState<Set<string>>(new Set())
+  const loadingSet = useIdSet()
+  const runningSet = useIdSet()
+  const mutatingSet = useIdSet()
+  // 只把稳定的函数放进依赖，集合对象本身每次渲染都会重建。
+  const replaceRunning = runningSet.replace
   // 选择会话时立即更新，避免删除响应赶在重渲染前覆盖新的选择。
   const activeIdRef = useRef('')
-  const loadingRef = useRef(new Set<string>())
-  const runningRef = useRef(new Set<string>())
-  const mutatingRef = useRef(new Set<string>())
   const requestsRef = useRef(new Set<string>())
+  /** 聊天请求已被接收、需要过程流的会话；只有正在查看的那个会真正连接，切回来时再连。 */
+  const streamWantedRef = useRef(new Set<string>())
   const creatingRef = useRef(false)
   const eventCursorsRef = useRef(new Map<string, number>())
   const eventStreamsRef = useRef(new Map<string, AbortController>())
@@ -109,6 +50,32 @@ export function useChatWorkspace(api: ApiClient) {
   const streamBaselinesRef = useRef(new Map<string, number>())
   const historyVersionsRef = useRef(new Map<string, number>())
   const deletedIdsRef = useRef(new Set<string>())
+  // 增量读取的依据：最近一次缓存的会话与服务端确认的长度。
+  const sessionsRef = useRef<Record<string, SessionDetail>>({})
+  const serverCountsRef = useRef(new Map<string, ServerCounts>())
+  sessionsRef.current = sessions
+
+  /** 视图只能确认当前已结束的回复，迟到的可见事件不能读掉下一轮或其他会话。 */
+  const markReplyRead = useCallback((id: string, replyId: string) => {
+    const detail = sessions[id]
+    if (id !== activeIdRef.current || !detail || detail.run_status !== 'idle' || detail.active_subagents
+      || runningSet.ref.current.has(id) || mutatingSet.ref.current.has(id) || latestReplyId(detail) !== replyId) return
+    setReadReplies(current => {
+      if (current[id]?.includes(replyId)) return current
+      const saved = loadReadReplies()
+      const next = { ...current }
+      for (const [key, ids] of Object.entries(saved)) next[key] = [...new Set([...ids, ...(current[key] ?? [])])]
+      next[id] = [...new Set([...(next[id] ?? []), replyId])]
+      return saveReadReplies(next)
+    })
+  }, [sessions, runningSet.ref, mutatingSet.ref])
+
+  /** 读取会话：有同一历史版本的缓存时只取新增部分，拼接不上就改为完整读取。 */
+  const readSession = useCallback(async (id: string): Promise<SessionDetail> => {
+    const counts = serverCountsRef.current.get(id), cached = sessionsRef.current[id]
+    const detail = await api.getSession(id, cached ? sessionCursor(counts) : undefined)
+    return mergeSessionDelta(cached, detail) ?? await api.getSession(id)
+  }, [api])
 
   const storeSession = useCallback((session: SessionDetail) => {
     if (deletedIdsRef.current.has(session.id)) return
@@ -125,17 +92,23 @@ export function useChatWorkspace(api: ApiClient) {
     historyVersionsRef.current.set(session.id, version)
     eventCursorsRef.current.set(session.id, version > previous ? (session.events?.length ?? 0) - 1
       : Math.max(eventCursorsRef.current.get(session.id) ?? -1, (session.events?.length ?? 0) - 1))
-    setSessions(current => ({ ...current, [session.id]: {
-      ...session,
-      messages: version === previous && (current[session.id]?.messages.length ?? 0) > session.messages.length
-        ? current[session.id].messages : session.messages,
-      events: version === previous && (current[session.id]?.events?.length ?? 0) > (session.events?.length ?? 0)
-        ? current[session.id].events : session.events,
-    } }))
+    setSessions(current => {
+      const stored = {
+        ...session,
+        messages: version === previous && (current[session.id]?.messages.length ?? 0) > session.messages.length
+          ? current[session.id].messages : session.messages,
+        events: version === previous && (current[session.id]?.events?.length ?? 0) > (session.events?.length ?? 0)
+          ? current[session.id].events : session.events,
+      }
+      // 缓存与服务端长度同时更新，增量读取不会拿新游标去拼旧缓存。
+      sessionsRef.current = { ...sessionsRef.current, [session.id]: stored }
+      serverCountsRef.current.set(session.id, serverCounts(session))
+      return { ...current, [session.id]: stored }
+    })
   }, [])
 
   /** 按服务端序号合并事件，忽略重连时重发的旧事件。 */
-  const mergeEvent = useCallback((id: string, index: number, event: NonNullable<SessionDetail['events']>[number]) => {
+  const mergeEvent = useCallback((id: string, index: number, event: SessionEvent) => {
     if (index <= (eventCursorsRef.current.get(id) ?? -1)) return
     eventCursorsRef.current.set(id, index)
     setSessions(current => {
@@ -165,22 +138,22 @@ export function useChatWorkspace(api: ApiClient) {
       if (controller.signal.aborted) return
       mergeEvent(id, index, event)
       if (event.kind === 'message_saved' || (event.kind === 'compression' && event.meta?.state === 'completed')) {
-        void api.getSession(id).then(storeSession).catch(() => { /* 下一次读取会话时恢复。 */ })
+        void readSession(id).then(storeSession).catch(() => { /* 下一次读取会话时恢复。 */ })
       }
       if (!child && event.kind === 'subagent' && event.meta?.state === 'running' && event.meta.child_session_id) {
-        void api.getSession(event.meta.child_session_id).then(storeSession).catch(() => { /* 卡片仍可通过刷新恢复。 */ })
+        void readSession(event.meta.child_session_id).then(storeSession).catch(() => { /* 卡片仍可通过刷新恢复。 */ })
       }
     }, controller.signal, child ? text => setChildStreaming(current => ({ ...current, [id]: text })) : undefined)
       .catch(() => { /* 过程流中断后读取已保存的会话，不重新执行任务。 */ })
       .finally(() => {
         const current = eventStreamsRef.current.get(id) === controller
         if (current) eventStreamsRef.current.delete(id)
-        void api.getSession(id).then(storeSession).catch(() => { /* 后续刷新仍可恢复。 */ })
+        void readSession(id).then(storeSession).catch(() => { /* 后续刷新仍可恢复。 */ })
         if (child && current) setChildStreaming(previous => ({ ...previous, [id]: '' }))
         if (current && !controller.signal.aborted) {
           const timer = setTimeout(() => {
             streamRetryRef.current.delete(id)
-            void api.getSession(id).then(detail => {
+            void readSession(id).then(detail => {
               storeSession(detail)
               if (detail.run_status !== 'idle' || (!child && detail.active_subagents)) startEventStream(id, child)
             }).catch(() => { /* 下次打开会话时恢复。 */ })
@@ -188,22 +161,26 @@ export function useChatWorkspace(api: ApiClient) {
           streamRetryRef.current.set(id, timer)
         }
       })
-  }, [api, mergeEvent, storeSession])
+  }, [api, mergeEvent, readSession, storeSession])
 
   useEffect(() => () => {
     for (const controller of eventStreamsRef.current.values()) controller.abort()
     for (const timer of streamRetryRef.current.values()) clearTimeout(timer)
   }, [])
 
-  const refreshConversations = useCallback(async () => {
-    const listed = await api.listSessions()
+  /** 用列表接口刷新会话、运行状态，并清理已删除会话的已读记录。 */
+  const applyListing = useCallback((listed: SessionSummary[]) => {
     const available = listed.filter(item => !deletedIdsRef.current.has(item.id))
-    setConversations(available.map(toConversation))
-    runningRef.current = new Set([...requestsRef.current, ...available.filter(item => item.run_status === 'queued' || item.run_status === 'running').map(item => item.id)])
-    setRunningIds(new Set(runningRef.current))
+    const mapped = available.map(toConversation)
+    setConversations(mapped)
+    replaceRunning([...requestsRef.current, ...available.filter(item => item.run_status === 'queued' || item.run_status === 'running').map(item => item.id)])
+    const existing = new Set(available.map(item => item.id))
+    setReadReplies(current => Object.keys(current).some(id => !existing.has(id)) ? saveReadReplies(current, existing) : current)
     setConnectionError('')
-    return available.map(toConversation)
-  }, [api])
+    return mapped
+  }, [replaceRunning])
+
+  const refreshConversations = useCallback(async () => applyListing(await api.listSessions()), [api, applyListing])
 
   useEffect(() => {
     let cancelled = false
@@ -213,8 +190,7 @@ export function useChatWorkspace(api: ApiClient) {
         const listed = await api.listSessions()
         if (cancelled) return
         setConversations(listed.map(toConversation))
-        runningRef.current = new Set(listed.filter(item => item.run_status === 'queued' || item.run_status === 'running').map(item => item.id))
-        setRunningIds(new Set(runningRef.current))
+        replaceRunning(listed.filter(item => item.run_status === 'queued' || item.run_status === 'running').map(item => item.id))
         const session = listed.length ? await api.getSession(listed[0].id) : await api.createSession()
         if (cancelled) return
         storeSession(session)
@@ -229,33 +205,35 @@ export function useChatWorkspace(api: ApiClient) {
     }
     void connect()
     return () => { cancelled = true }
-  }, [api, storeSession, refreshConversations])
+  }, [api, storeSession, refreshConversations, replaceRunning])
 
   async function loadConversation(id: string) {
     if (deletedIdsRef.current.has(id)) return
     activeIdRef.current = id
     setActiveId(id)
-    if (((runningRef.current.has(id) || mutatingRef.current.has(id)) && sessions[id]) || loadingRef.current.has(id)) return
-    loadingRef.current.add(id)
-    setLoadingIds(new Set(loadingRef.current))
+    if (((runningSet.has(id) || mutatingSet.has(id)) && sessions[id]) || loadingSet.has(id)) return
+    loadingSet.add(id)
     setErrors(current => ({ ...current, [id]: '' }))
     try {
-      const session = await api.getSession(id)
+      const session = await readSession(id)
       storeSession(session)
-      if (session.run_status !== 'idle') {
-        runningRef.current.add(id)
-        setRunningIds(new Set(runningRef.current))
-      }
+      if (session.run_status !== 'idle') runningSet.add(id)
     } catch (error) {
       setErrors(current => ({ ...current, [id]: `会话载入失败：${error instanceof Error ? error.message : String(error)}` }))
     } finally {
-      loadingRef.current.delete(id)
-      setLoadingIds(new Set(loadingRef.current))
+      loadingSet.remove(id)
     }
   }
 
+  /** 已有空白会话时直接切过去，避免每点一次「新对话」就在服务端留下一个空会话。 */
   async function newConversation() {
     if (creatingRef.current || connecting) return
+    const blank = conversations.find(item => !item.messageCount && !deletedIdsRef.current.has(item.id)
+      && !runningSet.has(item.id) && !(sessions[item.id]?.messages.length))
+    if (blank) {
+      await loadConversation(blank.id)
+      return
+    }
     creatingRef.current = true
     setCreating(true)
     try {
@@ -275,8 +253,9 @@ export function useChatWorkspace(api: ApiClient) {
   async function send(content: string, editMessageId?: string) {
     const id = activeId
     content = content.trim()
-    if (!id || !content || runningRef.current.has(id) || mutatingRef.current.has(id) || loadingRef.current.has(id) || creatingRef.current || connecting || !sessions[id]) return
+    if (!id || !content || runningSet.has(id) || mutatingSet.has(id) || loadingSet.has(id) || creatingRef.current || connecting || !sessions[id]) return
     const previous = sessions[id]
+    const firstTurn = !previous.messages.some(message => message.role === 'user')
     const editIndex = editMessageId ? previous.messages.findLastIndex(message => message.role === 'user') : -1
     if (editMessageId && (editIndex < 0 || previous.messages[editIndex].uuid !== editMessageId)) return
     const editEventStart = editMessageId ? turnEventStart(previous, editIndex) : 0
@@ -287,12 +266,13 @@ export function useChatWorkspace(api: ApiClient) {
       if (timer) clearTimeout(timer)
       streamRetryRef.current.delete(id)
       historyVersionsRef.current.set(id, (previous.history_version ?? 0) + 1)
+      // 编辑会改写历史，下次读取必须拿完整内容。
+      serverCountsRef.current.delete(id)
       eventCursorsRef.current.set(id, editEventStart - 1)
       setSelectedChildren(current => ({ ...current, [id]: '' }))
     }
-    runningRef.current.add(id)
     requestsRef.current.add(id)
-    setRunningIds(new Set(runningRef.current))
+    runningSet.add(id)
     setConversations(current => current.map(item => item.id === id && !item.messageCount
       ? { ...item, title: content.replace(/\s+/g, ' ').slice(0, 60), messageCount: 1 } : item))
     setErrors(current => ({ ...current, [id]: '' }))
@@ -302,8 +282,8 @@ export function useChatWorkspace(api: ApiClient) {
     setSessions(current => ({ ...current, [id]: {
       ...current[id], run_status: 'queued', run_error: null,
       history_version: editMessageId ? (previous.history_version ?? 0) + 1 : previous.history_version,
-      messages: editMessageId ? [...previous.messages.slice(0, editIndex), { ...previous.messages[editIndex], content }]
-        : [...current[id].messages, { role: 'user', content }],
+      messages: editMessageId ? [...previous.messages.slice(0, editIndex), { ...previous.messages[editIndex], content, turn_event_index: editEventStart }]
+        : [...current[id].messages, { role: 'user', content, turn_event_index: current[id].events?.length ?? 0 }],
       events: editMessageId ? (previous.events ?? []).slice(0, editEventStart) : current[id].events,
     } }))
     let completed = false
@@ -313,10 +293,14 @@ export function useChatWorkspace(api: ApiClient) {
         setStreaming(current => ({ ...current, [id]: (current[id] ?? '') + delta }))
       }, () => {
         accepted = true
-        if (!editMessageId) startEventStream(id)
+        if (!editMessageId) {
+          streamWantedRef.current.add(id)
+          // 后台会话只保留聊天流：每个运行中的会话再占一条过程流，几个会话同时运行就会占满浏览器对同一地址的 6 条连接。
+          if (id === activeIdRef.current) startEventStream(id)
+        }
       }, editMessageId, planEnabled)
       completed = true
-      storeSession(await api.getSession(id))
+      storeSession(await readSession(id))
       setStreaming(current => ({ ...current, [id]: '' }))
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error)
@@ -352,13 +336,16 @@ export function useChatWorkspace(api: ApiClient) {
       }
     } finally {
       requestsRef.current.delete(id)
+      streamWantedRef.current.delete(id)
       try { await refreshConversations() } catch { setConnectionError('会话列表刷新失败，请稍后重试。') }
+      // 首轮完成后服务端在后台生成标题，稍后再刷新一次列表。
+      if (completed && firstTurn && !editMessageId) setTimeout(() => { void refreshConversations().catch(() => { /* 下次刷新再取标题。 */ }) }, TITLE_REFRESH_DELAY)
     }
   }
 
   /** 更新标题并同步会话列表。 */
   async function renameConversation(id: string, title: string) {
-    if (!title.trim() || mutatingRef.current.has(id)) return
+    if (!title.trim() || mutatingSet.has(id)) return
     try {
       const detail = await api.renameSession(id, title.trim())
       storeSession(detail)
@@ -371,9 +358,8 @@ export function useChatWorkspace(api: ApiClient) {
 
   /** 删除会话后清理本地缓存，并切换到仍存在的会话。 */
   async function deleteConversation(id: string) {
-    if (runningRef.current.has(id) || mutatingRef.current.has(id) || deletedIdsRef.current.has(id)) return
-    mutatingRef.current.add(id)
-    setMutatingIds(new Set(mutatingRef.current))
+    if (runningSet.has(id) || mutatingSet.has(id) || deletedIdsRef.current.has(id)) return
+    mutatingSet.add(id)
     try {
       await api.deleteSession(id)
       deletedIdsRef.current.add(id)
@@ -382,15 +368,15 @@ export function useChatWorkspace(api: ApiClient) {
       const timer = streamRetryRef.current.get(id)
       if (timer) clearTimeout(timer)
       streamRetryRef.current.delete(id)
-      eventCursorsRef.current.delete(id)
-      historyVersionsRef.current.delete(id)
-      streamBaselinesRef.current.delete(id)
+      for (const cache of [eventCursorsRef.current, historyVersionsRef.current, streamBaselinesRef.current, serverCountsRef.current]) cache.delete(id)
+      const without = <T,>(record: Record<string, T>) => { const next = { ...record }; delete next[id]; return next }
       setConversations(current => current.filter(item => item.id !== id))
-      setSessions(current => { const next = { ...current }; delete next[id]; return next })
-      setStreaming(current => { const next = { ...current }; delete next[id]; return next })
-      setDrafts(current => { const next = { ...current }; delete next[id]; return next })
-      setErrors(current => { const next = { ...current }; delete next[id]; return next })
-      setSelectedChildren(current => { const next = { ...current }; delete next[id]; return next })
+      setSessions(without)
+      setStreaming(without)
+      setDrafts(without)
+      setErrors(without)
+      setSelectedChildren(without)
+      setReadReplies(current => id in current ? saveReadReplies(without(current)) : current)
       let remaining = conversations.filter(item => !deletedIdsRef.current.has(item.id))
       try { remaining = await refreshConversations() } catch { setConnectionError('会话已删除，但列表刷新失败，请稍后重试。') }
       if (activeIdRef.current === id) {
@@ -400,17 +386,15 @@ export function useChatWorkspace(api: ApiClient) {
     } catch (error) {
       setConnectionError(`删除会话失败：${error instanceof Error ? error.message : String(error)}`)
     } finally {
-      mutatingRef.current.delete(id)
-      setMutatingIds(new Set(mutatingRef.current))
+      mutatingSet.remove(id)
     }
   }
 
   /** 删除最后一轮用户消息，服务端返回的历史版本可覆盖旧缓存。 */
   async function deleteLatestMessage(messageId: string) {
     const id = activeId
-    if (!id || runningRef.current.has(id) || mutatingRef.current.has(id) || deletedIdsRef.current.has(id)) return
-    mutatingRef.current.add(id)
-    setMutatingIds(new Set(mutatingRef.current))
+    if (!id || runningSet.has(id) || mutatingSet.has(id) || deletedIdsRef.current.has(id)) return
+    mutatingSet.add(id)
     try {
       const detail = await api.deleteLatestUserMessage(id, messageId)
       eventStreamsRef.current.get(id)?.abort()
@@ -423,8 +407,7 @@ export function useChatWorkspace(api: ApiClient) {
     } catch (error) {
       setErrors(current => ({ ...current, [id]: `删除消息失败：${error instanceof Error ? error.message : String(error)}` }))
     } finally {
-      mutatingRef.current.delete(id)
-      setMutatingIds(new Set(mutatingRef.current))
+      mutatingSet.remove(id)
     }
   }
 
@@ -432,23 +415,35 @@ export function useChatWorkspace(api: ApiClient) {
   const cards = useMemo(() => activeSession ? subAgentCards(activeSession, sessions) : [], [activeSession, sessions])
   const selectedChildId = selectedChildren[activeId] ?? ''
 
+  // 切换会话时关闭其他会话的过程流（子任务详情流由下方选中子任务的 effect 管理），切回来后按游标续接。
+  useEffect(() => {
+    for (const [id, controller] of [...eventStreamsRef.current]) {
+      if (id === activeId || id === selectedChildId) continue
+      eventStreamsRef.current.delete(id)
+      controller.abort()
+      const timer = streamRetryRef.current.get(id)
+      if (timer) clearTimeout(timer)
+      streamRetryRef.current.delete(id)
+    }
+  }, [activeId, selectedChildId])
+
   useEffect(() => {
     if (!activeSession) return
-    if (!requestsRef.current.has(activeId) &&
+    if ((!requestsRef.current.has(activeId) || streamWantedRef.current.has(activeId)) &&
       (activeSession.run_status !== 'idle' || activeSession.active_subagents)) startEventStream(activeId)
     for (const card of cards) {
       if (card.state !== 'running' || sessions[card.childSessionId] || loadingChildrenRef.current.has(card.childSessionId)) continue
       loadingChildrenRef.current.add(card.childSessionId)
-      void api.getSession(card.childSessionId).then(storeSession).catch(() => { /* 选中卡片时可以重试读取。 */ })
+      void readSession(card.childSessionId).then(storeSession).catch(() => { /* 选中卡片时可以重试读取。 */ })
         .finally(() => loadingChildrenRef.current.delete(card.childSessionId))
     }
-  }, [activeId, activeSession, cards, sessions, api, storeSession, startEventStream])
+  }, [activeId, activeSession, cards, sessions, readSession, storeSession, startEventStream])
 
   useEffect(() => {
     if (!selectedChildId) return
     let cancelled = false
     const streams = eventStreamsRef.current
-    void api.getSession(selectedChildId).then(detail => {
+    void readSession(selectedChildId).then(detail => {
       if (cancelled) return
       storeSession(detail)
       if (detail.run_status === 'running') startEventStream(selectedChildId, true)
@@ -462,62 +457,63 @@ export function useChatWorkspace(api: ApiClient) {
         controller.abort()
       }
     }
-  }, [activeId, selectedChildId, api, storeSession, startEventStream])
+  }, [activeId, selectedChildId, readSession, storeSession, startEventStream])
 
+  const runningIds = runningSet.ids
   useEffect(() => {
     if (connecting || !runningIds.size) return
     let cancelled = false
     let timer: ReturnType<typeof setTimeout>
+    /**
+     * 每次只请求一次轻量的会话列表确认运行状态；会话详情只在任务结束、
+     * 或当前会话没有过程流（断线重连的间隙）时增量读取，不再每秒整份下载。
+     */
     async function poll() {
-      let completed = false
-      await Promise.all([...runningIds].map(async id => {
-        try {
-          const session = await api.getSession(id)
-          if (cancelled) return
-          const version = session.history_version ?? 0
-          const knownVersion = historyVersionsRef.current.get(id) ?? 0
-          if (version < knownVersion) return
-          if (requestsRef.current.has(id) && session.run_status !== 'idle') startEventStream(id)
-          if (version > knownVersion) {
-            storeSession(session)
+      let listed: SessionSummary[] | null = null
+      try { listed = await api.listSessions() } catch { /* 保留运行状态，等下一次轮询确认。 */ }
+      if (cancelled) return
+      if (listed) {
+        const byId = new Map(listed.map(item => [item.id, item]))
+        let completed = false
+        await Promise.all([...runningIds].map(async id => {
+          const summary = byId.get(id)
+          const busy = summary && (summary.run_status !== 'idle' || summary.active_subagents)
+          if (requestsRef.current.has(id)) {
+            if (busy && id === activeIdRef.current) startEventStream(id)
+            return
           }
-          if (session.run_status === 'idle' && !requestsRef.current.has(id)) {
+          if (busy && (id !== activeIdRef.current || eventStreamsRef.current.has(id))) return
+          try {
+            const session = await readSession(id)
+            if (cancelled) return
+            const version = session.history_version ?? 0
+            if (version < (historyVersionsRef.current.get(id) ?? 0)) return
             storeSession(session)
-            setStreaming(current => ({ ...current, [id]: '' }))
-            setErrors(current => ({ ...current, [id]: '' }))
-            runningRef.current.delete(id)
-            completed = true
-          } else if (version === knownVersion) {
-            const cursor = eventCursorsRef.current.get(id) ?? -1
-            const savedEvents = session.events ?? []
-            if (savedEvents.length - 1 > cursor) eventCursorsRef.current.set(id, savedEvents.length - 1)
-            setSessions(current => current[id] ? ({ ...current, [id]: {
-              ...current[id], events: savedEvents.length - 1 >= cursor ? savedEvents : current[id].events,
-              total_tokens: session.total_tokens, run_status: session.run_status, active_subagents: session.active_subagents,
-              context_tokens: savedEvents.length - 1 >= cursor ? session.context_tokens : current[id].context_tokens,
-              context_limit: session.context_limit, compression_threshold: session.compression_threshold,
-            } }) : ({ ...current, [id]: session }))
-          }
-        } catch { /* 保留运行状态，等后续轮询确认结果。 */ }
-      }))
-      if (!cancelled && completed) {
-        setRunningIds(new Set(runningRef.current))
-        try { await refreshConversations() } catch { setConnectionError('会话列表刷新失败，请稍后重试。') }
+            if (session.run_status === 'idle' && !session.active_subagents) {
+              setStreaming(current => ({ ...current, [id]: '' }))
+              setErrors(current => ({ ...current, [id]: '' }))
+              completed = true
+            }
+          } catch { /* 保留运行状态，等后续轮询确认结果。 */ }
+        }))
+        if (!cancelled && completed) applyListing(listed)
       }
-      if (!cancelled) timer = setTimeout(poll, 1200)
+      if (!cancelled) timer = setTimeout(poll, POLL_INTERVAL)
     }
     void poll()
     return () => { cancelled = true; clearTimeout(timer) }
-  }, [api, connecting, runningIds, storeSession, refreshConversations, startEventStream])
+  }, [api, connecting, runningIds, readSession, storeSession, applyListing, startEventStream])
 
   const session = activeSession
-  const rawMessages = session?.messages
-  const messages = useMemo(() => normalizeMessages(activeId, rawMessages ?? []), [activeId, rawMessages])
+  const rawMessages = session?.messages, rawEvents = session?.events
+  const messages = useMemo(() => normalizeMessages(activeId, rawMessages ?? [], rawEvents), [activeId, rawMessages, rawEvents])
   const timeline = useMemo(() => buildTimeline(session, messages, cards), [session, messages, cards])
+  const stats = useMemo(() => sessionStats(session), [session])
   const selectedCard = cards.find(card => card.childSessionId === selectedChildId) ?? null
   const childSession = selectedChildId ? sessions[selectedChildId] ?? null : null
-  const childMessages = useMemo(() => normalizeMessages(selectedChildId, childSession?.messages ?? []), [selectedChildId, childSession?.messages])
-  const loading = connecting || loadingIds.has(activeId)
+  const childMessages = useMemo(() => normalizeMessages(selectedChildId, childSession?.messages ?? [], childSession?.events),
+    [selectedChildId, childSession?.messages, childSession?.events])
+  const loading = connecting || loadingSet.ids.has(activeId)
   const running = runningIds.has(activeId)
   const queued = running && session?.run_status === 'queued'
   const error = errors[activeId] || (session?.run_error ? `任务失败：${session.run_error}` : '') || connectionError
@@ -537,8 +533,25 @@ export function useChatWorkspace(api: ApiClient) {
           : `${lastCompression.title}：${lastCompression.content ?? ''}`,
   } : null
 
+  const visibleStreaming = (streaming[activeId] ?? '').slice((session?.messages ?? []).slice(streamBaselinesRef.current.get(activeId) ?? session?.messages.length ?? 0)
+    .filter(message => message.role === 'assistant' && message.kind !== 'execution_report')
+    .reduce((length, message) => length + (typeof message.content === 'string' ? message.content.length : 0), 0))
+  const unreadIds = new Set(conversations.filter(item => {
+    const detail = sessions[item.id]
+    if (runningIds.has(item.id) || detail?.active_subagents || detail?.run_error) return false
+    const replyId = detail ? latestReplyId(detail) : item.lastReplyId
+    return replyId && !readReplies[item.id]?.includes(replyId)
+  }).map(item => item.id))
+  const mutatingIds = mutatingSet.ids
+  const unreadReplyId = !running && !loading && !mutatingIds.has(activeId) && !session?.active_subagents && !error
+    && unreadIds.has(activeId) ? latestReplyId(session) : null
+  const activity = getAgentActivity({ session, cards, running, streaming: visibleStreaming, error, loading, creating,
+    mutating: mutatingIds.has(activeId), backgroundCount: runningIds.size - Number(running), unread: Boolean(unreadReplyId) })
+  const status = running || loading || creating || mutatingIds.has(activeId) ? 'busy' : error ? 'error' : 'ready'
+
   return {
-    planEnabled, compressing, contextUsage, compressionNotice,
+    planEnabled, compressing, contextUsage, compressionNotice, activity, unreadIds, unreadReplyId, markReplyRead,
+    status: status as 'busy' | 'error' | 'ready', stats,
     /** 保存浏览器的执行偏好，下次发送或编辑重跑时使用。 */
     togglePlan: () => setPlanEnabled(current => {
       try { localStorage.setItem('qrclaw.planEnabled', String(!current)) }
@@ -548,9 +561,7 @@ export function useChatWorkspace(api: ApiClient) {
     conversations, activeId, session, messages, timeline, cards, selectedCard, childSession, childMessages,
     childStreaming: childStreaming[selectedChildId] ?? '', selectSubAgent: (id: string | null) =>
       setSelectedChildren(current => ({ ...current, [activeId]: id ?? '' })),
-    streaming: (streaming[activeId] ?? '').slice((session?.messages ?? []).slice(streamBaselinesRef.current.get(activeId) ?? session?.messages.length ?? 0)
-      .filter(message => message.role === 'assistant' && message.kind !== 'execution_report')
-      .reduce((length, message) => length + (typeof message.content === 'string' ? message.content.length : 0), 0)),
+    streaming: visibleStreaming,
     runningIds, running, queued, loading, creating, mutatingIds, mutating: mutatingIds.has(activeId), error,
     draft: drafts[activeId] ?? '',
     setDraft: (value: string) => setDrafts(current => ({ ...current, [activeId]: value })),

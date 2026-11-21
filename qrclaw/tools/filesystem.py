@@ -111,11 +111,26 @@ def _has_binary_extension(filepath: str) -> bool:
 # ============================================================================
 _read_tracker_lock = threading.Lock()
 _read_tracker: dict = {}
+_READ_TRACKER_LIMIT = 256
+
+
+def _resolve_task(task_id: str | None) -> str | None:
+    """未指定任务时按当前会话区分读取记录；否则不同会话会共用去重结果，
+    一个会话读过的文件在另一个会话里只返回「未变更」而看不到内容。"""
+    if task_id != "default":
+        return task_id
+    from qrclaw.agent import get_session
+    session = get_session()
+    return f"session:{session.session_id}" if session is not None else task_id
 
 
 def _get_task_tracker(task_id: str = "default") -> dict:
+    task_id = _resolve_task(task_id)
     with _read_tracker_lock:
         if task_id not in _read_tracker:
+            # 每个会话、子会话各一份记录；只保留最近的若干份，长期运行的服务不会无限增长。
+            while len(_read_tracker) >= _READ_TRACKER_LIMIT:
+                _read_tracker.pop(next(iter(_read_tracker)))
             _read_tracker[task_id] = {
                 "last_key": None,
                 "consecutive": 0,
@@ -128,6 +143,7 @@ def _get_task_tracker(task_id: str = "default") -> dict:
 
 def clear_read_tracker(task_id: str = None) -> None:
     """清理读取追踪器，防止内存泄漏。传入 task_id 只清理该任务，不传则清理全部。"""
+    task_id = _resolve_task(task_id)
     with _read_tracker_lock:
         if task_id:
             _read_tracker.pop(task_id, None)
@@ -137,6 +153,7 @@ def clear_read_tracker(task_id: str = None) -> None:
 
 def reset_file_dedup(task_id: str = None) -> None:
     """清除去重缓存。上下文压缩后调用，让 model 能重新获取文件完整内容。"""
+    task_id = _resolve_task(task_id)
     with _read_tracker_lock:
         if task_id:
             task_data = _read_tracker.get(task_id)
@@ -150,6 +167,7 @@ def reset_file_dedup(task_id: str = None) -> None:
 
 def notify_other_tool_call(task_id: str = "default") -> None:
     """重置连续读取/搜索计数器。由工具调度器在执行非读取工具后调用。"""
+    task_id = _resolve_task(task_id)
     with _read_tracker_lock:
         task_data = _read_tracker.get(task_id)
         if task_data:
@@ -159,6 +177,7 @@ def notify_other_tool_call(task_id: str = "default") -> None:
 
 def get_read_files_summary(task_id: str = "default") -> list:
     """返回当前 session 中已读文件列表，供上下文压缩器使用。"""
+    task_id = _resolve_task(task_id)
     with _read_tracker_lock:
         task_data = _read_tracker.get(task_id, {})
         read_history = task_data.get("read_history", set())
@@ -179,6 +198,7 @@ def get_read_files_summary(task_id: str = "default") -> list:
 
 def _check_file_staleness(filepath: str, task_id: str = "default") -> str | None:
     """检查文件是否在 agent 上次读取后被外部修改。返回警告字符串或 None。"""
+    task_id = _resolve_task(task_id)
     try:
         resolved = str(_resolve_path(filepath))
     except (OSError, ValueError):
@@ -204,6 +224,7 @@ def _check_file_staleness(filepath: str, task_id: str = "default") -> str | None
 
 def _update_read_timestamp(filepath: str, task_id: str = "default") -> None:
     """写入成功后更新文件修改时间记录，防止连续写入触发误报。"""
+    task_id = _resolve_task(task_id)
     try:
         resolved = str(_resolve_path(filepath))
         current_mtime = os.path.getmtime(resolved)

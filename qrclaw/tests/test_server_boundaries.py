@@ -1,7 +1,7 @@
 """本机 API 的访问和输入边界。"""
 
 from concurrent.futures import ThreadPoolExecutor
-from threading import Event, Lock, Thread
+from threading import Barrier, Event, Lock, Thread
 from time import sleep
 import re
 import json
@@ -18,7 +18,7 @@ import qrclaw.workspace as workspace_module
 
 
 def test_packaged_ui_references_available_assets(temp_dir):
-    with TestClient(create_app(Workspace(_root=temp_dir)), client=("127.0.0.1", 50000)) as client:
+    with TestClient(create_app(Workspace(_root=temp_dir)), base_url="http://127.0.0.1", client=("127.0.0.1", 50000)) as client:
         response = client.get("/")
         assert response.status_code == 200
         assert 'lang="zh-CN"' in response.text
@@ -37,13 +37,38 @@ def test_remote_api_requires_token(temp_dir, monkeypatch):
         monkeypatch.setenv("QRCLAW_API_TOKEN", "test-token")
         assert remote.get("/health").status_code == 403
         assert remote.get("/health", headers={"Authorization": "Bearer test-token"}).status_code == 200
-    with TestClient(app, client=("127.0.0.1", 50000)) as local:
+    with TestClient(app, base_url="http://127.0.0.1", client=("127.0.0.1", 50000)) as local:
         assert local.get("/health").status_code == 200
+
+
+def test_local_api_rejects_rebinding_hosts_and_cross_site_origins(temp_dir):
+    """本机请求也要校验 Host 与 Origin：防 DNS 重绑定，防其他网站发起无正文的 POST。"""
+    workspace = Workspace(_root=temp_dir)
+    with TestClient(create_app(workspace), base_url="http://127.0.0.1:8765", client=("127.0.0.1", 50000)) as client:
+        for host in ("127.0.0.1:8765", "localhost:8765", "[::1]:8765", "LOCALHOST"):
+            assert client.get("/health", headers={"Host": host}).status_code == 200
+        for host in ("evil.example:8765", "127.0.0.1.evil.example", "", "localhost.evil.example"):
+            assert client.get("/v1/sessions", headers={"Host": host}).status_code == 403
+        for origin in ("http://127.0.0.1:8765", "http://localhost:5173"):
+            assert client.post("/v1/wiki/lint", headers={"Origin": origin}).status_code == 200
+        for origin in ("https://evil.example", "null", "http://127.0.0.1.evil.example"):
+            response = client.post("/v1/sessions", headers={"Origin": origin})
+            assert response.status_code == 403
+        assert list(workspace.sessions_dir.glob("*.json")) == []
+
+
+def test_api_token_allows_any_host(temp_dir, monkeypatch):
+    """带对令牌的请求不可能来自恶意网页，通过域名或局域网地址远程访问不受 Host 限制。"""
+    monkeypatch.setenv("QRCLAW_API_TOKEN", "test-token")
+    with TestClient(create_app(Workspace(_root=temp_dir)), base_url="http://qrclaw.lan", client=("127.0.0.1", 50000)) as client:
+        assert client.get("/health").status_code == 403
+        assert client.get("/health", headers={"Authorization": "Bearer test-token"}).status_code == 200
+        assert client.get("/health", headers={"Authorization": "Bearer wrong"}).status_code == 403
 
 
 def test_api_rejects_unsafe_session_id(temp_dir, monkeypatch):
     monkeypatch.setattr(workspace_module, "AGENTS_ROOT", temp_dir / "agents")
-    with TestClient(create_app(), client=("127.0.0.1", 50000)) as client:
+    with TestClient(create_app(), base_url="http://127.0.0.1", client=("127.0.0.1", 50000)) as client:
         response = client.post("/v1/sessions", json={"session_id": "../outside"})
     assert response.status_code == 400
     assert not (temp_dir / "agents" / "default" / "outside.json").exists()
@@ -51,7 +76,7 @@ def test_api_rejects_unsafe_session_id(temp_dir, monkeypatch):
 
 def test_new_empty_session_survives_refresh(temp_dir, monkeypatch):
     monkeypatch.setattr(workspace_module, "AGENTS_ROOT", temp_dir / "agents")
-    with TestClient(create_app(), client=("127.0.0.1", 50000)) as client:
+    with TestClient(create_app(), base_url="http://127.0.0.1", client=("127.0.0.1", 50000)) as client:
         created = client.post("/v1/sessions").json()
         sessions = client.get("/v1/sessions").json()
         restored = client.get(f"/v1/sessions/{created['id']}").json()
@@ -62,7 +87,7 @@ def test_new_empty_session_survives_refresh(temp_dir, monkeypatch):
 
 def test_read_missing_session_returns_not_found(temp_dir):
     """读取不存在的会话不会伪装成空会话。"""
-    with TestClient(create_app(Workspace(_root=temp_dir)), client=("127.0.0.1", 50000)) as client:
+    with TestClient(create_app(Workspace(_root=temp_dir)), base_url="http://127.0.0.1", client=("127.0.0.1", 50000)) as client:
         assert client.get("/v1/sessions/missing").status_code == 404
 
 
@@ -73,7 +98,7 @@ def test_session_list_has_readable_title_and_detail_has_events(temp_dir, monkeyp
     session.add({"role": "user", "content": "  检查项目\n架构  "})
     session.add_event(SessionEvent(kind="status", title="执行中", content="检查代码"))
 
-    with TestClient(create_app(workspace), client=("127.0.0.1", 50000)) as client:
+    with TestClient(create_app(workspace), base_url="http://127.0.0.1", client=("127.0.0.1", 50000)) as client:
         summary = next(item for item in client.get("/v1/sessions").json() if item["id"] == "test-ui")
         detail = client.get("/v1/sessions/test-ui").json()
 
@@ -81,10 +106,24 @@ def test_session_list_has_readable_title_and_detail_has_events(temp_dir, monkeyp
     assert detail["events"][0]["content"] == "检查代码"
 
 
+def test_session_summary_and_detail_share_latest_reply_id(temp_dir):
+    """摘要即可识别新回复，列表和详情返回同一个消息标识。"""
+    workspace = Workspace(_root=temp_dir)
+    session = Session(workspace.sessions_dir, session_id="read-state")
+    session.add({"role": "user", "content": "问题"})
+    session.add({"role": "assistant", "content": "答复"})
+    reply_id = session.messages[-1]["uuid"]
+    session.add({"role": "assistant", "kind": "execution_report", "content": "报告"})
+    with TestClient(create_app(workspace), base_url="http://127.0.0.1", client=("127.0.0.1", 50000)) as client:
+        summary = client.get("/v1/sessions").json()[0]
+        detail = client.get("/v1/sessions/read-state").json()
+        assert summary["last_reply_id"] == detail["last_reply_id"] == reply_id
+
+
 def test_session_rename_persists_for_empty_and_existing_conversations(temp_dir):
     """会话标题由持久化字段提供，空会话也可改名。"""
     workspace = Workspace(_root=temp_dir)
-    with TestClient(create_app(workspace), client=("127.0.0.1", 50000)) as client:
+    with TestClient(create_app(workspace), base_url="http://127.0.0.1", client=("127.0.0.1", 50000)) as client:
         session_id = client.post("/v1/sessions").json()["id"]
         path = f"/v1/sessions/{session_id}"
         assert client.patch(path, json={"title": "  项目讨论  "}).json()["title"] == "项目讨论"
@@ -107,7 +146,7 @@ def test_delete_latest_turn_removes_replies_events_and_child_session(temp_dir):
     child.ensure_saved()
     parent.add_event({"kind": "subagent", "title": "子任务", "meta": {"child_session_id": child.session_id}})
     parent.add({"role": "assistant", "content": "第二轮回复"})
-    with TestClient(create_app(workspace), client=("127.0.0.1", 50000)) as client:
+    with TestClient(create_app(workspace), base_url="http://127.0.0.1", client=("127.0.0.1", 50000)) as client:
         assert client.delete("/v1/sessions/parent/messages/stale").status_code == 409
         result = client.delete(f"/v1/sessions/parent/messages/{last_id}")
         assert result.status_code == 200
@@ -134,7 +173,7 @@ def test_edit_latest_user_message_reruns_once_without_old_reply(temp_dir):
         return "新回复"
 
     with patch("qrclaw.server.routes.run_agent", side_effect=fake_run), \
-         TestClient(create_app(workspace), client=("127.0.0.1", 50000)) as client:
+         TestClient(create_app(workspace), base_url="http://127.0.0.1", client=("127.0.0.1", 50000)) as client:
         response = client.post("/v1/chat/completions", json={"session_id": "edit", "edit_message_id": message_id,
             "stream": True, "messages": [{"role": "user", "content": "新问题"}]})
         saved = client.get("/v1/sessions/edit").json()
@@ -148,8 +187,12 @@ def test_edit_latest_user_message_reruns_once_without_old_reply(temp_dir):
     assert saved["history_version"] == 1
 
 
-def test_api_serializes_agent_runs(temp_dir, monkeypatch):
+def test_api_limits_concurrent_agent_runs(temp_dir, monkeypatch):
+    """不同会话可以同时执行，但同时执行的数量不超过并发上限。"""
+    import threading
+    from qrclaw.server import routes
     monkeypatch.setattr(workspace_module, "AGENTS_ROOT", temp_dir / "agents")
+    monkeypatch.setattr(routes, "_run_slots", threading.BoundedSemaphore(2))
     active = 0
     peak = 0
     guard = Lock()
@@ -159,20 +202,20 @@ def test_api_serializes_agent_runs(temp_dir, monkeypatch):
         with guard:
             active += 1
             peak = max(peak, active)
-        sleep(0.05)
+        sleep(0.2)
         with guard:
             active -= 1
         return "完成"
 
     with patch("qrclaw.server.routes.run_agent", side_effect=fake_run), \
-         TestClient(create_app(), client=("127.0.0.1", 50000)) as client:
-        with ThreadPoolExecutor(max_workers=2) as pool:
+         TestClient(create_app(), base_url="http://127.0.0.1", client=("127.0.0.1", 50000)) as client:
+        with ThreadPoolExecutor(max_workers=3) as pool:
             results = list(pool.map(lambda _: client.post("/v1/chat/completions", json={
                 "messages": [{"role": "user", "content": "你好"}],
-            }), range(2)))
+            }), range(3)))
 
     assert all(response.status_code == 200 for response in results)
-    assert peak == 1
+    assert peak == 2
 
 
 def test_running_session_is_visible_and_cannot_be_submitted_or_deleted(temp_dir):
@@ -185,7 +228,7 @@ def test_running_session_is_visible_and_cannot_be_submitted_or_deleted(temp_dir)
 
     workspace = Workspace(_root=temp_dir)
     with patch("qrclaw.server.routes.run_agent", side_effect=fake_run), \
-         TestClient(create_app(workspace), client=("127.0.0.1", 50000)) as client, \
+         TestClient(create_app(workspace), base_url="http://127.0.0.1", client=("127.0.0.1", 50000)) as client, \
          ThreadPoolExecutor(max_workers=1) as pool:
         session_id = client.post("/v1/sessions").json()["id"]
         existing = Session(workspace.sessions_dir, session_id)
@@ -210,7 +253,7 @@ def test_running_session_is_visible_and_cannot_be_submitted_or_deleted(temp_dir)
 
 
 def test_failed_run_remains_visible_until_retry(temp_dir):
-    with TestClient(create_app(Workspace(_root=temp_dir)), client=("127.0.0.1", 50000)) as client:
+    with TestClient(create_app(Workspace(_root=temp_dir)), base_url="http://127.0.0.1", client=("127.0.0.1", 50000)) as client:
         session_id = client.post("/v1/sessions").json()["id"]
         request = {"session_id": session_id, "messages": [{"role": "user", "content": "执行"}]}
         with patch("qrclaw.server.routes.run_agent", side_effect=RuntimeError("model unavailable")):
@@ -234,7 +277,7 @@ def test_chat_usage_reports_this_run(temp_dir, monkeypatch):
         return "完成"
 
     with patch("qrclaw.server.routes.run_agent", side_effect=fake_run), \
-         TestClient(create_app(), client=("127.0.0.1", 50000)) as client:
+         TestClient(create_app(), base_url="http://127.0.0.1", client=("127.0.0.1", 50000)) as client:
         response = client.post("/v1/chat/completions", json={
             "messages": [{"role": "user", "content": "你好"}],
         })
@@ -255,7 +298,7 @@ def test_chat_passes_plan_switch_for_stream_and_json(temp_dir):
         return "完成"
 
     with patch("qrclaw.server.routes.run_agent", side_effect=fake_run), \
-         TestClient(create_app(Workspace(_root=temp_dir)), client=("127.0.0.1", 50000)) as client:
+         TestClient(create_app(Workspace(_root=temp_dir)), base_url="http://127.0.0.1", client=("127.0.0.1", 50000)) as client:
         for stream, enabled in [(False, False), (True, True)]:
             response = client.post("/v1/chat/completions", json={"stream": stream, "plan_enabled": enabled,
                 "messages": [{"role": "user", "content": "执行任务"}]})
@@ -274,7 +317,7 @@ def test_stream_chat_sends_chunks_and_keeps_saved_session(temp_dir):
         return "你好"
 
     with patch("qrclaw.server.routes.run_agent", side_effect=fake_run), \
-         TestClient(create_app(workspace), client=("127.0.0.1", 50000)) as client:
+         TestClient(create_app(workspace), base_url="http://127.0.0.1", client=("127.0.0.1", 50000)) as client:
         response = client.post("/v1/chat/completions", json={"stream": True, "messages": [{"role": "user", "content": "你好"}]})
         session_id = response.headers["x-qrclaw-session-id"]
         saved = client.get(f"/v1/sessions/{session_id}").json()
@@ -297,7 +340,7 @@ def test_progress_stream_replays_only_status_events(temp_dir):
     session.add_event(SessionEvent(kind="tool_status", title="工具开始", content="read_file", meta={"state": "started"}))
     session.add_event(SessionEvent(kind="execution_report", title="执行汇报", content="敏感结果"))
     session.add_event(SessionEvent(kind="status", title="规划执行失败", content="内部错误详情"))
-    with TestClient(create_app(workspace), client=("127.0.0.1", 50000)) as client:
+    with TestClient(create_app(workspace), base_url="http://127.0.0.1", client=("127.0.0.1", 50000)) as client:
         response = client.get("/v1/sessions/progress/events/stream?after=0")
     assert "id: 1" in response.text
     assert "read_file" in response.text
@@ -317,7 +360,7 @@ def test_stream_error_keeps_failure_state_and_does_not_retry(temp_dir):
         raise RuntimeError("模型中断")
 
     with patch("qrclaw.server.routes.run_agent", side_effect=fake_run), \
-         TestClient(create_app(Workspace(_root=temp_dir)), client=("127.0.0.1", 50000)) as client:
+         TestClient(create_app(Workspace(_root=temp_dir)), base_url="http://127.0.0.1", client=("127.0.0.1", 50000)) as client:
         session_id = client.post("/v1/sessions").json()["id"]
         response = client.post("/v1/chat/completions", json={"stream": True, "session_id": session_id,
             "messages": [{"role": "user", "content": "执行"}]})
@@ -376,3 +419,135 @@ def test_stream_disconnect_does_not_stop_agent(temp_dir):
             release.set()
             server.should_exit = True
             thread.join(timeout=3)
+
+
+def test_different_sessions_run_concurrently_with_isolated_state(temp_dir):
+    """两个会话的任务同时执行，各自线程里的当前会话互不串用；同一会话仍不能并发。"""
+    from qrclaw import agent
+    workspace = Workspace(_root=temp_dir)
+    both_running = Barrier(2, timeout=5)
+    seen = {}
+    release = Event()
+
+    def fake_run(*, session, user_input, **_kwargs):
+        agent.set_session(session)
+        both_running.wait()  # 两个任务都进入执行才继续；串行执行会在这里超时
+        release.wait(5)
+        seen[session.session_id] = agent.get_session().session_id
+        session.add({"role": "assistant", "content": f"回复 {user_input}"})
+        return "完成"
+
+    with patch("qrclaw.server.routes.run_agent", side_effect=fake_run), \
+         TestClient(create_app(workspace), base_url="http://127.0.0.1", client=("127.0.0.1", 50000)) as client, \
+         ThreadPoolExecutor(max_workers=3) as pool:
+        for session_id in ("left", "right"):
+            client.post("/v1/sessions", json={"session_id": session_id})
+        futures = [pool.submit(client.post, "/v1/chat/completions", json={
+            "session_id": session_id, "messages": [{"role": "user", "content": session_id}]}) for session_id in ("left", "right")]
+        for _ in range(100):
+            statuses = {item["id"]: item["run_status"] for item in client.get("/v1/sessions").json()}
+            if statuses.get("left") == statuses.get("right") == "running":
+                break
+            sleep(0.05)
+        assert statuses["left"] == statuses["right"] == "running"
+        duplicate = client.post("/v1/chat/completions", json={
+            "session_id": "left", "messages": [{"role": "user", "content": "再来"}]})
+        assert duplicate.status_code == 409
+        release.set()
+        assert [future.result(timeout=5).status_code for future in futures] == [200, 200]
+    assert seen == {"left": "left", "right": "right"}
+
+
+def test_runs_beyond_the_limit_wait_in_queue(temp_dir, monkeypatch):
+    """超过并发上限的任务显示「等待执行」，前一个结束后再开始。"""
+    import threading
+    from qrclaw.server import routes
+    monkeypatch.setattr(routes, "_run_slots", threading.BoundedSemaphore(1))
+    workspace = Workspace(_root=temp_dir)
+    started, release = [], Event()
+
+    def fake_run(*, session, **_kwargs):
+        started.append(session.session_id)
+        release.wait(5)
+        return "完成"
+
+    with patch("qrclaw.server.routes.run_agent", side_effect=fake_run), \
+         TestClient(create_app(workspace), base_url="http://127.0.0.1", client=("127.0.0.1", 50000)) as client, \
+         ThreadPoolExecutor(max_workers=2) as pool:
+        for session_id in ("first", "second"):
+            client.post("/v1/sessions", json={"session_id": session_id})
+        first = pool.submit(client.post, "/v1/chat/completions", json={
+            "session_id": "first", "messages": [{"role": "user", "content": "一"}]})
+        for _ in range(100):
+            if started:
+                break
+            sleep(0.05)
+        second = pool.submit(client.post, "/v1/chat/completions", json={
+            "session_id": "second", "messages": [{"role": "user", "content": "二"}]})
+        for _ in range(100):
+            statuses = {item["id"]: item["run_status"] for item in client.get("/v1/sessions").json()}
+            if statuses.get("second") == "queued":
+                break
+            sleep(0.05)
+        assert statuses == {"first": "running", "second": "queued"}
+        assert started == ["first"]
+        release.set()
+        assert first.result(timeout=5).status_code == second.result(timeout=5).status_code == 200
+    assert started == ["first", "second"]
+
+
+def test_file_read_dedup_is_scoped_to_the_current_session(temp_dir):
+    """一个会话读过的文件，在另一个会话里仍返回完整内容，不会只得到「未变更」。"""
+    from qrclaw import agent
+    from qrclaw.tools.filesystem import read_file
+    target = temp_dir / "notes.txt"
+    target.write_text("真正的内容", encoding="utf-8")
+    first = Session(temp_dir / "sessions", session_id="reader-a", resume=False)
+    second = Session(temp_dir / "sessions", session_id="reader-b", resume=False)
+    agent.set_session(first)
+    try:
+        assert "真正的内容" in read_file(str(target))
+        assert "未变更" in read_file(str(target))
+        agent.set_session(second)
+        assert "真正的内容" in read_file(str(target))
+    finally:
+        agent.set_session(None)
+
+
+def test_read_tracker_keeps_only_recent_sessions(monkeypatch):
+    from qrclaw.tools import filesystem
+    monkeypatch.setattr(filesystem, "_read_tracker", {})
+    monkeypatch.setattr(filesystem, "_READ_TRACKER_LIMIT", 3)
+    for index in range(5):
+        filesystem._get_task_tracker(f"session:{index}")
+    assert list(filesystem._read_tracker) == ["session:2", "session:3", "session:4"]
+
+
+def test_sandbox_is_created_once_when_sessions_start_shell_together(monkeypatch, temp_dir):
+    """两个会话同时第一次执行 Shell，只创建一个容器，不会互相销毁。"""
+    import threading
+    from qrclaw.sandbox.manager import SandboxManager, SandboxHandle
+    from qrclaw.sandbox import SandboxConfig
+    manager = SandboxManager()
+    monkeypatch.setattr(SandboxManager, "_containers", {})
+    created, start = [], threading.Barrier(2, timeout=5)
+    config = SandboxConfig(enabled=True)
+
+    def fake_create(self, agent_id, workspace, mounts, config):
+        created.append(agent_id)
+        sleep(0.05)
+        handle = SandboxHandle(agent_id=agent_id, container_id="c1", container_name="n", workspace=workspace,
+                               mounts=[], config=config)
+        self._containers[agent_id] = handle
+        return handle
+
+    monkeypatch.setattr(SandboxManager, "_create_sandbox", fake_create)
+
+    def worker():
+        start.wait()
+        manager.ensure_sandbox("default", temp_dir.resolve(), config)  # shell.py 传入的是 resolve 后的路径
+
+    threads = [threading.Thread(target=worker) for _ in range(2)]
+    [thread.start() for thread in threads]
+    [thread.join(5) for thread in threads]
+    assert created == ["default"]

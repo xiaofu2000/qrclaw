@@ -19,7 +19,7 @@ from rich.console import Console
 
 from qrclaw.memory.wiki.wiki_memory import WikiMemory
 from qrclaw.memory.context.session import Session
-from qrclaw.memory.context.context_manager import (
+from qrclaw.memory.context.runtime.manager import (
     ContextManager,
     init_context_manager,
     get_context_manager,
@@ -234,3 +234,22 @@ class TestWikiQueryIntegration:
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v", "-s"])
+
+
+def test_selector_history_keeps_recent_dialogue_without_tool_noise():
+    """选页器只带最近几轮用户和助手正文，过滤系统、工具调用和工具结果。"""
+    from qrclaw.memory.wiki.selection.wiki_selector import _format_conversation_history
+    messages = [
+        {"role": "system", "content": "你是一个助手"},
+        {"role": "user", "content": "你好"},
+        {"role": "assistant", "content": "你好！有什么可以帮助你的吗？"},
+        {"role": "tool", "content": '{"name": "read_file", "result": "..."}'},
+        {"role": "assistant", "tool_calls": [{"id": "call_1", "name": "read_file", "arguments": "{}"}]},
+        {"role": "user", "content": "我想了解 QRClaw 的架构"},
+        {"role": "assistant", "content": "QRClaw 是一个 AI Agent 开发框架..."},
+        {"role": "user", "content": "那记忆系统呢？"},
+    ]
+    result = _format_conversation_history(messages, keep_rounds=3)
+    assert "**用户**" in result and "**助手**" in result and "QRClaw" in result
+    assert "read_file" not in result and "你是一个助手" not in result
+    assert "无" in _format_conversation_history([])

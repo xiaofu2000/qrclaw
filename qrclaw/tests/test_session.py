@@ -255,6 +255,25 @@ class TestTokenCounting:
 class TestSessionList:
     """测试会话列表管理"""
 
+    def test_latest_reply_id_excludes_tools_reports_and_prior_turns(self, temp_dir):
+        """只为末轮正文提供稳定标识，改名不让已读回复重新出现。"""
+        from qrclaw.memory.context.session.session import latest_reply_id
+        session = Session(temp_dir, session_id="unread")
+        session.add({"role": "user", "content": "问题"})
+        session.add({"role": "assistant", "content": "调用工具", "tool_calls": [
+            {"id": "call", "type": "function", "function": {"name": "read_file", "arguments": "{}"}}]})
+        session.add({"role": "assistant", "kind": "execution_report", "content": "报告"})
+        assert list_sessions(temp_dir)[0]["last_reply_id"] is None
+        session.add({"role": "assistant", "content": "正文回复"})
+        reply_id = session.messages[-1]["uuid"]
+        session.set_title("新标题")
+        assert list_sessions(temp_dir)[0]["last_reply_id"] == reply_id
+        session.add({"role": "user", "content": "下一轮"})
+        assert list_sessions(temp_dir)[0]["last_reply_id"] is None
+        legacy = [{"role": "user", "content": "旧问题"}, {"role": "assistant", "content": "旧答复"}]
+        assert latest_reply_id(legacy, 2) == "legacy:2:1"
+        assert latest_reply_id([{"role": "assistant", "content": "历史摘要"}]) is None
+
     def test_list_sessions(self, temp_dir):
         """测试列出会话"""
         # 创建多个会话
@@ -297,3 +316,80 @@ class TestSessionList:
         """测试删除不存在的会话"""
         result = delete_session("nonexistent", temp_dir)
         assert result is False
+
+
+def test_cached_message_tokens_match_full_count_and_follow_content_changes():
+    """按消息缓存的 token 数与整体计算一致，内容变化后重新计算。"""
+    import litellm
+    from qrclaw.config import LITELLM_MODEL
+    from qrclaw.memory.token_utils import count_messages_tokens
+
+    messages = [
+        {"role": "user", "content": "帮我看看这个函数"},
+        {"role": "assistant", "content": "", "tool_calls": [{"id": "c1", "type": "function",
+                                                             "function": {"name": "read_file", "arguments": "{\"path\": \"a.py\"}"}}]},
+        {"role": "tool", "tool_call_id": "c1", "content": "def f():\n    return 1\n" * 20},
+        {"role": "assistant", "content": "这个函数返回 1。"},
+    ]
+    assert count_messages_tokens(messages) == litellm.token_counter(model=LITELLM_MODEL, messages=messages)
+    changed = [*messages[:-1], {"role": "assistant", "content": "这个函数总是返回整数 1，没有参数。"}]
+    assert count_messages_tokens(changed) == litellm.token_counter(model=LITELLM_MODEL, messages=changed)
+    assert count_messages_tokens([]) == litellm.token_counter(model=LITELLM_MODEL, messages=[])
+
+
+def test_load_skips_parsing_until_file_changes(temp_dir, monkeypatch):
+    """文件未变时追加不重新解析整份会话；其他对象写入后能读到对方的改动。"""
+    import qrclaw.memory.context.session.session as session_module
+
+    first = Session(temp_dir, session_id="shared", resume=False)
+    first.add({"role": "user", "content": "第一条"})
+    parses = []
+    real_loads = session_module.json.loads
+    monkeypatch.setattr(session_module.json, "loads", lambda text: parses.append(1) or real_loads(text))
+
+    first.add_event({"kind": "status", "title": "执行中"})
+    first.add({"role": "assistant", "content": "回复"})
+    assert parses == []
+
+    second = Session(temp_dir, session_id="shared")
+    second.add({"role": "user", "content": "另一个对象写入"})
+    first.add({"role": "assistant", "content": "再回复"})
+    assert [m["content"] for m in Session(temp_dir, session_id="shared").messages] == ["第一条", "回复", "另一个对象写入", "再回复"]
+    assert len(first.events) == 1
+
+
+def test_failed_save_forces_reload(temp_dir, monkeypatch):
+    """保存失败后内存里未落盘的消息不会在下次写入时被带上。"""
+    session = Session(temp_dir, session_id="fail", resume=False)
+    session.add({"role": "user", "content": "已保存"})
+    real_replace = Path.replace
+
+    def broken_replace(self, target):
+        raise OSError("磁盘已满")
+
+    monkeypatch.setattr(Path, "replace", broken_replace)
+    with pytest.raises(OSError):
+        session.add({"role": "assistant", "content": "未保存"})
+    monkeypatch.setattr(Path, "replace", real_replace)
+    session.add({"role": "assistant", "content": "重新保存"})
+    assert [m["content"] for m in Session(temp_dir, session_id="fail").messages] == ["已保存", "重新保存"]
+
+
+def test_failed_mutation_before_save_does_not_persist_partial_state(temp_dir, monkeypatch):
+    """改写历史在保存前抛错（如分词失败）时，下次写入从文件重读，不会把截断后的内存状态存进去。"""
+    import qrclaw.memory.context.session.session as session_module
+
+    session = Session(temp_dir, session_id="partial", resume=False)
+    session.add({"role": "user", "content": "q1"})
+    session.add({"role": "assistant", "content": "a1"})
+    real_count = session_module.count_messages_tokens
+
+    def broken(_messages):
+        raise RuntimeError("分词失败")
+
+    monkeypatch.setattr(session_module, "count_messages_tokens", broken)
+    with pytest.raises(RuntimeError):
+        session.rewrite_latest_user_turn(session.messages[0]["uuid"], None)
+    monkeypatch.setattr(session_module, "count_messages_tokens", real_count)
+    session.add({"role": "user", "content": "q2"})
+    assert [m["content"] for m in Session(temp_dir, session_id="partial").messages] == ["q1", "a1", "q2"]

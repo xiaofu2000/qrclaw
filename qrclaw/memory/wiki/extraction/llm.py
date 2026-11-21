@@ -6,6 +6,8 @@ Wiki LLM Analyzer - LLM 调用封装
 - WikiLLMAnalyzer.consolidate (行 336-376)
 """
 
+import json
+
 from qrclaw.memory.wiki.extraction.config import ExtractionConfig
 from qrclaw.memory.wiki.extraction.schemas import (
     ExtractionSchema,
@@ -20,7 +22,7 @@ from qrclaw.memory.wiki.extraction.prompts import (
 class WikiLLMAnalyzer:
     """Wiki LLM 分析器封装"""
 
-    def __init__(self, llm_service, config: ExtractionConfig):
+    def __init__(self, llm_service, config: ExtractionConfig, schema_rules: str | None = None):
         """
         Args:
             llm_service: LLMService 实例
@@ -28,6 +30,8 @@ class WikiLLMAnalyzer:
         """
         self.llm = llm_service
         self.config = config
+        from qrclaw.memory.wiki.schema import DEFAULT_WIKI_SCHEMA
+        self.schema_rules = schema_rules or DEFAULT_WIKI_SCHEMA
 
     def analyze(
         self,
@@ -48,6 +52,7 @@ class WikiLLMAnalyzer:
             index_md=index_md,
             messages_text=messages_text,
         )
+        prompt = self.schema_rules + "\n\n" + prompt
 
         return self.llm.structured(
             messages=[{"role": "user", "content": prompt}],
@@ -60,6 +65,8 @@ class WikiLLMAnalyzer:
         existing_content: str,
         new_content: str,
         page_name: str,
+        existing_metadata: dict | None = None,
+        new_metadata: dict | None = None,
     ) -> ConsolidatePageSchema:
         """
         合并整理页面内容
@@ -68,6 +75,8 @@ class WikiLLMAnalyzer:
             existing_content: 现有页面内容
             new_content: 新内容片段
             page_name: 页面名称
+            existing_metadata: 旧页面的摘要、标签与关联
+            new_metadata: 本次新增内容建议的摘要、标签与关联
 
         Returns:
             ConsolidatePageSchema: 整理后的内容
@@ -76,7 +85,10 @@ class WikiLLMAnalyzer:
             existing_content=existing_content,
             new_content=new_content,
             page_name=page_name,
+            existing_metadata=json.dumps(existing_metadata or {}, ensure_ascii=False),
+            new_metadata=json.dumps(new_metadata or {}, ensure_ascii=False),
         )
+        prompt = self.schema_rules + "\n\n" + prompt
 
         return self.llm.structured(
             messages=[{"role": "user", "content": prompt}],

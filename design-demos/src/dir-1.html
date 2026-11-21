@@ -1,0 +1,310 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>QRClaw 工作文档</title>
+<!--
+方向 A · iA「工作文档」
+- 来源：iA（Oliver Reichenstein）的排印主张与 iA Writer 的 Focus Mode，参考板 refs/board-3.jpg
+- 借的：单一阅读列（约 34 字宽）、中文衬线正文 17px / 1.9 行高、元信息一律等宽小字、更早的轮次调灰、无卡片无阴影
+- 主角：长回复本身；Agent 的工作过程退到页边批注
+- form 来自内容：这个用户的回复动辄上千字、带路径和代码，它首先是要读的文档
+- 数据：全部来自本机会话 20261012-0fbd13e0 与 Wiki；「回放这一轮」按事件日志的真实顺序重演
+-->
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;600;700&family=Noto+Sans+SC:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="data.js"></script>
+<style>
+:root{
+  --paper:#fbfbfa; --ink:#1d1d1f; --ink2:#3a3a3c; --dim:#6c6c66; --meta:#6b6b66; --rule:#e6e6e2; --soft:#f2f2ef;
+  --blue:#0a72b5; --cursor:#00a3ff; --blue-soft:#e6f4fd; --warn:#8a5a00;
+  --serif:"Noto Serif SC","Songti SC",serif; --sans:"Noto Sans SC","PingFang SC",sans-serif; --mono:"IBM Plex Mono",ui-monospace,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--paper:#161616;--ink:#ececea;--ink2:#d4d4d1;--dim:#9a9a94;--meta:#a3a39d;--rule:#2b2b29;--soft:#1f1f1e;--blue:#5cb8f2;--blue-soft:#13283a}}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:var(--paper);color:var(--ink);font-family:var(--sans)}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+a{color:inherit}
+.app{display:grid;grid-template-columns:248px 1fr;height:100dvh}
+
+/* 左侧索引 */
+.index{border-right:1px solid var(--rule);display:flex;flex-direction:column;min-height:0;padding:22px 0 0}
+.who{display:flex;align-items:center;gap:12px;padding:0 22px 20px}
+.who img{width:44px;height:44px;animation:bob 3.2s ease-in-out infinite}
+.who b{display:block;font:500 15px var(--mono);letter-spacing:.01em}
+.who span{font:12px/1.5 var(--mono);color:var(--meta)}
+.who span.live{color:var(--blue)}
+@keyframes bob{50%{transform:translateY(-3px)}}
+.newtask{margin:0 22px 18px;display:flex;justify-content:space-between;align-items:center;font:14px var(--sans);padding:10px 0;border-top:1px solid var(--ink);border-bottom:1px solid var(--rule)}
+.newtask kbd{font:12px var(--mono);color:var(--meta)}
+.newtask:hover{color:var(--blue)}
+.ix-h{font:12px var(--mono);color:var(--meta);padding:0 22px 8px;display:flex;justify-content:space-between}
+.sessions{overflow:auto;flex:1;min-height:0}
+.sess{display:block;width:100%;text-align:left;padding:10px 22px 11px;border-left:2px solid transparent;position:relative}
+.sess:hover{background:var(--soft)}
+.sess[aria-current]{border-left-color:var(--cursor);background:var(--soft)}
+.sess .t{font-size:14px;line-height:1.55;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.sess .m{font:12px/1.6 var(--mono);color:var(--meta);margin-top:3px}
+.sess .dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--cursor);margin-right:7px;vertical-align:2px}
+.memlink{border-top:1px solid var(--rule);padding:14px 22px 18px;text-align:left;width:100%}
+.memlink b{display:block;font-size:14px;font-weight:500}
+.memlink span{font:12px var(--mono);color:var(--meta)}
+.memlink[aria-current]{background:var(--soft);box-shadow:inset 2px 0 var(--cursor)}
+
+/* 文档 */
+.desk{display:grid;grid-template-columns:minmax(0,1fr) 300px;min-height:0}
+.doc{overflow:auto;min-height:0;scroll-behavior:smooth}
+.column{max-width:700px;margin:0 auto;padding:46px 56px 0}
+.doc-title{font:600 25px/1.5 var(--serif);margin:0;letter-spacing:-.01em}
+.doc-meta{font:12px/1.8 var(--mono);color:var(--meta);margin:8px 0 34px}
+.doc-meta button{color:var(--blue);margin-left:10px}
+.turn{margin-bottom:38px}
+.prompt{font:14px/1.75 var(--mono);color:var(--ink2);white-space:pre-wrap;padding-left:22px;position:relative;margin:0 0 18px}
+.prompt:before{content:"›";position:absolute;left:0;color:var(--cursor);font-weight:500}
+.prompt time{display:block;font-size:12px;color:var(--meta);margin-bottom:2px}
+.prose{font:17px/1.95 var(--serif);color:var(--ink)}
+.prose p{margin:0 0 1.05em}
+.prose strong{font-weight:700}
+.prose code{font:14px var(--mono);background:var(--soft);padding:1px 4px;border-radius:2px}
+.prose ul{margin:0 0 1.05em;padding-left:1.3em}
+.prose li{margin:.25em 0}
+.prose blockquote{margin:0 0 1.05em;padding-left:16px;border-left:2px solid var(--rule);color:var(--ink2)}
+.focus .past .prose,.focus .past .prompt{color:var(--dim)}
+.focus .past .prose strong{color:var(--dim)}
+.chapter{display:flex;align-items:center;gap:14px;font:12px var(--mono);color:var(--meta);margin:6px 0 40px}
+.chapter:before,.chapter:after{content:"";flex:1;height:1px;background:var(--rule)}
+.reply-actions{font:12px var(--mono);color:var(--meta);display:flex;gap:18px;margin-top:-4px}
+.reply-actions button:hover{color:var(--blue)}
+.caret{display:inline-block;width:2px;height:1.1em;background:var(--cursor);vertical-align:-.18em;animation:blink 1s steps(1) infinite}
+@keyframes blink{50%{opacity:0}}
+
+/* 输入：文档的最后一行 */
+.composer{position:sticky;bottom:0;background:linear-gradient(transparent,var(--paper) 22px);padding:26px 0 22px}
+.write{display:flex;gap:12px;align-items:flex-start;border-top:1px solid var(--ink);padding-top:14px}
+.write span{font:15px/1.7 var(--mono);color:var(--cursor)}
+.write textarea{flex:1;border:0;outline:0;resize:none;background:transparent;font:16px/1.75 var(--serif);color:var(--ink);min-height:30px}
+.write textarea::placeholder{color:var(--meta)}
+.write button.send{font:13px var(--mono);border:1px solid var(--ink);padding:6px 12px;border-radius:2px}
+.write button.send:hover{background:var(--ink);color:var(--paper)}
+.tools{display:flex;gap:22px;font:12px var(--mono);color:var(--meta);margin-top:10px;align-items:center}
+.tools button[role=switch]{display:flex;gap:7px;align-items:center}
+.tools button[role=switch] i{width:24px;height:13px;border:1px solid currentColor;border-radius:7px;position:relative}
+.tools button[role=switch] i:after{content:"";position:absolute;top:2px;left:2px;width:7px;height:7px;border-radius:50%;background:currentColor;transition:left .2s}
+.tools button[aria-checked=true]{color:var(--blue)}
+.tools button[aria-checked=true] i:after{left:13px}
+.ctx{display:flex;gap:8px;align-items:center}
+.ctx b{font-weight:500;color:var(--ink)}
+.ctx svg{display:block}
+
+/* 页边批注 */
+.margin{border-left:1px solid var(--rule);overflow:auto;padding:46px 26px 30px 24px;font:12.5px/1.75 var(--mono);color:var(--meta)}
+.note{margin-bottom:30px}
+.note h4{font:500 12px var(--mono);color:var(--ink);margin:0 0 8px;letter-spacing:.02em}
+.note .big{font:500 15px/1.5 var(--mono);color:var(--ink)}
+.calls{list-style:none;margin:10px 0 0;padding:0}
+.calls li{display:grid;grid-template-columns:44px 1fr auto;gap:8px;padding:2px 0;opacity:1;transition:opacity .3s}
+.calls li.pending{opacity:.28}
+.calls li.live{color:var(--blue)}
+.calls li.live:before{content:"";position:absolute}
+.calls em{font-style:normal;color:var(--meta)}
+.wrote a{display:block;color:var(--blue);text-decoration:none;font-family:var(--sans);font-size:14px;line-height:1.7}
+.wrote a:hover{text-decoration:underline}
+.wrote a.pending{opacity:.28;pointer-events:none}
+.replay{font:12px var(--mono);color:var(--blue);border:1px solid currentColor;padding:5px 10px;border-radius:2px;margin-top:12px}
+.bars{display:grid;grid-template-columns:auto 1fr auto;gap:4px 8px;align-items:center;margin-top:8px}
+.bars i{height:5px;background:var(--ink);opacity:.75}
+.marker{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--cursor);margin-right:6px;vertical-align:1px}
+
+/* 记忆视图 */
+.memory{display:none;grid-template-columns:300px minmax(0,1fr) 280px;min-height:0}
+[data-view=memory] .memory{display:grid}
+[data-view=memory] .desk{display:none}
+.toc{border-right:1px solid var(--rule);overflow:auto;padding:40px 0 20px}
+.toc h2{font:600 22px var(--serif);margin:0 24px 4px}
+.toc .sub{font:12px var(--mono);color:var(--meta);margin:0 24px 14px}
+.toc input{margin:0 24px 14px;width:calc(100% - 48px);border:0;border-bottom:1px solid var(--ink);background:transparent;font:14px var(--sans);padding:8px 0;color:var(--ink);outline:0}
+.toc button{display:block;width:100%;text-align:left;padding:9px 24px;border-left:2px solid transparent}
+.toc button:hover{background:var(--soft)}
+.toc button[aria-current]{border-left-color:var(--cursor);background:var(--soft)}
+.toc button b{display:block;font-weight:500;font-size:14px;line-height:1.5}
+.toc button span{font:12px var(--mono);color:var(--meta)}
+.page{overflow:auto;padding:46px 56px}
+.page .prose h3{font:600 19px/1.6 var(--serif);margin:1.6em 0 .5em}
+.page-actions{font:12px var(--mono);color:var(--meta);display:flex;gap:18px;margin:0 0 30px}
+.page-actions button{color:var(--blue)}
+
+@media (max-width:1180px){.desk{grid-template-columns:1fr}.margin{display:none}.inline-notes{display:block!important}.memory{grid-template-columns:260px 1fr}.memory .margin{display:none}}
+.inline-notes{display:none;font:12px/1.8 var(--mono);color:var(--meta);border-left:2px solid var(--cursor);padding-left:12px;margin:0 0 20px}
+.inline-notes a{color:var(--blue)}
+.topbar{display:none}
+@media (max-width:760px){
+  .app{grid-template-columns:1fr;grid-template-rows:auto 1fr}
+  .index{position:fixed;inset:0 auto 0 0;width:86vw;max-width:320px;background:var(--paper);z-index:5;transform:translateX(-100%);transition:transform .25s}
+  .app.nav-open .index{transform:none;box-shadow:0 0 0 100vmax rgba(0,0,0,.25)}
+  .topbar{display:flex;align-items:center;gap:12px;padding:10px 16px;border-bottom:1px solid var(--rule)}
+  .topbar button{width:44px;height:44px;font:20px var(--mono)}
+  .topbar img{width:34px;height:34px}
+  .topbar span{font:12px var(--mono);color:var(--meta)}
+  .column{padding:24px 16px 0}
+  .doc-title{font-size:20px}
+  .prose{font-size:16px;line-height:1.9}
+  .memory{grid-template-columns:1fr}.toc{display:none}.page{padding:24px 16px}
+}
+</style></head>
+<body>
+<div class="app" id="app" data-view="chat">
+  <header class="topbar"><button aria-label="打开会话索引" onclick="app.classList.toggle('nav-open')">≡</button><img src="assets/bloub.svg" alt=""><span id="mStatus">本轮已完成 · 有未读回复</span></header>
+
+  <aside class="index" aria-label="会话索引">
+    <div class="who"><img src="assets/bloub.svg" alt="QRClaw 小精灵"><div><b>QRClaw</b><span id="status">本轮已完成</span></div></div>
+    <button class="newtask" type="button">开始新任务<kbd>⌘ N</kbd></button>
+    <div class="ix-h"><span>会话</span><span>4</span></div>
+    <nav class="sessions" id="sessions" aria-label="选择会话"></nav>
+    <button class="memlink" id="memlink" type="button"><b>记忆</b><span>15 页 · 1 项待整理</span></button>
+  </aside>
+
+  <main class="desk" aria-label="对话">
+    <div class="doc focus" id="doc">
+      <div class="column">
+        <h1 class="doc-title" id="title"></h1>
+        <div class="doc-meta" id="meta"></div>
+
+        <section class="turn past" aria-label="更早的一轮">
+          <p class="prompt" id="prevPrompt"></p>
+          <div class="prose" id="prevReply"></div>
+        </section>
+
+        <div class="chapter">上下文已整理　84,557 → 23,143</div>
+
+        <section class="turn now" aria-label="当前这一轮">
+          <p class="prompt" id="prompt"></p>
+          <div class="inline-notes" id="inlineNotes"></div>
+          <div class="prose" id="reply" aria-live="polite"></div>
+          <div class="reply-actions"><button>复制</button><button>编辑上一条消息</button><button>删除</button></div>
+        </section>
+
+        <form class="composer" onsubmit="event.preventDefault()">
+          <div class="write"><span>›</span><textarea rows="1" aria-label="消息" placeholder="接着写……（Enter 发送，Shift+Enter 换行）"></textarea><button class="send" type="submit">发送</button></div>
+          <div class="tools">
+            <button type="button" role="switch" aria-checked="false" id="plan" title="开启后允许自动拆分计划；关闭后直接执行。下次发送生效。"><i></i>Plan</button>
+            <span class="ctx" title="上下文估算 144,571 / 485,000 tokens，超过 90% 时自动整理"><svg width="64" height="6" aria-hidden="true"><rect width="64" height="6" fill="var(--rule)"/><rect width="19" height="6" fill="var(--ink)"/><rect x="57" width="1" height="6" fill="var(--warn)"/></svg>上下文 <b>29.8%</b></span>
+            <span>已整理 2 次</span>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <aside class="margin" aria-label="页边批注">
+      <div class="note" id="runNote">
+        <h4>这一轮做了什么</h4>
+        <div class="big" id="runBig">8 次调用 · 4 分 46 秒</div>
+        <ul class="calls" id="calls"></ul>
+        <button class="replay" id="replay" type="button">回放这一轮</button>
+      </div>
+      <div class="note wrote">
+        <h4>留进记忆</h4>
+        <div id="wrote"></div>
+      </div>
+      <div class="note">
+        <h4>整个会话</h4>
+        <div>107 次工具调用 · 4 个子 Agent</div>
+        <div class="bars" id="bars"></div>
+      </div>
+      <div class="note">
+        <h4>还没整理进记忆</h4>
+        <div>2 条正文等待批量提取<br>闲置 2 分钟后自动处理</div>
+      </div>
+    </aside>
+  </main>
+
+  <section class="memory" aria-label="记忆">
+    <nav class="toc" aria-label="记忆目录">
+      <h2>记忆</h2><div class="sub">15 页 · 1 项待整理</div>
+      <input type="search" placeholder="搜索名称、标签或正文" aria-label="搜索记忆">
+      <div id="toc"></div>
+    </nav>
+    <article class="page" id="page"></article>
+    <aside class="margin" id="pageMargin" aria-label="来源与关联"></aside>
+  </section>
+</div>
+
+<script>
+const Q = window.QR, $ = id => document.getElementById(id)
+const fmt = n => n.toLocaleString('en-US')
+$('title').textContent = Q.session.title
+$('meta').innerHTML = `99 条消息 · ${fmt(Q.session.tokens)} tokens · 最近 ${Q.session.updated}<button id="focusBtn" type="button">专注当前轮：开</button>`
+$('prevPrompt').innerHTML = `<time>更早</time>${Q.prev.user}`
+$('prevReply').innerHTML = md(Q.prev.reply)
+$('prompt').innerHTML = `<time>你 · ${Q.turn.at}</time>` + Q.turn.user.replace(/</g, '&lt;')
+$('reply').innerHTML = md(Q.turn.reply)
+
+$('sessions').innerHTML = Q.sessions.map((s, i) => `<button class="sess" type="button" ${i === 0 ? 'aria-current="page"' : ''} aria-label="${s.title}${s.unread ? '，有未读回复' : ''}">
+  <div class="t">${s.unread ? '<span class="dot" aria-hidden="true"></span>' : ''}${s.title}</div><div class="m">${s.updated} · ${s.messages ? s.tools + ' 次调用' : '空白'}</div></button>`).join('')
+requestAnimationFrame(() => { const now = document.querySelector('.turn.now'); $('doc').style.scrollBehavior = 'auto'; $('doc').scrollTop = now.offsetTop - 40; $('doc').style.scrollBehavior = '' })
+
+const total = Q.toolTotals.reduce((a, [, n]) => a + n, 0)
+$('bars').innerHTML = Q.toolTotals.slice(0, 5).map(([t, n]) => `<span>${t}</span><i style="width:${n / 65 * 100}%"></i><span>${n}</span>`).join('')
+
+function renderCalls(done = Q.turn.tools.length, live = -1) {
+  $('calls').innerHTML = Q.turn.tools.map((c, i) => `<li class="${i < done ? '' : i === live ? 'live' : 'pending'}"><span>${c.at.slice(0, 5)}</span><span>${i === live ? '<span class=marker></span>' : ''}${c.t}</span><em>${i < done ? c.d : i === live ? '进行中' : ''}</em></li>`).join('')
+  $('wrote').innerHTML = Q.turn.wrote.map(name => {
+    const idx = Q.turn.tools.findIndex(c => c.page === name)
+    return `<a href="#memory" data-page="${name}" class="${idx < done ? '' : 'pending'}">${name}</a>`
+  }).join('') + `<div>${done >= Q.turn.tools.length ? '本轮写入 2 页，来源可回溯到这条消息' : '写入后出现在这里'}</div>`
+  $('inlineNotes').innerHTML = `${done}/${Q.turn.tools.length} 次调用 · ${Q.turn.duration} · 留进记忆：${Q.turn.wrote.map(n => `<a href="#memory" data-page="${n}">${n}</a>`).join('、')}`
+}
+renderCalls()
+
+/* 回放：按事件日志顺序逐条点亮，最后流式写出回复 */
+let timer
+$('replay').onclick = () => {
+  clearInterval(timer)
+  const reply = Q.turn.reply
+  let step = 0
+  $('reply').innerHTML = '<span class="caret"></span>'
+  setStatus('正在思考')
+  renderCalls(0, 0)
+  timer = setInterval(() => {
+    if (step < Q.turn.tools.length) {
+      step++
+      renderCalls(step, step < Q.turn.tools.length ? step : -1)
+      setStatus(step < Q.turn.tools.length ? '正在调用 ' + Q.turn.tools[step].t : '正在写回复')
+      return
+    }
+    clearInterval(timer)
+    let n = 0
+    timer = setInterval(() => {
+      n += 14
+      $('reply').innerHTML = md(reply.slice(0, n)) + '<span class="caret"></span>'
+      if (n >= reply.length) { clearInterval(timer); $('reply').innerHTML = md(reply); setStatus('本轮已完成') }
+    }, 40)
+  }, 650)
+}
+function setStatus(text) { $('status').textContent = text; $('status').className = text === '本轮已完成' ? '' : 'live'; $('mStatus').textContent = text }
+
+document.addEventListener('click', e => {
+  if (e.target.id === 'focusBtn') { const on = $('doc').classList.toggle('focus'); e.target.textContent = '专注当前轮：' + (on ? '开' : '关') }
+  if (e.target.id === 'plan') e.target.setAttribute('aria-checked', e.target.getAttribute('aria-checked') !== 'true')
+  const link = e.target.closest('[data-page]')
+  if (link) { e.preventDefault(); openMemory(link.dataset.page) }
+  if (e.target.closest('#memlink')) openMemory(Q.page.name)
+  if (e.target.closest('.sess')) { app.dataset.view = 'chat'; $('memlink').removeAttribute('aria-current') }
+})
+
+function openMemory(name) {
+  app.dataset.view = 'memory'
+  $('memlink').setAttribute('aria-current', 'page')
+  $('toc').innerHTML = Q.memory.map(m => `<button type="button" data-open="${m.name}" ${m.name === name ? 'aria-current="page"' : ''}><b>${m.name}</b><span>${m.updated} · ${m.sources ? m.sources + ' 个来源' : '来源未追溯'}</span></button>`).join('')
+  const meta = Q.memory.find(m => m.name === name)
+  const full = name === Q.page.name
+  $('page').innerHTML = `<h1 class="doc-title">${name}</h1>
+    <div class="doc-meta">${meta.status === 'ready' ? '可用' : '来源未追溯'} · ${full ? '版本 ' + Q.page.revision + ' · ' : ''}更新于 ${meta.updated} · ${meta.tags.join(' / ')}</div>
+    <div class="page-actions"><button type="button">编辑</button><button type="button">删除</button></div>
+    <div class="prose">${full ? md(Q.page.content) : '<p>' + meta.desc + '</p><p style="color:var(--meta);font:13px var(--mono)">（原型只载入了「QRClaw Skill 机制」的正文）</p>'}</div>`
+  $('pageMargin').innerHTML = full ? `<div class="note"><h4>来源 · 2</h4>${Q.page.sources.map(s => `<div>${s.role} · ${s.at}</div>`).join('')}<a href="#" class="replay" style="display:inline-block;text-decoration:none" onclick="event.preventDefault();app.dataset.view='chat'">回到原会话这一轮</a></div>
+    <div class="note"><h4>它链接到</h4>${Q.page.links.map(l => `<div><a href="#" data-page="${l}" style="color:var(--blue)">${l}</a></div>`).join('')}</div>
+    <div class="note"><h4>谁引用了它</h4>${Q.page.backlinks.map(l => `<div><a href="#" data-page="${l}" style="color:var(--blue)">${l}</a></div>`).join('')}</div>`
+    : `<div class="note"><h4>来源</h4><div>${meta.sources ? meta.sources + ' 条来源' : '历史页面，来源未追溯'}</div></div>`
+}
+document.addEventListener('click', e => { const b = e.target.closest('[data-open]'); if (b) openMemory(b.dataset.open) })
+if (location.hash === '#memory') openMemory(Q.page.name)
+</script>
+</body></html>
