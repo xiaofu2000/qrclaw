@@ -9,7 +9,7 @@ from qrclaw.logger import get_logger
 from qrclaw.memory.context.session.events import SessionEvent, with_status_code
 from qrclaw.memory.token_utils import count_messages_tokens
 
-logger = get_logger("qrclaw.memory.session")
+logger = get_logger("qrclaw.memory.context.session")
 USAGE_KEYS = ("prompt_tokens", "completion_tokens", "total_tokens")
 
 

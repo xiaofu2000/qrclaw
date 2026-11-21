@@ -1,29 +1,11 @@
 """
 心跳机制
 
-定期触发 Agent 执行维护任务，如：
-- 审查并清理中期记忆
-- 归档旧会话
-- 自我反思与学习
-
-Heartbeat.md 格式示例：
-
-# Heartbeat 任务
-
-每隔一段时间（默认 1 小时），Agent 会自动执行以下任务：
-
-## 记忆维护
-- 审查 MEMORY.md，清理过时条目
-- 合并重复信息
-- 保留用户偏好
-
-## 自我反思
-- 回顾最近的对话
-- 记录学到的新知识
-- 总结常见的错误和解决方案
+按固定间隔用后台子 Agent 执行 HEARTBEAT.md 中列出的任务。
+长期记忆（Wiki）由提取与整理流程自动维护，不属于心跳任务。
 """
+import re
 import threading
-import time
 from datetime import datetime
 from pathlib import Path
 from typing import Callable, Optional
@@ -144,39 +126,45 @@ def stop_heartbeat():
         _heartbeat = None
 
 
+def heartbeat_tasks(content: str) -> str:
+    """注释之外没有列表条目时视为没有任务，避免空模板触发模型调用。"""
+    body = re.sub(r"<!--.*?-->", "", content, flags=re.S)
+    has_task = any(re.match(r"\s*([-*+]|\d+[.)])\s+\S", line) for line in body.splitlines())
+    return body.strip() if has_task else ""
+
+
 def execute_heartbeat_tasks(workspace) -> str:
     """
     执行心跳任务（后台子 agent）。
-    
+
     Args:
         workspace: 当前工作空间
     Returns:
-        str: 执行结果摘要
+        str: 执行结果摘要；没有任务时返回空字符串
     """
     from qrclaw.agent import run_sub_agent
-    from qrclaw.workspace import Workspace
-    
+
     heartbeat_file = workspace.heartbeat_file
     if not heartbeat_file.exists():
         logger.warning("HEARTBEAT.md 不存在，跳过心跳任务")
-        return "HEARTBEAT.md 不存在"
-    
-    # 读取心跳任务
-    heartbeat_content = heartbeat_file.read_text(encoding="utf-8")
-    
-    # 构造任务 prompt
+        return ""
+
+    tasks = heartbeat_tasks(heartbeat_file.read_text(encoding="utf-8"))
+    if not tasks:
+        logger.info("HEARTBEAT.md 中没有任务，跳过心跳")
+        return ""
+
     task = f"""请执行以下心跳任务。静默执行，完成后简要汇报结果。
 
-{heartbeat_content}
+{tasks}
 
 注意：
 1. 不要打扰用户，静默执行
-2. 如果使用 review_memory，先 analyze 再决定是否 cleanup
-3. 完成后简要汇报：做了什么、结果如何
+2. 完成后简要汇报：做了什么、结果如何
 """
-    
+
     logger.info("心跳任务开始执行")
-    
+
     try:
         # 创建心跳专用子 agent
         result, _ = run_sub_agent(task, workspace, "heartbeat", sandbox_policy_agent_id=workspace.sandbox_policy_agent_id)
@@ -191,24 +179,14 @@ def get_default_heartbeat_content() -> str:
     """生成默认的 HEARTBEAT.md 内容"""
     return """# Heartbeat 任务
 
-每隔一段时间，Agent 会自动执行以下维护任务。
+<!--
+在下方用列表写出需要定期执行的任务，每行一条，例如：
+- 检查某个目录下的测试是否通过，失败时把原因追加到指定文件
 
----
+没有任务条目时，心跳不会调用模型。
+长期记忆（Wiki）由系统自动提取和整理，不需要在这里安排记忆维护。
+-->
 
-## 记忆维护
+## 任务
 
-- 审查 `MEMORY.md`，识别过时、重复内容
-- 如有过时内容，调用 `review_memory(action='cleanup')` 清理
-- 保留用户偏好和重要配置
-
----
-
-## 自我反思（可选）
-
-- 回顾最近的对话，是否有值得记录的知识
-- 如有，调用 `write_memory()` 记录
-
----
-
-**注意**：静默执行，完成后简要汇报即可。
 """

@@ -144,7 +144,7 @@ class WikiPageSelector:
             SelectionResult: 包含选中的页面列表和选择理由
         """
         # 1. 获取 Wiki 索引
-        index_md = ("\n".join(f"- {p.name}：{p.description}" for p in candidates[:20])
+        index_md = ("\n".join(f"- {p.name}：{p.description}" for p in candidates)
                     if candidates is not None else self.wiki_memory.load_index())
 
         # 2. 格式化对话历史（过滤工具调用）

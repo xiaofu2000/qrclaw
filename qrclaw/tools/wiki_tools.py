@@ -1,5 +1,6 @@
 """主 Agent 的按需 Wiki 搜索、分页读取、主动记忆和质量检查工具。"""
 import json
+import re
 import threading
 
 from pydantic import BaseModel, Field
@@ -79,8 +80,8 @@ class ListWikiPagesArgs(BaseModel):
 
 
 class SearchWikiArgs(BaseModel):
-    """按关键词查询有限摘要，命中后按需读取正文。"""
-    query: str = Field(min_length=1, description="页面名、标签或正文关键词")
+    """按关键词或完整问题查询有限摘要，命中后按需读取正文。"""
+    query: str = Field(min_length=1, description="页面名、关键词或能独立理解的完整问题")
     limit: int = Field(default=5, ge=1, le=5)
 
 
@@ -126,11 +127,30 @@ def list_wiki_pages(offset: int = 0, limit: int = 20) -> str:
     return json.dumps({"items": [p.to_index_entry() for p in pages[offset:offset + min(limit, 20)]], "total": len(pages)}, ensure_ascii=False)
 
 
-@register(description="按需搜索 Wiki 页面，先检索相关摘要再读取；不要把全部记忆逐页读入上下文。", args_model=SearchWikiArgs, agents=[AgentType.MAIN])
+@register(description="按关键词或完整问题搜索 Wiki 页面，返回候选摘要和正文命中 offset；用 read_wiki_page(name, offset) 读取证据。", args_model=SearchWikiArgs, agents=[AgentType.MAIN])
 def search_wiki(query: str, limit: int = 5) -> str:
-    """搜索本地文件，不额外调用检索模型。"""
-    pages = _get_wiki_memory().search_pages(query)[:min(limit, 5)]
-    return json.dumps({"items": [{**p.to_index_entry(), "snippet": p.content[:160]} for p in pages]}, ensure_ascii=False)
+    """合并精确匹配和目录语义选择，只返回候选页面。"""
+    query = query.strip()
+    limit = min(limit, 5)
+    if not query or limit < 1:
+        return json.dumps({"items": []}, ensure_ascii=False)
+
+    wiki = _get_wiki_memory()
+    exact = wiki.search_pages(query)
+    semantic = wiki.select_relevant_pages(query, [], top_k=limit)
+    pages = []
+    for page in (exact[:1] + semantic + exact[1:]):
+        if page and page.name not in {item.name for item in pages}:
+            pages.append(page)
+        if len(pages) >= limit:
+            break
+
+    items = []
+    for page in pages:
+        match = re.search(re.escape(query), page.content, re.IGNORECASE)
+        offset = max(0, match.start() - 80) if match else 0
+        items.append({**page.to_index_entry(), "snippet": page.content[offset:offset + 160], "offset": offset})
+    return json.dumps({"items": items}, ensure_ascii=False)
 
 
 @register(description="检查 Wiki 断链、孤立页、索引和来源状态；仅用户明确要求时启用语义检查，报告疑似问题而不自动删除。", args_model=LintWikiArgs, agents=[AgentType.MAIN])

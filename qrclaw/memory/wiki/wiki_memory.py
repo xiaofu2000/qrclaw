@@ -334,12 +334,10 @@ class WikiMemory:
         """
         基于 LLM 的智能页面选择
 
-        两阶段筛选：
-        1. 关键词初筛：用 search_pages 获取候选页面
-        2. LLM 精选：用 WikiPageSelector 做语义匹配，选出 top_k 个最相关页面
+        根据完整页面目录（名称和摘要）做语义匹配，选出 top_k 个最相关页面。
 
         Args:
-            query: 用户当前消息（用于关键词初筛和 LLM 精选）
+            query: 用户当前消息
             messages: 主 agent 的完整 messages 列表（继承对话上下文）
             top_k: 返回的最相关页面数量，默认 3
 
@@ -355,31 +353,34 @@ class WikiMemory:
         """
         from qrclaw.memory.wiki.selection import WikiPageSelector
 
-        # 第一阶段：关键词初筛，获取候选页面
-        keyword_candidates = self.search_pages(query)
-        candidates = (keyword_candidates or self.list_pages())[:20]
-        if not candidates:
+        candidates = self.list_pages()
+        if not candidates or top_k < 1:
             return []
 
-        # 第二阶段：LLM 精选
-        selector = WikiPageSelector(self)
-        selection_result = selector.select(query, messages, candidates=candidates)
+        query_folded = query.casefold()
+        mentioned = [p.name for p in candidates if len(p.name) > 1 and p.name.casefold() in query_folded]
+        # shortcut: 全量目录会随页面数增加而变贵；目录超出模型预算时改为主题分层路由。
+        selected = []
+        if not any(name.casefold() == query_folded for name in mentioned):
+            selected = WikiPageSelector(self).select(query, messages, candidates=candidates).selected
+        names = mentioned + [page.name for page in selected if page.relevance >= 0.6]
 
-        if not selection_result.selected:
-            logger.debug("select_relevant_pages: LLM 精选无结果，返回关键词匹配结果")
-            return keyword_candidates[:top_k]
-
-        # 根据 LLM 选择结果获取 WikiPage 对象
+        # 选页期间页面可能被撤销，返回前重新验证。
         selected_pages = []
-        for selected in selection_result.selected[:top_k]:
-            page = self.get_page(selected.name)
-            if page and self.retrievable(page) and page.name in {p.name for p in candidates}:
+        candidate_names = {p.name for p in candidates}
+        seen = set()
+        for name in names:
+            if name in seen:
+                continue
+            seen.add(name)
+            page = self.get_page(name)
+            if page and self.retrievable(page) and name in candidate_names:
                 selected_pages.append(page)
+            if len(selected_pages) >= top_k:
+                break
 
-        logger.debug(
-            f"select_relevant_pages: 关键词候选 {len(candidates)} 个，LLM 选中 {len(selected_pages)} 个"
-        )
-        return selected_pages or keyword_candidates[:top_k]
+        logger.debug(f"select_relevant_pages: 目录页面 {len(candidates)} 个，选中 {len(selected_pages)} 个")
+        return selected_pages or self.search_pages(query)[:top_k]
 
     def page_exists(self, name: str) -> bool:
         """检查页面是否存在"""

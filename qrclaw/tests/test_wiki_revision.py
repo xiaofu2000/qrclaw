@@ -1,4 +1,5 @@
 """来源、用户确认、撤销、重建、并发及 Web 接口的完整记忆链路测试。"""
+import json
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 from concurrent.futures import ThreadPoolExecutor
@@ -20,7 +21,7 @@ from qrclaw.server.app import create_app
 from qrclaw.server.session_service import SessionService
 from qrclaw.server.wiki_service import WikiService
 from qrclaw.workspace import Workspace
-from qrclaw.tools.wiki_tools import read_wiki_content, reset_wiki_reads
+from qrclaw.tools.wiki_tools import read_wiki_content, reset_wiki_reads, search_wiki
 
 
 @pytest.fixture
@@ -434,16 +435,60 @@ def test_alias_backlinks_lint_and_read_budget(wiki):
     assert "预算" in read_wiki_content(wiki, "B")["error"]
 
 
-def test_plan_selector_candidate_cap(wiki, monkeypatch):
+def test_plan_selector_can_reach_page_after_first_20(wiki, monkeypatch):
     for i in range(25):
-        wiki.save_page(f"页面{i}", "内容")
-    seen = []
-    def select(_self, _query, _messages, **kwargs):
-        seen.extend(kwargs["candidates"])
-        return SimpleNamespace(selected=[])
-    monkeypatch.setattr("qrclaw.memory.wiki.selection.WikiPageSelector.select", select)
-    assert wiki.select_relevant_pages("无匹配关键词", []) == []
-    assert len(seen) == 20
+        wiki.save_page(f"页面{i:02d}", "内容", description=f"第 {i} 页")
+
+    def chat(messages):
+        assert "- 页面24：第 24 页" in messages[0]["content"]
+        return '{"selected":[{"name":"页面24","reason":"相关","relevance":1.0}]}'
+
+    monkeypatch.setattr("qrclaw.memory.wiki.selection.wiki_selector.chat", chat)
+    assert [p.name for p in wiki.select_relevant_pages("无匹配关键词", [])] == ["页面24"]
+
+
+def test_direct_search_finds_paraphrase_and_exact_body(wiki, monkeypatch):
+    wiki.save_page("部署方式", "服务通过容器上线", description="项目的部署记录")
+    wiki.save_page("故障代码", "背景" * 100 + "ERR-741" + "后续" * 100)
+    monkeypatch.setattr("qrclaw.tools.wiki_tools._get_wiki_memory", lambda: wiki)
+    monkeypatch.setattr(
+        "qrclaw.memory.wiki.selection.wiki_selector.chat",
+        lambda _messages: '{"selected":[{"name":"部署方式","reason":"相关","relevance":1.0}]}',
+    )
+
+    paraphrase = json.loads(search_wiki("这个服务怎么发布上线？"))
+    assert [item["name"] for item in paraphrase["items"]] == ["部署方式"]
+
+    exact = json.loads(search_wiki("ERR-741", limit=2))
+    assert exact["items"][0]["name"] == "故障代码"
+    assert "ERR-741" in exact["items"][0]["snippet"]
+    assert exact["items"][0]["offset"] > 0
+    assert "ERR-741" in read_wiki_content(wiki, "故障代码", exact["items"][0]["offset"])["content"]
+
+
+def test_direct_search_rejects_topic_without_answer_evidence(wiki, monkeypatch):
+    wiki.save_page("Memory 系统设计", "记录 Wiki 如何存储记忆", description="记忆存储的架构")
+    monkeypatch.setattr("qrclaw.tools.wiki_tools._get_wiki_memory", lambda: wiki)
+    monkeypatch.setattr(
+        "qrclaw.memory.wiki.selection.wiki_selector.chat",
+        lambda _messages: '{"selected":[{"name":"Memory 系统设计","reason":"话题相关","relevance":0.4}]}',
+    )
+
+    assert json.loads(search_wiki("我订的酒店叫什么名字？"))["items"] == []
+
+
+def test_direct_search_keeps_both_explicit_comparison_pages(wiki, monkeypatch):
+    wiki.save_page("Osteomeles", "分布在太平洋岛屿")
+    wiki.save_page("Medinilla", "分布在亚洲和太平洋岛屿")
+    monkeypatch.setattr("qrclaw.tools.wiki_tools._get_wiki_memory", lambda: wiki)
+    monkeypatch.setattr(
+        "qrclaw.memory.wiki.selection.wiki_selector.chat",
+        lambda _messages: '{"selected":[{"name":"Medinilla","reason":"比较对象","relevance":0.9}]}',
+    )
+
+    items = json.loads(search_wiki("Osteomeles 和 Medinilla 哪个分布更广？"))["items"]
+    assert {item["name"] for item in items} == {"Osteomeles", "Medinilla"}
+    assert {p.name for p in wiki.select_relevant_pages("Osteomeles 和 Medinilla 哪个分布更广？", [])} == {"Osteomeles", "Medinilla"}
 
 
 def test_web_api_search_edit_delete_and_conflict(wiki, tmp_path):
