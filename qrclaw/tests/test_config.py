@@ -97,3 +97,13 @@ def test_override_warning_compares_validated_values_and_hides_urls(caplog):
     assert "LITELLM_PROXY_URL" in caplog.text and "user:" not in caplog.text
     # 文件里的值无效、由环境变量纠正时照常启动
     assert load_settings({"compress": {"threshold_ratio": 1.5}}, env={"COMPRESS_THRESHOLD_RATIO": "0.8"}).compress.threshold_ratio == 0.8
+
+
+def test_memory_extraction_settings_from_file_and_env():
+    """记忆提取阈值走统一配置：文件段生效，旧的 MEMORY_* 环境变量仍可覆盖。"""
+    settings = load_settings({"memory": {"min_turns": 5, "idle_seconds": 30}}, env={"MEMORY_COOLDOWN_SECONDS": "60"})
+    assert (settings.memory.min_turns, settings.memory.idle_seconds, settings.memory.cooldown_seconds) == (5, 30, 60)
+    assert settings.memory.init_threshold == 5000
+    for bad in ({"min_turns": 0}, {"idle_seconds": -1}, {"cooldown_seconds": "inf"}):
+        with pytest.raises(ValueError):
+            load_settings({"memory": bad}, env={})

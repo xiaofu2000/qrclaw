@@ -13,7 +13,7 @@ WikiMemory —— LLM Wiki 记忆管理器
 - list_pages：列出所有页面
 - search_pages：关键词全文搜索
 - delete_page：删除页面
-- load_index：返回 index.md，供 system prompt 注入
+- load_index：生成可检索页面的索引，供 system prompt 注入
 """
 
 from __future__ import annotations
@@ -202,35 +202,6 @@ class WikiMemory:
         logger.info(f"WikiMemory.save_page [{action}]: {name}")
         return page
 
-    def append_page(
-        self,
-        name: str,
-        content: str,
-        tags: list[str] = None,
-        related: list[str] = None,
-    ) -> WikiPage:
-        """
-        追加内容到已有页面末尾。
-        页面不存在时自动创建（等同于 save_page）。
-        tags/related 为空时保留已有值。
-        """
-        with self._lock:
-            existing = self.get_page(name)
-            if not existing:
-                return self.save_page(name=name, content=content, tags=tags or [], related=related or [])
-
-            new_content = existing.content.rstrip() + "\n\n" + content.strip()
-            merged_tags = list(dict.fromkeys(existing.tags + (tags or [])))
-            merged_related = list(dict.fromkeys(existing.related + (related or [])))
-            return self.save_page(
-                name=name,
-                content=new_content,
-                description=existing.description,
-                tags=merged_tags,
-                related=merged_related,
-                source_ids=existing.source_ids,
-            )
-
     def fuzzy_find_name(self, name: str) -> Optional[str]:
         """
         模糊匹配页面名（忽略大小写和空格）。
@@ -393,9 +364,9 @@ class WikiMemory:
 
     def load_index(self) -> str:
         """
-        返回 index.md 全文，供注入 system prompt。
+        生成注入 system prompt 的索引：每个可检索页面一行「名称：描述」。
 
-        Agent 通过这个了解 Wiki 全貌，决定新建还是更新页面。
+        直接扫描 pages/，排除来源失效、整理中和已删除的页面；不读取 index.md。
         """
         return "# Wiki 索引\n\n" + "\n".join(f"- {p.name}：{p.description}" for p in self.list_pages())
 
@@ -435,19 +406,3 @@ class WikiMemory:
         with self._lock:
             self.index.rebuild_from_pages_dir()
         logger.info("WikiMemory: 重建索引完成")
-
-    def clear_all(self) -> None:
-        """清空所有页面和索引（开发/测试用）"""
-        with self._lock:
-            for md_file in self.pages_dir.glob("*.md"):
-                md_file.unlink()
-            self.index.rebuild_from_pages_dir()
-        logger.info("WikiMemory: 已清空所有页面")
-
-    def stats(self) -> dict:
-        """返回统计信息"""
-        entries = self.index.all_entries()
-        return {
-            "total_pages": len(entries),
-            "memory_dir": str(self.memory_dir),
-        }

@@ -643,10 +643,9 @@ def test_deleted_page_accepts_only_new_explicit_request(wiki, monkeypatch):
     from datetime import datetime
     runner = ExtractionRunner(wiki)
     result = ExtractionSchema(needs_update=True, pages=[WikiPageSchema(action="create", name=page.name, content="重新明确记住", source_ids=[sources[0]["id"]])])
-    runner.started_at = datetime.fromisoformat(deleted_at).timestamp() - 1
-    assert runner.process_extraction_result(result, sources=sources, explicit=True) == 0
-    runner.started_at = time.time() + 1
-    assert runner.process_extraction_result(result, sources=sources, explicit=True) == 1
+    before_delete = datetime.fromisoformat(deleted_at).timestamp() - 1
+    assert runner.process_extraction_result(result, sources=sources, explicit=True, started_at=before_delete) == 0
+    assert runner.process_extraction_result(result, sources=sources, explicit=True, started_at=time.time() + 1) == 1
     assert wiki.retrievable(wiki.get_page(page.name))
 
 

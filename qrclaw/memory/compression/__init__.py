@@ -4,19 +4,16 @@
 提供上下文压缩功能，包括：
 - count_tokens: 精确计算 token 数
 - summarize: 递归摘要压缩
-- truncate: 滚动截断
 """
 
 from qrclaw.memory.compression.compressor import (
     count_tokens,
     count_text_tokens,
     summarize,
-    truncate,
 )
 
 __all__ = [
     "count_tokens",
     "count_text_tokens",
     "summarize",
-    "truncate",
 ]

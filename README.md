@@ -68,7 +68,7 @@ API 默认只监听 `127.0.0.1:8765`，提供 `/health`、`/v1/models`、`/v1/se
 
 未处理原文、消息版本和已处理进度保存在各工作空间的 `memory/.extractions/<session-id>.json`，同一会话合并为一个待处理批次。模型判定无需更新时也记录进度；服务重启会恢复待处理任务。压缩前保存尚未提取的原文，避免丢失内容或重复分析摘要；编辑、删除消息时撤销对应待处理版本，删除会话时清理其进度。尚未升级过的旧会话没有提取进度，首次恢复可能需要分析一次当前正文。
 
-可用环境变量调整：`MEMORY_MIN_TURNS`（默认 3）、`MEMORY_IDLE_SECONDS`（120）、`MEMORY_COOLDOWN_SECONDS`（300）、`MEMORY_INIT_THRESHOLD`（5000，首次长对话阈值）、`MEMORY_UPDATE_INTERVAL`（5000，后续长对话阈值）。修改后重启服务生效；这些 token 按正文字符数除以三估算，不是模型实际账单用量。
+可在 `config.yaml` 的 `memory` 段调整，也可用环境变量覆盖：`min_turns` / `MEMORY_MIN_TURNS`（默认 3）、`idle_seconds` / `MEMORY_IDLE_SECONDS`（120）、`cooldown_seconds` / `MEMORY_COOLDOWN_SECONDS`（300）、`init_threshold` / `MEMORY_INIT_THRESHOLD`（5000，首次长对话阈值）、`update_interval` / `MEMORY_UPDATE_INTERVAL`（5000，后续长对话阈值）。修改后重启服务生效；这些 token 按正文字符数除以三估算，不是模型实际账单用量。
 
 自动提取和 `write_wiki_page` 共用写入流程：新页面直接创建；已有页面先读取旧正文，再由模型结合新增信息整理，替换明确过期的内容并保留有效信息。模型生成完整的新标签和关联集合，允许移除过期项；正文、索引及操作日志同步更新，没有实际变化时跳过保存。
 

@@ -58,6 +58,13 @@ DEFAULT_CONFIG = {
         "summary_max_tokens": 2560,
         "recent_max_tokens": 1536,
     },
+    "memory": {
+        "init_threshold": 5000,
+        "update_interval": 5000,
+        "min_turns": 3,
+        "idle_seconds": 120,
+        "cooldown_seconds": 300,
+    },
     "mcp": {
         "servers": [],
     },
@@ -87,6 +94,11 @@ ENV_OVERRIDES: dict[str, tuple[str, str]] = {
     "COMPRESS_THRESHOLD_RATIO": ("compress", "threshold_ratio"),
     "COMPRESS_SUMMARY_MAX_TOKENS": ("compress", "summary_max_tokens"),
     "COMPRESS_RECENT_MAX_TOKENS": ("compress", "recent_max_tokens"),
+    "MEMORY_INIT_THRESHOLD": ("memory", "init_threshold"),
+    "MEMORY_UPDATE_INTERVAL": ("memory", "update_interval"),
+    "MEMORY_MIN_TURNS": ("memory", "min_turns"),
+    "MEMORY_IDLE_SECONDS": ("memory", "idle_seconds"),
+    "MEMORY_COOLDOWN_SECONDS": ("memory", "cooldown_seconds"),
     "MCP_ENABLED": ("mcp", "enabled"),
     "MCP_SERVERS": ("mcp", "servers"),  # JSON 数组
 }

@@ -213,28 +213,3 @@ class WikiPageSelector:
         except json.JSONDecodeError as e:
             logger.warning(f"WikiPageSelector JSON 解析失败: {e}, 响应: {response[:200]}...")
             return SelectionResult(selected=[], reasoning=f"JSON 解析失败")
-
-    def select_with_pages(
-        self,
-        current_message: str,
-        messages: list[dict],
-        keep_rounds: int = DEFAULT_CONVERSATION_ROUNDS,
-    ) -> list["WikiPage"]:
-        """
-        选择页面并返回 WikiPage 对象列表。
-
-        与 select() 相同，但返回完整 WikiPage 对象而非 name。
-        """
-        from qrclaw.memory.wiki.page import WikiPage
-
-        result = self.select(current_message, messages, keep_rounds)
-
-        pages = []
-        for selected in result.selected:
-            page = self.wiki_memory.get_page(selected.name)
-            if page:
-                pages.append(page)
-            else:
-                logger.warning(f"WikiPageSelector: 页面不存在 {selected.name}")
-
-        return pages

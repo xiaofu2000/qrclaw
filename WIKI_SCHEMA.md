@@ -1,5 +1,7 @@
 # LLM Wiki 模式与 QRClaw WikiMemory 融合方案
 
+> **状态：历史提案，未按此实现。** 文中的页面类型、`wiki_<type>_` 文件命名、扩展字段和伪代码都没有落地。现行实现见 [docs/memory-and-context.md](docs/memory-and-context.md)，页面维护约定见 `qrclaw/memory/wiki/schema.py`（首次使用写入工作空间的 `memory/SCHEMA.md`）。
+
 ## 1. 页面类型定义
 
 ```yaml

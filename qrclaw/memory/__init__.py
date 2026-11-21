@@ -15,7 +15,6 @@ from qrclaw.memory.compression import (
     count_tokens,
     count_text_tokens,
     summarize,
-    truncate,
 )
 
 __all__ = [
@@ -30,5 +29,4 @@ __all__ = [
     "count_tokens",
     "count_text_tokens",
     "summarize",
-    "truncate",
 ]

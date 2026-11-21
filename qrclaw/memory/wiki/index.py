@@ -3,7 +3,7 @@ IndexManager —— 维护 index.json 和 index.md 的双向同步
 
 职责：
 - index.json：结构化索引，代码层快速查找页面元数据
-- index.md：人类可读目录，注入 LLM system prompt
+- index.md：人类可读目录，供用户查看（system prompt 由 WikiMemory.load_index 现拼）
 - log.md：append-only 操作日志
 
 两者保持同步：每次 upsert/remove 操作后自动重建 index.md。
@@ -196,14 +196,6 @@ class IndexManager:
         self._write_json(data)
         self._rebuild_index_md(pages)
         logger.info(f"从 pages/ 重建索引，共 {len(pages)} 个页面")
-
-    # ── index.md 读取（注入 system prompt 用）────────────────────────────────
-
-    def load_index_md(self) -> str:
-        """返回 index.md 全文"""
-        if self._index_md_path.exists():
-            return self._index_md_path.read_text(encoding="utf-8")
-        return "# QRClaw Wiki 索引\n\n> 暂无页面\n"
 
     # ── 日志 ──────────────────────────────────────────────────────────────────
 

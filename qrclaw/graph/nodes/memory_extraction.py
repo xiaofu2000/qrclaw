@@ -131,7 +131,7 @@ class MemoryExtractionNode:
         """主动记忆立即调用模型，不受自动提取的轮次、闲置和冷却限制。"""
         with self._flush_lock, self.indexer.worker_lock:
             runner = self._get_runner()
-            runner.started_at = self.request_started_at if self.request_started_at is not None else time.time()
+            started_at = self.request_started_at if self.request_started_at is not None else time.time()
             from qrclaw.memory.wiki.provenance import source_text
             if self.session is not None:
                 sources = self.memory.provenance.capture(self.session.messages, self.session.session_id, request_order=self.request_order)
@@ -142,7 +142,7 @@ class MemoryExtractionNode:
             })
             if extraction is None:
                 raise RuntimeError("记忆分析失败")
-            written = runner.process_extraction_result(extraction, sources=sources, explicit=True)
+            written = runner.process_extraction_result(extraction, sources=sources, explicit=True, started_at=started_at)
             self.last_written_pages = list(runner.last_written_pages)
             if self.session is not None:
                 self._acknowledge_sources(sources)

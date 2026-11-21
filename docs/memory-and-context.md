@@ -44,7 +44,7 @@ token 计数用 LiteLLM 的 `token_counter`（`memory/token_utils.py`），按�
 每次 ReactLoop 调模型前都会调用 `ctx.compress_if_needed()`：
 
 1. `context_tokens` 超过阈值（默认模型窗口的 **90%**）才压缩。
-2. `_pick_recent()` 从最新消息往回保留，预算约窗口的 **12%**；不会把 `tool_calls` 和对应的 `tool` 结果拆开。
+2. `_pick_recent()` 从最新消息往回保留，预算为 `compress.recent_max_tokens`（默认 1536 token）；不会把 `tool_calls` 和对应的 `tool` 结果拆开。
 3. 更早的消息交给 LLM 生成结构化摘要（用户信息 / 已完成任务 / 关键结论 / 待处理事项），目标约窗口的 10%。
 4. 历史被替换为：`[SUMMARY] 摘要` + 保留的近期消息。如果旧消息里已有 `[SUMMARY]`，会一起再压一次（递归摘要）。
 5. 压缩后若总量超过 25%，再收紧近期消息预算。
@@ -54,14 +54,14 @@ token 计数用 LiteLLM 的 `token_counter`（`memory/token_utils.py`），按�
 - 写回前检查会话是否被其他进程改过，改过就放弃。
 - 压缩开始/完成/失败都会写一条 `compression` 事件，前端可展示进度。
 
-相关配置（`qrclaw/config.py`，可用环境变量覆盖）：
+相关配置（`config.yaml` 的 `llm` / `compress` 段，可用环境变量覆盖）：
 
 | 变量 | 默认 | 含义 |
 |---|---|---|
 | `MODEL_MAX_TOKENS` | 485000 | 模型上下文窗口 |
 | `COMPRESS_THRESHOLD_RATIO` | 0.9 | 触发压缩的比例 |
-| `COMPRESS_RECENT_MAX_TOKENS` | 窗口 × 12% | 保留近期消息的预算 |
-| `COMPRESS_SUMMARY_MAX_TOKENS` | 窗口 × 20% | 摘要上限 |
+| `COMPRESS_RECENT_MAX_TOKENS` | 1536 | 保留近期消息的预算 |
+| `COMPRESS_SUMMARY_MAX_TOKENS` | 2560 | 摘要上限（目前未被压缩逻辑使用；摘要目标固定为窗口 × 10%） |
 
 ### 4. 计划模式下的上下文
 
@@ -80,8 +80,8 @@ Router 判定为 `plan` 后：
 ```
 memory/
 ├── pages/<页面名>.md        # 每页一个 Markdown，带 frontmatter（description/tags/related/revision/status…）
-├── index.json               # 页面索引（source of truth）
-├── index.md                 # 由 index.json 生成的可读索引
+├── index.json               # 页面元数据索引；服务启动时从 pages/ 重建
+├── index.md                 # 由 index.json 生成的可读索引（只供查看，不注入提示词）
 ├── log.md                   # 操作日志
 ├── SCHEMA.md                # 页面规范
 ├── .wiki-state.json         # 来源追溯：页面版本、已删除页面、来源消息
@@ -112,15 +112,15 @@ memory/
 - 用户主动删除的页面，旧的后台任务不能再把它写回来。
 - 提取失败时原文留在磁盘，冷却后重试；服务重启后 `resume()` 续接。
 
-可调参数（环境变量）：`MEMORY_INIT_THRESHOLD`、`MEMORY_UPDATE_INTERVAL`、`MEMORY_MIN_TURNS`、`MEMORY_IDLE_SECONDS`、`MEMORY_COOLDOWN_SECONDS`。
+可调参数：`config.yaml` 的 `memory` 段（`init_threshold`、`update_interval`、`min_turns`、`idle_seconds`、`cooldown_seconds`），或对应的环境变量 `MEMORY_INIT_THRESHOLD`、`MEMORY_UPDATE_INTERVAL`、`MEMORY_MIN_TURNS`、`MEMORY_IDLE_SECONDS`、`MEMORY_COOLDOWN_SECONDS`。修改后重启生效。
 
 ### 3. 记忆怎么读出来
 
 有三种途径，从轻到重：
 
-1. **索引常驻**：每次构建 system prompt 都注入 Wiki 索引（每页一行"名称：描述"），模型据此知道有哪些知识。
-2. **工具按需读**：模型用 `search_wiki` / `list_wiki_pages` 定位，再用 `read_wiki_page` 分页读正文。同一版本的同一段只给一次，避免重复占上下文。
-3. **计划模式自动召回**：Router 判定为 `plan` 时，`WikiQueryNode` 以计划目标为查询做两阶段筛选——先关键词初筛（最多 20 个候选），再让 LLM 精选 top 3——把选中页面的正文直接注入 system prompt。`direct` 模式不做这一步，保证简单任务够快。
+1. **索引常驻**：每次构建 system prompt 都注入 Wiki 索引（`WikiMemory.load_index()` 扫描 `pages/`，每个可检索页面一行"名称：描述"），模型据此知道有哪些知识。
+2. **工具按需读**：模型用 `search_wiki` / `list_wiki_pages` 定位，再用 `read_wiki_page` 分页读正文。`search_wiki` 合并关键词命中和上面同一套 LLM 目录选页，每次调用会多一次模型请求。同一版本的同一段只给一次，避免重复占上下文。
+3. **计划模式自动召回**：Router 判定为 `plan` 时，`WikiQueryNode` 以计划目标为查询调用 `select_relevant_pages()`：计划目标里直接出现的页面名优先；否则把全部可检索页面的「名称：描述」目录交给 LLM，取相关度 ≥ 0.6 的前 3 页；LLM 没选出页面时退回关键词搜索。选中页面的正文直接注入 system prompt。`direct` 模式不做这一步，保证简单任务够快。
 
 来源失效或正在整理的页面不会暴露给 Agent（`WikiMemory.retrievable()`）。
 

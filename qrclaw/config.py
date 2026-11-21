@@ -78,6 +78,19 @@ class CompressSettings(_Section):
         return value
 
 
+class MemorySettings(_Section):
+    """后台自动记忆提取的触发条件；token 按正文字符数除以三估算。"""
+    # 首次提取前，待处理正文达到该值时不等闲置（长对话兜底）。
+    init_threshold: int = Field(default=5000, gt=0)
+    # 之后每次提取的长对话兜底阈值。
+    update_interval: int = Field(default=5000, gt=0)
+    # 至少累计几轮完整对话才按闲置触发。
+    min_turns: int = Field(default=3, gt=0)
+    # 闲置多久后提取，以及两次提取的最短间隔（秒）。
+    idle_seconds: float = Field(default=120, ge=0, allow_inf_nan=False)
+    cooldown_seconds: float = Field(default=300, ge=0, allow_inf_nan=False)
+
+
 class MCPSettings(_Section):
     servers: list[dict[str, Any]] = []
     # 未显式设置时，配置了服务即启用。
@@ -95,6 +108,7 @@ class Settings(_Section):
     log: LogSettings = LogSettings()
     heartbeat: HeartbeatSettings = HeartbeatSettings()
     compress: CompressSettings = CompressSettings()
+    memory: MemorySettings = MemorySettings()
     mcp: MCPSettings = MCPSettings()
 
 

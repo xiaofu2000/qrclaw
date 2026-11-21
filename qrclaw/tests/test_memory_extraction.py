@@ -98,10 +98,17 @@ def test_flush_persists_page_and_index(temp_dir):
 
 
 def test_concurrent_wiki_appends_keep_every_update(temp_dir):
+    """不同实例共用目录文件锁：锁内读改写不会丢失任何一次更新。"""
     WikiMemory(temp_dir).save_page("偏好", "起始")
 
+    def append(i):
+        wiki = WikiMemory(temp_dir)
+        with wiki._lock:
+            page = wiki.get_page("偏好")
+            wiki.save_page("偏好", page.content + f"\n\n更新{i}", page.description, expected_page=page)
+
     with ThreadPoolExecutor(max_workers=8) as pool:
-        list(pool.map(lambda i: WikiMemory(temp_dir).append_page("偏好", f"更新{i}"), range(16)))
+        list(pool.map(append, range(16)))
 
     wiki = WikiMemory(temp_dir)
     content = wiki.get_page("偏好").content
@@ -454,7 +461,19 @@ def test_default_and_custom_config():
     assert default.minimum_turns == 3
     assert default.idle_seconds == 120
     assert default.cooldown_seconds == 300
-    assert default.tool_calls_between_updates == 0
 
-    custom = _config(tool_calls_between_updates=5)
-    assert custom.tool_calls_between_updates == 5
+    custom = _config(minimum_turns=5)
+    assert custom.minimum_turns == 5
+
+
+def test_legacy_extraction_state_fields_are_ignored(tmp_path):
+    """旧版本进度文件里的废弃字段不影响读取，待处理正文保留。"""
+    import json
+    from qrclaw.memory.wiki.extraction.indexer import ExtractionIndexer
+    indexer = ExtractionIndexer(tmp_path, "旧会话")
+    indexer.state_file.write_text(json.dumps({
+        "last_extraction_tool_calls": 2, "last_extraction_idx": 7, "total_extractions": 1,
+        "pending_messages": [{"uuid": "m1", "role": "user", "content": "以后用中文"}]}), encoding="utf-8")
+    state = indexer.get_state()
+    assert state.total_extractions == 1
+    assert [m["uuid"] for m in state.pending_messages] == ["m1"]
