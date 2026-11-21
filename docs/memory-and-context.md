@@ -54,14 +54,15 @@ token 计数用 LiteLLM 的 `token_counter`（`memory/token_utils.py`），按�
 - 写回前检查会话是否被其他进程改过，改过就放弃。
 - 压缩开始/完成/失败都会写一条 `compression` 事件，前端可展示进度。
 
-相关配置（`qrclaw/config.py`，可用环境变量覆盖）：
+相关配置（`~/.qrclaw/config.yaml`，由 `qrclaw/config.py` 加载，可用环境变量覆盖）：
 
-| 变量 | 默认 | 含义 |
-|---|---|---|
-| `MODEL_MAX_TOKENS` | 485000 | 模型上下文窗口 |
-| `COMPRESS_THRESHOLD_RATIO` | 0.9 | 触发压缩的比例 |
-| `COMPRESS_RECENT_MAX_TOKENS` | 窗口 × 12% | 保留近期消息的预算 |
-| `COMPRESS_SUMMARY_MAX_TOKENS` | 窗口 × 20% | 摘要上限 |
+| 配置项 | 环境变量 | 默认 | 含义 |
+|---|---|---|---|
+| `llm.max_tokens` | `MODEL_MAX_TOKENS` | 485000 | 模型上下文窗口 |
+| `compress.threshold_ratio` | `COMPRESS_THRESHOLD_RATIO` | 0.9 | 触发压缩的比例 |
+| `compress.recent_max_tokens` | `COMPRESS_RECENT_MAX_TOKENS` | 不写时为窗口 × 12%（485k 窗口约 58,200） | 保留近期消息的预算；写了固定值就按固定值 |
+
+摘要长度不单独设上限，只在提示词里要求约窗口的 10%，超出 25% 总量时靠收紧近期消息兜底。
 
 ### 4. 计划模式下的上下文
 
