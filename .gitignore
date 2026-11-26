@@ -49,3 +49,6 @@ MEMORY.md
 workspace/
 sessions/
 agents/
+
+# Evals
+evals/reports/
