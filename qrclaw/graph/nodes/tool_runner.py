@@ -5,6 +5,7 @@ from dataclasses import dataclass
 
 from rich.console import Console
 
+from qrclaw.cancellation import TaskCancelledError, check_cancelled
 from qrclaw.logger import get_logger
 from qrclaw.tools.registry import execute, need_confirm
 
@@ -25,6 +26,7 @@ class ToolRunner:
 
     def run(self, name: str, arguments: str) -> str:
         """执行工具并记录本次是否失败，供会话过程事件使用。"""
+        check_cancelled()
         self.last_error = False
         if need_confirm(name) and not self.auto_confirm:
             if self.console:
@@ -38,6 +40,8 @@ class ToolRunner:
             result = execute(name, arguments)
             self._permission_denied_count = 0
             return result
+        except TaskCancelledError:
+            raise
         except PermissionError as exc:
             self.last_error = True
             self._permission_denied_count += 1

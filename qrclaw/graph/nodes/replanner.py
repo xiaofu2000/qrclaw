@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from typing import Literal
 from pydantic import BaseModel, Field
+from qrclaw.cancellation import TaskCancelledError, check_cancelled
 from qrclaw.prompts import REPLANNER_INSTRUCTION
 from qrclaw.providers.litellm_provider import LiteLLMProvider
 from qrclaw.llm_service import get_llm_service
@@ -47,6 +48,7 @@ class ReplannerNode:
             None: 目标已达成（DONE）
             list[PlanStep]: 新的剩余步骤
         """
+        check_cancelled()
         ctx = get_context_manager()
         ps = ctx.plan_state
         logger.info(f"Replanner 评估，已完成 {len(ps.past_steps)} 步，剩余 {len(ps.remaining)} 步")
@@ -69,7 +71,10 @@ class ReplannerNode:
 
             result: ReplanSchema = client.chat.completions.create(**kwargs)
 
+        except TaskCancelledError:
+            raise
         except Exception as e:
+            check_cancelled()
             logger.warning(f"Replanner 调用失败: {e}，保持原计划继续")
             return ctx.plan_state.remaining
 

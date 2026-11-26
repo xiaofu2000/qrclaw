@@ -14,6 +14,7 @@ from litellm import completion
 from litellm.exceptions import RateLimitError, ServiceUnavailableError, APIError, APIConnectionError
 from urllib.parse import urlparse
 
+from qrclaw.cancellation import TaskCancelledError, check_cancelled, interruptible_sleep
 from qrclaw.providers.base import LLMProvider, LLMResponse, ToolCall
 from qrclaw.config import (
     LITELLM_API_KEY,
@@ -134,6 +135,8 @@ class LiteLLMProvider(LLMProvider):
             temperature: 温度参数，越低越确定性输出
             on_delta: 传入时使用 LiteLLM 流式接口并逐块回调正文
         """
+        check_cancelled()
+
         kwargs = {
             "model": self._model,
             "messages": self._sanitize(messages),
@@ -166,23 +169,27 @@ class LiteLLMProvider(LLMProvider):
         last_error = None
 
         for attempt in range(max_retries):
+            check_cancelled()
             try:
                 response = completion(**kwargs)
+                check_cancelled()
                 break
+            except TaskCancelledError:
+                raise
             except (RateLimitError, ServiceUnavailableError, APIConnectionError) as e:
                 last_error = e
                 if attempt < max_retries - 1:
                     wait = 2 ** attempt
                     logger.warning(f"LiteLLM 请求失败（{type(e).__name__}），第 {attempt + 1} 次重试，等待 {wait}s...")
-                    import time
-                    time.sleep(wait)
+                    check_cancelled()
+                    interruptible_sleep(wait)
             except APIError as e:
                 last_error = e
                 if attempt < max_retries - 1:
                     wait = 2 ** attempt
                     logger.warning(f"LiteLLM API 错误（{e.status_code}），第 {attempt + 1} 次重试，等待 {wait}s...")
-                    import time
-                    time.sleep(wait)
+                    check_cancelled()
+                    interruptible_sleep(wait)
             except Exception as e:
                 # 未知异常直接抛出，不使用 break（避免 UnboundLocalError）
                 raise RuntimeError(f"LiteLLM 调用失败: {e}") from e
@@ -235,8 +242,12 @@ class LiteLLMProvider(LLMProvider):
         finish_reason = "stop"
         usage = None
         kwargs = {**kwargs, "stream": True, "stream_options": {"include_usage": True}}
+        stream = None
         try:
-            for chunk in completion(**kwargs):
+            check_cancelled()
+            stream = completion(**kwargs)
+            for chunk in stream:
+                check_cancelled()
                 usage = getattr(chunk, "usage", None) or usage
                 choices = getattr(chunk, "choices", None) or []
                 if not choices:
@@ -247,6 +258,7 @@ class LiteLLMProvider(LLMProvider):
                 if content:
                     contents.append(content)
                     on_delta(content)
+                    check_cancelled()
                 reason = self._extract_response_reasoning(delta)
                 if reason:
                     reasoning.append(reason)
@@ -259,6 +271,13 @@ class LiteLLMProvider(LLMProvider):
                         item["arguments"] += getattr(function, "arguments", None) or ""
                     item["thought_signature"] += getattr(part, "thought_signature", None) or ""
                 finish_reason = choice.finish_reason or finish_reason
+        except TaskCancelledError:
+            if stream is not None and hasattr(stream, "close"):
+                try:
+                    stream.close()
+                except Exception:
+                    pass
+            raise
         except Exception as exc:
             raise RuntimeError(f"LiteLLM 流式调用失败: {exc}") from exc
 

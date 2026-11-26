@@ -150,7 +150,7 @@ export function App() {
             onDeleteLatestMessage={id => void chat.deleteLatestMessage(id)} />
           <div className="composer-area">
             {chat.error && <div className="chat-error" role="alert"><span>{chat.error}</span><button onClick={() => void chat.refresh()}>刷新会话</button></div>}
-            <Composer value={chat.draft} onChange={chat.setDraft} onSend={chat.send}
+            <Composer value={chat.draft} onChange={chat.setDraft} onSend={chat.send} onStop={chat.stop} stopping={chat.cancelling}
               planEnabled={chat.planEnabled} onTogglePlan={chat.togglePlan} contextUsage={chat.contextUsage} compressionNotice={chat.compressionNotice}
               disabled={chat.running || chat.loading || chat.creating || chat.mutating || !chat.session} loading={chat.loading || !chat.session} running={chat.running} />
             {empty && <div className="starter-actions" aria-label="任务灵感">

@@ -157,7 +157,7 @@ export function subAgentCards(session: SessionDetail, childSessions: Record<stri
       byId.set(childSessionId, card)
     } else {
       const card = byId.get(childSessionId)
-      if (card && (event.meta?.state === 'completed' || event.meta?.state === 'failed')) card.state = event.meta.state
+      if (card && (event.meta?.state === 'completed' || event.meta?.state === 'failed' || event.meta?.state === 'interrupted')) card.state = event.meta.state
     }
   }
   return cards.map(card => card.state === 'running' && childSessions[card.childSessionId]?.run_status === 'idle'
@@ -212,7 +212,7 @@ export function serverCounts(detail: SessionDetail): ServerCounts {
 }
 
 /** 属性栏「最近记录」里展示的步骤状态。 */
-const STEP_CODES = new Set(['step_running', 'step_completed', 'step_failed'])
+const STEP_CODES = new Set(['step_running', 'step_completed', 'step_failed', 'run_cancelled'])
 
 /** 主会话与子会话的过程记录：工具状态、上下文整理和步骤状态（子会话额外保留失败原因）。 */
 export function progressEvents(session: SessionDetail | null | undefined, child = false): SessionEvent[] {

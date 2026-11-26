@@ -96,7 +96,7 @@ export type SessionEvent = {
   collapsed?: boolean
   created_at?: string
   meta?: {
-    code?: 'plan_started' | 'plan_failed' | 'step_running' | 'step_completed' | 'step_failed' | 'replanning' | 'replanned' | 'run_failed'
+    code?: 'plan_started' | 'plan_failed' | 'step_running' | 'step_completed' | 'step_failed' | 'replanning' | 'replanned' | 'run_failed' | 'run_cancelled'
     call_id?: string
     pages?: string[]
     child_session_id?: string

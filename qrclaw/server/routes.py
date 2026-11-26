@@ -14,9 +14,18 @@ from fastapi.responses import StreamingResponse
 from rich.console import Console
 
 from qrclaw.agent import run as run_agent
+from qrclaw.cancellation import (
+    CancelToken,
+    TaskCancelledError,
+    bind_cancel_token,
+    cancel_session_run,
+    register_session_token,
+    unregister_session_token,
+)
 from qrclaw.config import MAX_CONCURRENT_RUNS
-from qrclaw.memory.context.session.events import STREAMED_STATUS_CODES, status_code
-from qrclaw.subagent_progress import has_active_sub_agents, sub_agent_snapshot
+from qrclaw.memory.context.session.events import STREAMED_STATUS_CODES, SessionEvent, status_code, status_event
+from qrclaw.subagent_progress import cancel_sub_agents_for_parent, has_active_sub_agents, sub_agent_snapshot
+from qrclaw.tools.spawn_agent import cancel_tasks_for_session
 from qrclaw.workspace import Workspace
 from qrclaw.logger import get_logger
 
@@ -45,6 +54,7 @@ def build_router(workspace: Workspace) -> APIRouter:
     router.include_router(build_wiki_router(workspace))
     runs: dict[str, str] = {}
     failures: dict[str, str] = {}
+    run_done_events: dict[str, Event] = {}
     status_lock = RLock()
 
     def with_status(detail: dict[str, Any]) -> dict[str, Any]:
@@ -164,6 +174,34 @@ def build_router(workspace: Workspace) -> APIRouter:
 
         return StreamingResponse(events(), media_type="text/event-stream", headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
+    @router.post("/v1/sessions/{session_id}/cancel")
+    def cancel_session_api(session_id: str) -> dict[str, Any]:
+        """停止指定会话正在排队或运行的任务及关联子任务。"""
+        with status_lock:
+            session = service.get_session(session_id)
+            if not session._path.exists():
+                raise HTTPException(status_code=404, detail="会话不存在")
+            current_status = runs.get(session_id)
+            done_event = run_done_events.get(session_id)
+            running_child = sub_agent_snapshot(session_id, workspace.sessions_dir) is not None
+            active_subs = has_active_sub_agents(session_id, workspace.sessions_dir)
+            is_active = current_status in ("queued", "running") or running_child or active_subs
+
+        if not is_active:
+            return {"cancelled": False, "session_id": session_id, "run_status": "idle"}
+
+        cancel_session_run(workspace.sessions_dir, session_id)
+        cancel_tasks_for_session(workspace.sessions_dir, session_id, join_timeout=0.5)
+        if done_event is not None:
+            done_event.wait(timeout=2.0)
+        cancel_sub_agents_for_parent(workspace.sessions_dir, session_id)
+
+        with status_lock:
+            still_child = sub_agent_snapshot(session_id, workspace.sessions_dir) is not None
+            final_status = runs.get(session_id, "running" if still_child else "idle")
+            failures.pop(session_id, None)
+        return {"cancelled": True, "session_id": session_id, "run_status": final_status}
+
     @router.delete("/v1/sessions/{session_id}")
     def delete_session_api(session_id: str) -> dict[str, Any]:
         with status_lock:
@@ -200,47 +238,138 @@ def build_router(workspace: Workspace) -> APIRouter:
             memory_integration = _runner.react_loop._get_memory_integration(workspace, session)
             # 请求排队期间也有新活动，不能把等待执行误判成会话闲置。
             memory_integration.on_run_start()
+            initial_user_uuid = next(
+                (m.get("uuid") for m in reversed(session.messages) if m.get("role") == "user"),
+                None,
+            )
+            token: CancelToken = register_session_token(workspace.sessions_dir, session.session_id)
+            done_event = Event()
+            run_done_events[session.session_id] = done_event
             runs[session.session_id] = "queued"
             failures.pop(session.session_id, None)
         console = Console(file=StringIO(), highlight=False)
 
-        def execute(on_delta=None):
-            """统一维护非流式和流式运行状态。"""
-            try:
-                with _run_slots:
-                    with status_lock:
-                        runs[session.session_id] = "running"
-                    if request.edit_message_id is not None:
+        def _finalize_cancelled_session(rewritten: bool, streamed_text: str) -> str:
+            """取消任务时补齐未入库的当轮用户消息、部分流式正文，并写入 run_cancelled 事件。"""
+            session._load(strict=False)
+            if not session._path.exists():
+                return ""
+            if request.edit_message_id is not None:
+                if not rewritten:
+                    try:
                         service.rewrite_latest_user_turn(session, request.edit_message_id, user_input)
-                    kwargs = dict(
-                        user_input=user_input,
-                        session=session,
-                        console=console,
-                        workspace=workspace,
-                        auto_confirm=True,
-                        plan_enabled=request.plan_enabled,
-                    )
-                    if request.edit_message_id is not None:
-                        kwargs["record_user_message"] = False
-                    if on_delta is not None:
-                        kwargs["on_delta"] = on_delta
-                    result = run_agent(**kwargs)
+                    except Exception as exc:
+                        logger.warning("取消编辑请求时重写末轮消息失败：%s", exc)
+            else:
+                latest_uuid = next(
+                    (m.get("uuid") for m in reversed(session.messages) if m.get("role") == "user"),
+                    None,
+                )
+                if latest_uuid == initial_user_uuid:
+                    session.add({"role": "user", "content": user_input})
+
+            session._load(strict=False)
+            partial_saved = ""
+            if streamed_text:
+                user_idx = next(
+                    (i for i in range(len(session.messages) - 1, -1, -1) if session.messages[i].get("role") == "user"),
+                    -1,
+                )
+                turn_assistants = [
+                    m.get("content", "")
+                    for m in session.messages[user_idx + 1:]
+                    if m.get("role") == "assistant"
+                    and m.get("kind") != "execution_report"
+                    and isinstance(m.get("content"), str)
+                ] if user_idx >= 0 else []
+                already_saved = "".join(turn_assistants)
+                unsaved = (
+                    streamed_text[len(already_saved):]
+                    if streamed_text.startswith(already_saved)
+                    else (streamed_text if not already_saved else "")
+                )
+                if unsaved.strip():
+                    session.add({"role": "assistant", "content": unsaved})
+                    session.add_event(SessionEvent(kind="message_saved", title="消息已保存"))
+                    partial_saved = unsaved
+
+            session.add_event(status_event("run_cancelled", "任务已由用户停止"))
+            return partial_saved
+
+        def execute(on_delta=None):
+            """统一维护非流式和流式运行状态，支持排队与执行期随时取消。"""
+            streamed_chunks: list[str] = []
+            rewritten = False
+            slot_acquired = False
+
+            def tracked_delta(delta: str) -> None:
+                streamed_chunks.append(delta)
+                if on_delta is not None:
+                    on_delta(delta)
+
+            try:
+                with bind_cancel_token(token):
+                    while not _run_slots.acquire(timeout=0.05):
+                        token.check()
+                    slot_acquired = True
+                    try:
+                        token.check()
+                        with status_lock:
+                            runs[session.session_id] = "running"
+                        if request.edit_message_id is not None:
+                            service.rewrite_latest_user_turn(session, request.edit_message_id, user_input)
+                            rewritten = True
+                        token.check()
+                        kwargs = dict(
+                            user_input=user_input,
+                            session=session,
+                            console=console,
+                            workspace=workspace,
+                            auto_confirm=True,
+                            plan_enabled=request.plan_enabled,
+                        )
+                        if request.edit_message_id is not None:
+                            kwargs["record_user_message"] = False
+                        if on_delta is not None:
+                            kwargs["on_delta"] = tracked_delta
+                        result = run_agent(**kwargs)
+                        token.check()
+                    finally:
+                        if slot_acquired:
+                            _run_slots.release()
                 if not session.title:
                     schedule_title(workspace.sessions_dir, session.session_id)
                 return result
+            except TaskCancelledError:
+                _finalize_cancelled_session(rewritten, "".join(streamed_chunks))
+                with status_lock:
+                    failures.pop(session.session_id, None)
+                raise
             except Exception as exc:
+                if token.is_cancelled():
+                    _finalize_cancelled_session(rewritten, "".join(streamed_chunks))
+                    with status_lock:
+                        failures.pop(session.session_id, None)
+                    raise TaskCancelledError() from exc
                 with status_lock:
                     failures[session.session_id] = str(exc)
                 raise
             finally:
+                if token.is_cancelled():
+                    cancel_tasks_for_session(workspace.sessions_dir, session.session_id, join_timeout=0.3)
+                    cancel_sub_agents_for_parent(workspace.sessions_dir, session.session_id)
                 if memory_integration._busy:
                     try:
                         memory_integration.on_react_loop_end(session)
                     except Exception as exc:
                         # Agent 初始化或替代运行器异常时也解除闲置暂停。
                         logger.warning("会话记忆提取收尾失败：%s", exc, exc_info=True)
+                unregister_session_token(workspace.sessions_dir, session.session_id, token)
                 with status_lock:
                     runs.pop(session.session_id, None)
+                    if run_done_events.get(session.session_id) is done_event:
+                        run_done_events.pop(session.session_id, None)
+                    done_event.set()
 
         if request.stream:
             chunks: Queue[tuple[str, str]] = Queue(maxsize=256)
@@ -262,9 +391,11 @@ def build_router(workspace: Workspace) -> APIRouter:
                 enqueue("delta", delta)
 
             def worker() -> None:
-                """客户端离开后仍让 Agent 完成并保存会话。"""
+                """客户端离开后仍让 Agent 完成并保存会话；用户主动停止时发送正常结束帧。"""
                 try:
                     execute(publish)
+                    enqueue("done", "")
+                except TaskCancelledError:
                     enqueue("done", "")
                 except Exception as exc:
                     enqueue("error", str(exc))
@@ -307,6 +438,8 @@ def build_router(workspace: Workspace) -> APIRouter:
 
         try:
             content = execute()
+        except TaskCancelledError:
+            content = ""
         except Exception as exc:
             raise HTTPException(status_code=500, detail=str(exc)) from exc
 

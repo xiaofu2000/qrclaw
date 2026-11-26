@@ -35,11 +35,13 @@ export function useChatWorkspace(api: ApiClient) {
   const loadingSet = useIdSet()
   const runningSet = useIdSet()
   const mutatingSet = useIdSet()
+  const cancellingSet = useIdSet()
   // 只把稳定的函数放进依赖，集合对象本身每次渲染都会重建。
   const replaceRunning = runningSet.replace
   // 选择会话时立即更新，避免删除响应赶在重渲染前覆盖新的选择。
   const activeIdRef = useRef('')
   const requestsRef = useRef(new Set<string>())
+  const cancelledRunsRef = useRef(new Set<string>())
   /** 聊天请求已被接收、需要过程流的会话；只有正在查看的那个会真正连接，切回来时再连。 */
   const streamWantedRef = useRef(new Set<string>())
   const creatingRef = useRef(false)
@@ -271,6 +273,7 @@ export function useChatWorkspace(api: ApiClient) {
       eventCursorsRef.current.set(id, editEventStart - 1)
       setSelectedChildren(current => ({ ...current, [id]: '' }))
     }
+    cancelledRunsRef.current.delete(id)
     requestsRef.current.add(id)
     runningSet.add(id)
     setConversations(current => current.map(item => item.id === id && !item.messageCount
@@ -290,56 +293,103 @@ export function useChatWorkspace(api: ApiClient) {
     let accepted = false
     try {
       await api.chatStream(id, content, delta => {
+        if (cancelledRunsRef.current.has(id)) return
         setStreaming(current => ({ ...current, [id]: (current[id] ?? '') + delta }))
       }, () => {
         accepted = true
-        if (!editMessageId) {
+        if (!editMessageId && !cancelledRunsRef.current.has(id)) {
           streamWantedRef.current.add(id)
           // 后台会话只保留聊天流：每个运行中的会话再占一条过程流，几个会话同时运行就会占满浏览器对同一地址的 6 条连接。
           if (id === activeIdRef.current) startEventStream(id)
         }
       }, editMessageId, planEnabled)
       completed = true
-      storeSession(await readSession(id))
-      setStreaming(current => ({ ...current, [id]: '' }))
+      if (!deletedIdsRef.current.has(id)) {
+        storeSession(await readSession(id))
+        setStreaming(current => ({ ...current, [id]: '' }))
+      }
     } catch (error) {
-      const detail = error instanceof Error ? error.message : String(error)
-      setErrors(current => ({ ...current, [id]: completed ? `任务已完成，但读取结果失败：${detail}。请刷新会话。` : `请求失败：${detail}` }))
-      if (!completed) {
-        if (!accepted) setDrafts(current => ({ ...current, [id]: current[id] || content }))
-        if (!accepted && editMessageId) {
-          // 未确认接收的编辑不能保留临时版本；后续只读查询继续确认真实执行状态。
-          historyVersionsRef.current.set(id, previous.history_version ?? 0)
-          eventCursorsRef.current.set(id, (previous.events?.length ?? 0) - 1)
-          setSessions(current => ({ ...current, [id]: {
-            ...current[id], history_version: previous.history_version,
-            messages: previous.messages, events: previous.events,
-          } }))
+      if (cancelledRunsRef.current.has(id)) {
+        if (!deletedIdsRef.current.has(id)) {
+          try {
+            storeSession(await readSession(id))
+          } catch { /* stopConversation 已同步或稍后可刷新。 */ }
+          setStreaming(current => ({ ...current, [id]: '' }))
+          setErrors(current => ({ ...current, [id]: '' }))
         }
-        try {
-          const latest = await api.getSession(id)
-          if (latest.run_status === 'idle') {
-            storeSession(latest)
-            if (!accepted) setSessions(current => ({ ...current, [id]: { ...current[id], messages: latest.messages } }))
-            setStreaming(current => ({ ...current, [id]: '' }))
-            if (accepted) setErrors(current => ({ ...current, [id]: '' }))
-          } else if (!accepted) {
-            storeSession(latest)
-            setSessions(current => ({ ...current, [id]: { ...current[id], messages: latest.messages } }))
-            startEventStream(id)
+      } else {
+        const detail = error instanceof Error ? error.message : String(error)
+        setErrors(current => ({ ...current, [id]: completed ? `任务已完成，但读取结果失败：${detail}。请刷新会话。` : `请求失败：${detail}` }))
+        if (!completed) {
+          if (!accepted) setDrafts(current => ({ ...current, [id]: current[id] || content }))
+          if (!accepted && editMessageId) {
+            // 未确认接收的编辑不能保留临时版本；后续只读查询继续确认真实执行状态。
+            historyVersionsRef.current.set(id, previous.history_version ?? 0)
+            eventCursorsRef.current.set(id, (previous.events?.length ?? 0) - 1)
+            setSessions(current => ({ ...current, [id]: {
+              ...current[id], history_version: previous.history_version,
+              messages: previous.messages, events: previous.events,
+            } }))
           }
-          else if ((latest.history_version ?? 0) >= (historyVersionsRef.current.get(id) ?? 0)) {
-            storeSession(latest)
-            startEventStream(id)
-          }
-        } catch { /* 状态不明时保留运行标记，避免重复提交。 */ }
+          try {
+            const latest = await api.getSession(id)
+            if (latest.run_status === 'idle') {
+              storeSession(latest)
+              if (!accepted) setSessions(current => ({ ...current, [id]: { ...current[id], messages: latest.messages } }))
+              setStreaming(current => ({ ...current, [id]: '' }))
+              if (accepted) setErrors(current => ({ ...current, [id]: '' }))
+            } else if (!accepted) {
+              storeSession(latest)
+              setSessions(current => ({ ...current, [id]: { ...current[id], messages: latest.messages } }))
+              startEventStream(id)
+            }
+            else if ((latest.history_version ?? 0) >= (historyVersionsRef.current.get(id) ?? 0)) {
+              storeSession(latest)
+              startEventStream(id)
+            }
+          } catch { /* 状态不明时保留运行标记，避免重复提交。 */ }
+        }
       }
     } finally {
       requestsRef.current.delete(id)
       streamWantedRef.current.delete(id)
       try { await refreshConversations() } catch { setConnectionError('会话列表刷新失败，请稍后重试。') }
       // 首轮完成后服务端在后台生成标题，稍后再刷新一次列表。
-      if (completed && firstTurn && !editMessageId) setTimeout(() => { void refreshConversations().catch(() => { /* 下次刷新再取标题。 */ }) }, TITLE_REFRESH_DELAY)
+      if (completed && firstTurn && !editMessageId && !cancelledRunsRef.current.has(id)) {
+        setTimeout(() => { void refreshConversations().catch(() => { /* 下次刷新再取标题。 */ }) }, TITLE_REFRESH_DELAY)
+      }
+    }
+  }
+
+  /** 主动停止指定会话的任务，等待服务端切回 idle 并刷新本地状态。 */
+  async function stopConversation(id = activeId) {
+    if (!id || cancellingSet.has(id) || deletedIdsRef.current.has(id)) return
+    const currentSession = sessions[id]
+    if (!runningSet.has(id) && (!currentSession || (currentSession.run_status === 'idle' && !currentSession.active_subagents))) return
+    cancelledRunsRef.current.add(id)
+    cancellingSet.add(id)
+    try {
+      await api.cancelSession(id)
+      const latest = await readSession(id)
+      storeSession(latest)
+      if (latest.run_status === 'idle' && !latest.active_subagents) {
+        eventStreamsRef.current.get(id)?.abort()
+        eventStreamsRef.current.delete(id)
+        const timer = streamRetryRef.current.get(id)
+        if (timer) clearTimeout(timer)
+        streamRetryRef.current.delete(id)
+        requestsRef.current.delete(id)
+        streamWantedRef.current.delete(id)
+        runningSet.remove(id)
+        setStreaming(current => ({ ...current, [id]: '' }))
+        setErrors(current => ({ ...current, [id]: '' }))
+      }
+      try { await refreshConversations() } catch { setConnectionError('任务已停止，但列表刷新失败，请稍后重试。') }
+    } catch (error) {
+      cancelledRunsRef.current.delete(id)
+      setErrors(current => ({ ...current, [id]: `停止任务失败：${error instanceof Error ? error.message : String(error)}` }))
+    } finally {
+      cancellingSet.remove(id)
     }
   }
 
@@ -562,10 +612,12 @@ export function useChatWorkspace(api: ApiClient) {
     childStreaming: childStreaming[selectedChildId] ?? '', selectSubAgent: (id: string | null) =>
       setSelectedChildren(current => ({ ...current, [activeId]: id ?? '' })),
     streaming: visibleStreaming,
-    runningIds, running, queued, loading, creating, mutatingIds, mutating: mutatingIds.has(activeId), error,
+    runningIds, running, queued, loading, creating, mutatingIds, mutating: mutatingIds.has(activeId),
+    cancelling: cancellingSet.ids.has(activeId), error,
     draft: drafts[activeId] ?? '',
     setDraft: (value: string) => setDrafts(current => ({ ...current, [activeId]: value })),
     loadConversation, newConversation, renameConversation, deleteConversation, deleteLatestMessage,
+    stopConversation, stop: () => stopConversation(activeId),
     editLatestMessage: (messageId: string, content: string) => send(content, messageId), send,
     refresh: async () => {
       if (activeId) {

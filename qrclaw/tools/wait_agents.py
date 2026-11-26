@@ -5,6 +5,7 @@ wait_agents 工具
 使用 thread.join() 阻塞等待，不轮询，零 CPU 浪费。
 """
 from pydantic import BaseModel, Field
+from qrclaw.cancellation import check_cancelled
 from qrclaw.tools.registry import register
 from qrclaw.logger import get_logger
 
@@ -31,6 +32,7 @@ def wait_agents(agent_ids: list[str] = None) -> str:
     Returns:
         str: 所有子 agent 的执行结果汇总
     """
+    check_cancelled()
     from qrclaw.tools.spawn_agent import get_task_pool, get_task_pool_lock
     from qrclaw.agent import get_session, get_workspace
     from qrclaw.workspace import Workspace
@@ -62,20 +64,23 @@ def wait_agents(agent_ids: list[str] = None) -> str:
 
     logger.info(f"等待子 agent 完成: {list(to_wait.keys())}")
 
-    # thread.join() 阻塞等待，线程跑完自动唤醒，零 CPU 消耗
+    # 短间隔等待并检查父会话取消信号
     for agent_id, task in to_wait.items():
         logger.info(f"等待子 agent: {agent_id}")
-        task["thread"].join()
+        while task["thread"].is_alive():
+            check_cancelled()
+            task["thread"].join(timeout=0.05)
+        check_cancelled()
         logger.info(f"子 agent {agent_id} 已完成")
 
     # 汇总所有结果
     lines = ["## 子 agent 执行结果汇总", ""]
 
     with lock:
-        all_targets = {**already_done, **{aid: task_pool[(workspace_id, parent_id, aid)] for aid in to_wait}}
+        all_targets = {**already_done, **{aid: task_pool[(workspace_id, parent_id, aid)] for aid in to_wait if (workspace_id, parent_id, aid) in task_pool}}
 
     for agent_id, task in all_targets.items():
-        status_label = "✅ 完成" if task["status"] == "done" else "❌ 出错"
+        status_label = "✅ 完成" if task["status"] == "done" else "⏹ 已停止" if task["status"] == "cancelled" else "❌ 出错"
         lines.append(f"### [{status_label}] {agent_id}")
         lines.append("")
         lines.append(task["result"] or "无结果")
