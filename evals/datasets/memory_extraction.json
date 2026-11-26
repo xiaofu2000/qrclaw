@@ -1,0 +1,300 @@
+{
+  "category": "memory_extraction",
+  "title": "记忆提取与来源校验",
+  "description": "评估 QRClaw 从多轮工作台对话中提取长期记忆、覆盖过期配置、过滤工具噪声、拦截助手臆测以及主动写入去重的准确性。",
+  "cases": [
+    {
+      "id": "mem_ext_01_coding_and_lang_pref",
+      "title": "用户明确表达编码风格与回复语言偏好 → 关联真实用户 source_id",
+      "scenario": "extract_user_preferences",
+      "weight": 1.0,
+      "description": "用户在多轮对话中明确声明语言与 Python 编码规范偏好，系统应创建对应 Wiki 页面并准确绑定真实用户消息来源 ID。",
+      "messages": [
+        {
+          "uuid": "msg-u1",
+          "role": "user",
+          "content": "同步一下我的个人工作台约定：以后所有技术回复一律使用简体中文，结论先行。"
+        },
+        {
+          "uuid": "msg-a1",
+          "role": "assistant",
+          "content": "明白，后续所有技术交流都会采用简体中文并优先给出核心结论。"
+        },
+        {
+          "uuid": "msg-u2",
+          "role": "user",
+          "content": "另外在写 Python 代码时，函数签名必须加完整的类型注解，文件路径处理统一用 pathlib.Path，不要用 os.path。"
+        },
+        {
+          "uuid": "msg-a2",
+          "role": "assistant",
+          "content": "已了解你的 Python 编码偏好：强制类型注解并使用 pathlib.Path 处理路径。"
+        },
+        {
+          "uuid": "msg-u3",
+          "role": "user",
+          "content": "单元测试默认用 pytest 函数式风格编写，不要写冗余的 unittest.TestCase 子类。"
+        },
+        {
+          "uuid": "msg-a3",
+          "role": "assistant",
+          "content": "收到，测试统一采用 pytest 函数式风格。"
+        }
+      ],
+      "expected": {
+        "min_pages": 1,
+        "required_keywords_any_group": [
+          ["中文", "简体中文"],
+          ["类型注解", "typing", "注解"],
+          ["pathlib", "Path"],
+          ["pytest"]
+        ],
+        "require_valid_user_source": true
+      }
+    },
+    {
+      "id": "mem_ext_02_override_stale_config",
+      "title": "多轮后用户推翻旧配置 → 更新同主题页面并覆盖过期事实",
+      "scenario": "consolidate_override_config",
+      "weight": 1.2,
+      "description": "已有项目服务配置页面记录了旧端口与旧框架，用户在后续对话中宣布架构迁移，合并器应覆盖过期事实并保留仍有效的信息。",
+      "initial_pages": [
+        {
+          "name": "项目服务配置",
+          "description": "后端 API 框架、端口与数据库约定",
+          "tags": ["配置", "后端"],
+          "related": [],
+          "content": "# 项目服务配置\n\n- Web 框架：Flask 2.3\n- 本地监听端口：8000\n- 主数据库：PostgreSQL 16\n- 日志输出格式：结构化 JSON\n"
+        }
+      ],
+      "messages": [
+        {
+          "uuid": "cfg-u1",
+          "role": "user",
+          "content": "本周我们完成了网关重构，项目服务配置有变更：后端 Web 框架已经从 Flask 全面迁移到 FastAPI 了，Flask 已经彻底下线。"
+        },
+        {
+          "uuid": "cfg-a1",
+          "role": "assistant",
+          "content": "好的，后端框架已变更为 FastAPI。"
+        },
+        {
+          "uuid": "cfg-u2",
+          "role": "user",
+          "content": "同时本地 API 监听端口从 8000 统一改成了 8765，避免和别的本地服务冲突；PostgreSQL 16 和结构化 JSON 日志保持不变。"
+        },
+        {
+          "uuid": "cfg-a2",
+          "role": "assistant",
+          "content": "已确认：新端口为 8765，框架为 FastAPI，PostgreSQL 16 与 JSON 日志维持不变。"
+        },
+        {
+          "uuid": "cfg-u3",
+          "role": "user",
+          "content": "接下来所有启动脚本都按这套新配置执行。"
+        },
+        {
+          "uuid": "cfg-a3",
+          "role": "assistant",
+          "content": "没问题，后续脚本均按 FastAPI + 8765 端口执行。"
+        }
+      ],
+      "expected": {
+        "target_page": "项目服务配置",
+        "must_contain": ["FastAPI", "8765", "PostgreSQL 16", "JSON"],
+        "must_not_contain_active": ["Web 框架：Flask", "监听端口：8000", "当前端口为8000"]
+      }
+    },
+    {
+      "id": "mem_ext_03_skip_ephemeral_troubleshooting",
+      "title": "纯一次性报错排查与闲聊问候 → 判定 skip 不产生垃圾记忆页",
+      "scenario": "skip_ephemeral_chat",
+      "weight": 1.0,
+      "description": "日常问候与偶发网络抖动报错排查不具备跨会话长期价值，提取器应判定无需更新并推进进度。",
+      "messages": [
+        {
+          "uuid": "eph-u1",
+          "role": "user",
+          "content": "早上好！帮我看一眼这个临时报错：ConnectionResetError: [Errno 54] Connection reset by peer，刚拉镜像抖了一下。"
+        },
+        {
+          "uuid": "eph-a1",
+          "role": "assistant",
+          "content": "早上好！这是远端连接被瞬时重置的偶发网络波动，直接重新执行拉取命令即可。"
+        },
+        {
+          "uuid": "eph-u2",
+          "role": "user",
+          "content": "刚重试了一次果然拉下来了，多谢！"
+        },
+        {
+          "uuid": "eph-a2",
+          "role": "assistant",
+          "content": "不客气，有问题随时叫我。"
+        },
+        {
+          "uuid": "eph-u3",
+          "role": "user",
+          "content": "好的，今天先忙别的了。"
+        },
+        {
+          "uuid": "eph-a3",
+          "role": "assistant",
+          "content": "祝今天工作顺利！"
+        }
+      ],
+      "expected": {
+        "written_pages": 0,
+        "total_pages_after": 0
+      }
+    },
+    {
+      "id": "mem_ext_04_reject_assistant_speculation",
+      "title": "助手单方面猜测用户身份/偏好而用户未确认 → 被来源规则拦截",
+      "scenario": "reject_assistant_speculation",
+      "weight": 1.1,
+      "description": "助手在回复中自行揣测用户的职业身份与编辑器偏好，用户并未确认；无论提示词层还是 ExtractionRunner 来源校验层都不得将其入库。",
+      "messages": [
+        {
+          "uuid": "spec-u1",
+          "role": "user",
+          "content": "帮我算一下 1024 * 64 等于多少？"
+        },
+        {
+          "uuid": "spec-a1",
+          "role": "assistant",
+          "content": "1024 * 64 = 65536。看你经常关心 2 的幂次对齐，我猜你一定是做高频量化交易的 Rust 内核工程师，平时肯定只用 Neovim 和 Dvorak 键盘布局吧！"
+        },
+        {
+          "uuid": "spec-u2",
+          "role": "user",
+          "content": "知道了，再算一下 65536 / 16。"
+        },
+        {
+          "uuid": "spec-a2",
+          "role": "assistant",
+          "content": "65536 / 16 = 4096。"
+        },
+        {
+          "uuid": "spec-u3",
+          "role": "user",
+          "content": "行，算完了。"
+        },
+        {
+          "uuid": "spec-a3",
+          "role": "assistant",
+          "content": "好的。"
+        }
+      ],
+      "expected": {
+        "forbidden_keywords": ["量化交易", "Neovim", "Dvorak", "Rust 内核工程师"],
+        "verify_runner_blocks_assistant_only_source": true
+      }
+    },
+    {
+      "id": "mem_ext_05_filter_tool_noise",
+      "title": "工具输出含大量噪声日志 → filter_memory_messages 过滤工具与摘要",
+      "scenario": "filter_tool_and_summary_noise",
+      "weight": 1.0,
+      "description": "会话混合了工具调用参数、巨量构建日志、子任务执行报告与历史压缩摘要，提取链路应彻底隔离噪声并准确提取真实用户约束。",
+      "messages": [
+        {
+          "uuid": "noise-sum",
+          "role": "assistant",
+          "content": "[SUMMARY] 以下是之前对话的结构化摘要：\n【关键结论】旧摘要占位 NOISE_SUMMARY_MARKER_771"
+        },
+        {
+          "uuid": "noise-u1",
+          "role": "user",
+          "content": "确定一下我们的线上发版纪律：CI 构建统一执行 uv sync --frozen，且服务启动后必须等 /health 接口返回 200 才允许切流。"
+        },
+        {
+          "uuid": "noise-a-tc",
+          "role": "assistant",
+          "content": "正在检查构建脚本配置 NOISE_TOOLCALL_ARG_882",
+          "tool_calls": [
+            {
+              "id": "call_build_log_1",
+              "type": "function",
+              "function": {
+                "name": "read_file",
+                "arguments": "{\"path\": \"deploy.sh\"}"
+              }
+            }
+          ]
+        },
+        {
+          "uuid": "noise-tool-1",
+          "role": "tool",
+          "tool_call_id": "call_build_log_1",
+          "content": "[2026-11-26 09:00:01] DEBUG webpack chunk hash=0xdeadbeef NOISE_TOOL_OUTPUT_9981_SECRET container_tmp=/tmp/ephemeral_build_9981\n[2026-11-26 09:00:02] TRACE retry_socket=55123"
+        },
+        {
+          "uuid": "noise-exec-rep",
+          "role": "assistant",
+          "kind": "execution_report",
+          "content": "执行汇报：任务已完成。NOISE_EXEC_REPORT_663"
+        },
+        {
+          "uuid": "noise-a1",
+          "role": "assistant",
+          "content": "已核对完毕，线上发版遵循 uv sync --frozen 与 /health 健康检查 200 切流规则。"
+        },
+        {
+          "uuid": "noise-u2",
+          "role": "user",
+          "content": "另外回滚镜像至少保留最近 5 个正式版本标签。"
+        },
+        {
+          "uuid": "noise-a2",
+          "role": "assistant",
+          "content": "好的，回滚镜像保留最近 5 个正式版本标签。"
+        },
+        {
+          "uuid": "noise-u3",
+          "role": "user",
+          "content": "就按这套标准执行。"
+        },
+        {
+          "uuid": "noise-a3",
+          "role": "assistant",
+          "content": "收到。"
+        }
+      ],
+      "expected": {
+        "filtered_message_uuids": ["noise-u1", "noise-a1", "noise-u2", "noise-a2", "noise-u3", "noise-a3"],
+        "noise_markers": [
+          "NOISE_SUMMARY_MARKER_771",
+          "NOISE_TOOLCALL_ARG_882",
+          "NOISE_TOOL_OUTPUT_9981_SECRET",
+          "NOISE_EXEC_REPORT_663"
+        ],
+        "must_contain_in_wiki": ["uv sync --frozen", "/health"]
+      }
+    },
+    {
+      "id": "mem_ext_06_explicit_write_dedup_pending",
+      "title": "主动调用 write_wiki_page 立即写入并去重待处理批次",
+      "scenario": "explicit_write_and_dedup",
+      "weight": 1.0,
+      "description": "对话未满 3 轮自动阈值时，用户要求立即记住前端包管理规范；write_wiki_page 应立即落盘并确认当前会话已分析正文，避免后台重复提取。",
+      "messages": [
+        {
+          "uuid": "exp-u1",
+          "role": "user",
+          "content": "请立刻记住这条团队铁律：前端目录 web/ 只能使用 npm ci 和 npm run 安装与执行脚本，严禁混用 pnpm 或 yarn。"
+        },
+        {
+          "uuid": "exp-a1",
+          "role": "assistant",
+          "content": "好的，我现在就为你写入长期记忆。"
+        }
+      ],
+      "explicit_content": "前端目录 web/ 只能使用 npm（npm ci / npm run），严禁混用 pnpm 或 yarn。",
+      "expected": {
+        "must_contain": ["npm"],
+        "pending_after_explicit": 0
+      }
+    }
+  ]
+}

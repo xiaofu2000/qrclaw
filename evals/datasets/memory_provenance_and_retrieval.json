@@ -1,0 +1,148 @@
+{
+  "category": "memory_provenance_and_retrieval",
+  "title": "记忆来源追溯与检索隔离",
+  "description": "评估 Wiki 记忆的关键词与语义检索、长页分段续读去重、消息删改后的即时检索隔离、手动确认来源保护、删除墓碑防复活及质量规则检查。",
+  "cases": [
+    {
+      "id": "mem_prov_01_search_and_paginated_read",
+      "title": "按项目名/关键词搜索与分页续读 Wiki 记忆证据",
+      "scenario": "search_and_paginated_read",
+      "weight": 1.0,
+      "description": "在多页面 Wiki 库中通过 search_wiki 定位目标页面，并验证 read_wiki_page 的分页 offset 续读与同版本重复读取去重。",
+      "pages": [
+        {
+          "name": "QRClaw网关鉴权",
+          "description": "本机回环免密与远程 Bearer Token 鉴权策略",
+          "tags": ["安全", "API"],
+          "related": ["前端构建规范"],
+          "content": "# QRClaw 网关鉴权\n\n本机访问仅接受 `127.0.0.1`、`localhost` 与 `[::1]`，并校验 `Origin` 防止 DNS 重绑定。\n非本机监听必须配置环境变量 `QRCLAW_API_TOKEN` 并携带 `Authorization: Bearer <token>`。"
+        },
+        {
+          "name": "前端构建规范",
+          "description": "Vite 静态资源打包与发布目录约定",
+          "tags": ["前端", "构建"],
+          "related": ["QRClaw网关鉴权"],
+          "content": "# 前端构建规范\n\n运行 `npm --prefix web run build` 会将产物输出到 `qrclaw/server/static`。"
+        },
+        {
+          "name": "支付对账长文档",
+          "description": "跨渠道账单核对流程与尾部幂等键协议",
+          "tags": ["支付", "架构"],
+          "related": [],
+          "long_prefix_unit": "对账流水批次校验步骤说明：按自然日切分渠道账单并核对交易状态。\n",
+          "long_prefix_repeat": 220,
+          "tail_evidence": "\n## 核心幂等约束\n所有对账重放请求必须携带请求头 `X-Recon-Idempotency-Key` 并保留 72 小时去重窗口。\n"
+        }
+      ],
+      "queries": {
+        "keyword_query": "QRCLAW_API_TOKEN",
+        "semantic_query": "远程开放接口怎么配置访问令牌鉴权？",
+        "expected_hit": "QRClaw网关鉴权",
+        "long_page_name": "支付对账长文档",
+        "tail_keyword": "X-Recon-Idempotency-Key"
+      }
+    },
+    {
+      "id": "mem_prov_02_message_invalidation_isolation",
+      "title": "用户删除或编辑历史消息 → 受影响页面立即退出全部检索入口",
+      "scenario": "invalidate_hides_page_immediately",
+      "weight": 1.2,
+      "description": "当建立记忆页面的聊天消息被用户删除或撤回时，provenance.invalidate 必须立即清除来源原文并阻止 list_pages / load_index / read_wiki_page 泄露旧内容。",
+      "session_id": "sess-staging-secret",
+      "message": {
+        "uuid": "u-secret-host",
+        "role": "user",
+        "content": "内部预发环境的内网网关地址是 https://staging-vault.internal.qrclaw.lan:9443"
+      },
+      "page": {
+        "name": "内部预发环境",
+        "description": "预发内网网关地址记录",
+        "tags": ["环境", "预发"],
+        "content": "预发环境内网网关：https://staging-vault.internal.qrclaw.lan:9443"
+      },
+      "secret_marker": "staging-vault.internal.qrclaw.lan"
+    },
+    {
+      "id": "mem_prov_03_manual_edit_survives_chat_deletion",
+      "title": "用户手动编辑确认页面后 → 独立 manual 来源不受早期聊天删除与旧批次影响",
+      "scenario": "manual_edit_protection",
+      "weight": 1.1,
+      "description": "用户在 Web 界面手动编辑确认页面后生成独立 manual 来源；此后删除早期聊天会话不会令页面失效，滞后的早期提取批次也不能补回已被用户删除的旧条目。",
+      "session_id": "sess-early-draft",
+      "early_message": {
+        "uuid": "u-early-1",
+        "role": "user",
+        "content": "发版前先手动跑 legacy_deploy.sh，再通知测试组。"
+      },
+      "initial_page": {
+        "name": "发布检查清单",
+        "description": "团队版本发布前必检步骤",
+        "tags": ["流程"],
+        "content": "1. 执行 legacy_deploy.sh\n2. 通知测试组"
+      },
+      "manual_confirmed": {
+        "description": "用户确认的最新自动化发布清单",
+        "tags": ["流程", "CI"],
+        "related": [],
+        "content": "1. 确保 GitHub Actions 全绿\n2. 运行离线回归评测集\n3. 推送正式语义化 Tag"
+      },
+      "removed_fact_marker": "legacy_deploy.sh"
+    },
+    {
+      "id": "mem_prov_04_delete_tombstone_protection",
+      "title": "主动删除页面后墓碑保护 → 旧后台批次不能把已删页面写回来",
+      "scenario": "tombstone_blocks_stale_restore",
+      "weight": 1.1,
+      "description": "用户主动调用 delete_wiki_page 删除页面后，删除前已启动的后台提取或主动任务不得恢复该页面；仅删除后发起的新明确请求可重建且版本号单调递增。",
+      "session_id": "sess-tombstone",
+      "message": {
+        "uuid": "u-tomb-1",
+        "role": "user",
+        "content": "临时开启实验开关 ENABLE_ALPHA_PLUGIN=1。"
+      },
+      "page_name": "实验插件配置",
+      "initial_content": "实验开关 ENABLE_ALPHA_PLUGIN=1",
+      "stale_content": "旧任务试图写回 ENABLE_ALPHA_PLUGIN=1",
+      "explicit_rebuild_content": "正式启用新版插件体系 V2 并默认沙箱隔离"
+    },
+    {
+      "id": "mem_prov_05_wiki_service_lint",
+      "title": "WikiService.lint() 断链、孤立页与失效来源状态检测",
+      "scenario": "wiki_lint_health_check",
+      "weight": 1.0,
+      "description": "验证规则检查在不调用模型的前提下准确识别断裂 [[链接]]、缺失 related 引用、孤立页面以及来源失效暂停读取状态。",
+      "linked_pair": [
+        {
+          "name": "核心架构总览",
+          "description": "QRClaw 整体执行图与模块关系",
+          "tags": ["架构"],
+          "related": ["记忆子系统"],
+          "content": "# 核心架构总览\n\n主流程参见 [[记忆子系统]]，同时引用了尚未创建的 [[未来分布式调度设计]]。"
+        },
+        {
+          "name": "记忆子系统",
+          "description": "短期会话上下文与长期 Wiki 存储",
+          "tags": ["架构", "记忆"],
+          "related": ["核心架构总览", "缺失的外部索引模块"],
+          "content": "# 记忆子系统\n\n与 [[核心架构总览]] 协同工作。"
+        }
+      ],
+      "orphan_page": {
+        "name": "独立灵感速记",
+        "description": "没有任何入链与出链的孤立笔记",
+        "tags": ["随笔"],
+        "related": [],
+        "content": "这是一条尚未与其他架构页面建立关联的独立记录。"
+      },
+      "invalidated_page": {
+        "name": "待重整环境参数",
+        "session_id": "sess-lint-withdrawn",
+        "message_id": "u-lint-1",
+        "content": "已撤回的旧代理地址 http://10.0.0.9:7890"
+      },
+      "expected_broken_targets": ["未来分布式调度设计", "缺失的外部索引模块"],
+      "expected_orphan_name": "独立灵感速记",
+      "expected_source_warning_page": "待重整环境参数"
+    }
+  ]
+}

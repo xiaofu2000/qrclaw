@@ -1,0 +1,173 @@
+{
+  "category": "context_compression",
+  "title": "上下文递归压缩与零丢失保护",
+  "description": "评估超阈值递归压缩时的近期预算保留、tool_calls/tool 消息成对完整性、压缩前未提取原文入队保护、四段式摘要事实保留率及并发写冲突保护。",
+  "cases": [
+    {
+      "id": "ctx_comp_01_budget_and_tool_pair_integrity",
+      "title": "超阈值触发递归压缩 → 保留尾部近期预算且不切碎成对 tool_calls/tool",
+      "scenario": "recursive_compress_and_tool_pair",
+      "weight": 1.1,
+      "description": "包含历史 [SUMMARY] 与跨边界工具调用链的会话超阈值压缩时，应合并旧摘要且绝不在保留窗口开头留下孤立的 role=tool 消息。",
+      "window_tokens": 2000,
+      "threshold_tokens": 400,
+      "recent_max_tokens": 110,
+      "messages": [
+        {
+          "role": "assistant",
+          "kind": "assistant",
+          "content": "[SUMMARY] 以下是之前对话的结构化摘要：\n【用户信息】全栈开发工程师，使用 macOS。\n【已完成任务】已完成仓库初始化与依赖安装。"
+        },
+        {
+          "role": "user",
+          "content": "请帮我排查登录接口在高并发下偶发 502 的原因，并检查连接池超时参数设置是否过小。这里是详细的压测背景说明："
+        },
+        {
+          "role": "assistant",
+          "content": "我已经初步检查了网关转发日志，发现上游连接空闲回收时间小于负载均衡器的 keepalive 时间，接下来继续核对连接池配置细节。"
+        },
+        {
+          "role": "assistant",
+          "content": "读取数据库连接池配置文件连接参数与最大连接数设定说明，确保分析完整无遗漏。",
+          "tool_calls": [
+            {
+              "id": "call_pool_cfg_01",
+              "type": "function",
+              "function": {
+                "name": "read_file",
+                "arguments": "{\"path\": \"config/db_pool.yaml\", \"offset\": 1, \"limit\": 100}"
+              }
+            }
+          ]
+        },
+        {
+          "role": "tool",
+          "tool_call_id": "call_pool_cfg_01",
+          "content": "1|pool_size: 20\n2|pool_recycle: 30\n3|keepalive_idle: 60"
+        },
+        {
+          "role": "user",
+          "content": "请把 pool_recycle 调整为 120 秒并告诉我修改建议。"
+        }
+      ],
+      "expected": {
+        "tail_user_content": "请把 pool_recycle 调整为 120 秒并告诉我修改建议。",
+        "no_orphan_tool_at_head": true,
+        "single_summary_at_head": true
+      }
+    },
+    {
+      "id": "ctx_comp_02_preserve_before_compression",
+      "title": "压缩前未提取的对话正文完整进入记忆提取队列（知识零丢失）",
+      "scenario": "preserve_unextracted_before_compression",
+      "weight": 1.2,
+      "description": "尚未达到自动提取闲置时间的长对话发生上下文压缩时，即将被摘要替换的早期原文必须先进入提取持久化队列，随后仍可提取出精确知识。",
+      "messages": [
+        {
+          "uuid": "pres-u1",
+          "role": "user",
+          "content": "重要工程规范：本项目所有数据库迁移脚本必须统一存放在 db/migrations/versions/ 目录下，文件名以四位序号加下划线开头（例如 0001_init.sql）。"
+        },
+        {
+          "uuid": "pres-a1",
+          "role": "assistant",
+          "content": "已记录该工程规范：迁移脚本统一放入 db/migrations/versions/ 并使用四位序号前缀命名。"
+        },
+        {
+          "uuid": "pres-u2",
+          "role": "user",
+          "content": "另外迁移脚本严禁直接修改已发布的旧序号文件，任何表结构变更都必须新增迁移文件。"
+        },
+        {
+          "uuid": "pres-a2",
+          "role": "assistant",
+          "content": "明白，遵循只增不改的不可变迁移脚本原则。"
+        },
+        {
+          "uuid": "pres-u3",
+          "role": "user",
+          "content": "现在开始帮我设计用户积分流水表的字段草稿。"
+        }
+      ],
+      "recent_max_tokens": 35,
+      "expected": {
+        "preserved_uuids_subset": ["pres-u1", "pres-a1", "pres-u2", "pres-a2"],
+        "extracted_keywords": ["db/migrations/versions", "0001"]
+      }
+    },
+    {
+      "id": "ctx_comp_03_summary_fact_retention",
+      "title": "四段式摘要关键事实保留率评分（路径、命令约束、已完成项、待办项）",
+      "scenario": "summary_fact_retention_score",
+      "weight": 1.2,
+      "description": "评估压缩生成的四段式结构化摘要对用户信息、已完成文件路径、安全配置约束与待处理事项关键词的保留率。",
+      "recent_max_tokens": 30,
+      "messages": [
+        {
+          "role": "user",
+          "content": "我是平台安全组的后端维护者，请全程用精简中文汇报进度。今天我们要加固本地 API 服务的鉴权与事件流推送。"
+        },
+        {
+          "role": "assistant",
+          "content": "收到，我将用精简中文汇报，并按计划推进本地 API 鉴权与 SSE 事件流加固。"
+        },
+        {
+          "role": "user",
+          "content": "第一步先修复 qrclaw/server/routes.py 里的 SSE 断线重连序号问题，并用 pytest -q 跑通回归测试。"
+        },
+        {
+          "role": "assistant",
+          "content": "已完成 qrclaw/server/routes.py 的 SSE 续接序号修复，并执行 pytest -q 全部通过。同时确认了关键约束：服务默认仅监听 127.0.0.1:8765，若绑定非本机地址必须强制校验环境变量 QRCLAW_API_TOKEN。"
+        },
+        {
+          "role": "user",
+          "content": "很好！待办还剩两件事：一是编写 docs/api-security.md 说明文档，二是补充并发槽位上限 MAX_CONCURRENT_RUNS 的压力测试。现在先帮我列一下文档提纲。"
+        }
+      ],
+      "expected": {
+        "sections": ["【用户信息】", "【已完成任务】", "【关键结论】", "【待处理事项】"],
+        "fact_groups": [
+          ["安全组", "中文"],
+          ["qrclaw/server/routes.py"],
+          ["pytest"],
+          ["127.0.0.1:8765"],
+          ["QRCLAW_API_TOKEN"],
+          ["docs/api-security.md"],
+          ["MAX_CONCURRENT_RUNS", "并发"]
+        ],
+        "min_section_coverage": 0.75,
+        "min_fact_retention": 0.85
+      }
+    },
+    {
+      "id": "ctx_comp_04_concurrent_modification_guard",
+      "title": "并发修改保护（压缩期间会话被改动则放弃覆盖）",
+      "scenario": "concurrent_modification_abort",
+      "weight": 1.0,
+      "description": "在 LLM 生成压缩摘要期间若有并发请求向同一会话落盘了新消息，summarize 必须在锁内比对发现不一致并放弃覆盖，确保新老消息零丢失。",
+      "recent_max_tokens": 30,
+      "messages": [
+        {
+          "uuid": "conc-u1",
+          "role": "user",
+          "content": "这是第一轮很长的架构背景讨论，用于触发上下文压缩流程。"
+        },
+        {
+          "uuid": "conc-a1",
+          "role": "assistant",
+          "content": "已收到第一轮架构背景讨论，正在整理模块依赖与接口契约。"
+        },
+        {
+          "uuid": "conc-u2",
+          "role": "user",
+          "content": "继续推进第二阶段接口定义。"
+        }
+      ],
+      "concurrent_message": {
+        "uuid": "conc-u-new",
+        "role": "user",
+        "content": "补充一条紧急变更：接口超时上限统一改为 30 秒，千万别漏掉！"
+      }
+    }
+  ]
+}
