@@ -87,7 +87,7 @@ class CompressSettings(_Section):
 
 
 class MemorySettings(_Section):
-    """后台自动记忆提取的触发条件；token 按正文字符数除以三估算。"""
+    """后台自动记忆提取、做梦整理与版本保留策略；token 按正文字符数除以三估算。"""
     # 首次提取前，待处理正文达到该值时不等闲置（长对话兜底）。
     init_threshold: int = Field(default=5000, gt=0)
     # 之后每次提取的长对话兜底阈值。
@@ -97,6 +97,18 @@ class MemorySettings(_Section):
     # 闲置多久后提取，以及两次提取的最短间隔（秒）。
     idle_seconds: float = Field(default=120, ge=0, allow_inf_nan=False)
     cooldown_seconds: float = Field(default=300, ge=0, allow_inf_nan=False)
+    # 记忆做梦（整理）参数与安全上限
+    dream_default_sessions: int = Field(default=20, gt=0)
+    dream_max_sessions: int = Field(default=100, gt=0)
+    dream_max_steps: int = Field(default=200, gt=0)
+    dream_max_tokens: int = Field(default=2_000_000, gt=0)
+    dream_page_max_bytes: int = Field(default=102400, gt=0)
+    dream_schedule_enabled: bool = False
+    # 整库版本与单页历史保留策略
+    store_versions_keep: int = Field(default=5, ge=1)
+    store_versions_days: int = Field(default=30, ge=1)
+    history_keep: int = Field(default=20, ge=1)
+    history_days: int = Field(default=30, ge=1)
 
 
 class MCPSettings(_Section):

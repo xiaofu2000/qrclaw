@@ -42,6 +42,7 @@ def create_app(workspace: Workspace | None = None) -> FastAPI:
         from qrclaw.memory.wiki import WikiMemory
         wiki = WikiMemory.for_workspace(workspace.memory_dir)
         wiki.rebuild_index()
+        wiki.dream_worker.recover_interrupted()
         wiki.repair_worker.closed = False
         wiki.repair_worker.resume()
         try:
@@ -49,6 +50,7 @@ def create_app(workspace: Workspace | None = None) -> FastAPI:
         finally:
             _runner.react_loop.stop_memory_extractions(workspace)
             wiki.repair_worker.close()
+            wiki.dream_worker.close()
             # MCP 连接随服务常驻，服务退出时断开；等待线程结束不阻塞事件循环。
             await asyncio.to_thread(_cleanup_mcp)
 
