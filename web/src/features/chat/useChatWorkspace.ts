@@ -15,7 +15,7 @@ const POLL_INTERVAL = 1200
 const TITLE_REFRESH_DELAY = 5000
 
 /** 按会话维护聊天、过程事件和断线恢复状态。 */
-export function useChatWorkspace(api: ApiClient) {
+export function useChatWorkspace(api: ApiClient, workspaceRevision = 0) {
   const [planEnabled, setPlanEnabled] = useState(() => {
     try { return localStorage.getItem('qrclaw.planEnabled') === 'true' }
     catch { return false }
@@ -38,6 +38,7 @@ export function useChatWorkspace(api: ApiClient) {
   const cancellingSet = useIdSet()
   // 只把稳定的函数放进依赖，集合对象本身每次渲染都会重建。
   const replaceRunning = runningSet.replace
+  const replaceCancelling = cancellingSet.replace
   // 选择会话时立即更新，避免删除响应赶在重渲染前覆盖新的选择。
   const activeIdRef = useRef('')
   const requestsRef = useRef(new Set<string>())
@@ -183,9 +184,39 @@ export function useChatWorkspace(api: ApiClient) {
   }, [replaceRunning])
 
   const refreshConversations = useCallback(async () => applyListing(await api.listSessions()), [api, applyListing])
+  const prevWorkspaceRevisionRef = useRef(workspaceRevision)
 
   useEffect(() => {
     let cancelled = false
+    if (prevWorkspaceRevisionRef.current !== workspaceRevision) {
+      prevWorkspaceRevisionRef.current = workspaceRevision
+      for (const controller of eventStreamsRef.current.values()) controller.abort()
+      eventStreamsRef.current.clear()
+      for (const timer of streamRetryRef.current.values()) clearTimeout(timer)
+      streamRetryRef.current.clear()
+      requestsRef.current.clear()
+      cancelledRunsRef.current.clear()
+      streamWantedRef.current.clear()
+      eventCursorsRef.current.clear()
+      loadingChildrenRef.current.clear()
+      streamBaselinesRef.current.clear()
+      historyVersionsRef.current.clear()
+      deletedIdsRef.current.clear()
+      serverCountsRef.current.clear()
+      sessionsRef.current = {}
+      activeIdRef.current = ''
+      setActiveId('')
+      setConversations([])
+      setSessions({})
+      setStreaming({})
+      setChildStreaming({})
+      setSelectedChildren({})
+      setErrors({})
+      setConnectionError('')
+      setConnecting(true)
+      replaceRunning([])
+      replaceCancelling([])
+    }
     async function connect() {
       try {
         await api.health()
@@ -207,7 +238,7 @@ export function useChatWorkspace(api: ApiClient) {
     }
     void connect()
     return () => { cancelled = true }
-  }, [api, storeSession, refreshConversations, replaceRunning])
+  }, [api, workspaceRevision, storeSession, refreshConversations, replaceRunning, replaceCancelling])
 
   async function loadConversation(id: string) {
     if (deletedIdsRef.current.has(id)) return

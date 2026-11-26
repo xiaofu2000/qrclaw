@@ -116,6 +116,9 @@ input, textarea { caret-color: var(--accent); }
 .conversation-rename { min-width: 0; flex: 1; margin: 4px; padding: 7px 8px; border: 1px solid var(--line-strong); border-radius: 6px; color: var(--ink); background: var(--surface-raised); }
 .sidebar-footer { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 12px 8px 4px; border-top: 1px solid var(--line); color: var(--muted); font-size: 13px; }
 .sidebar-footer > span { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.sidebar-workspace-btn { display: inline-flex; align-items: center; gap: 8px; min-width: 0; border: 0; border-radius: 7px; padding: 4px 8px; margin-left: -4px; background: transparent; color: var(--muted); font-size: 13px; }
+.sidebar-workspace-btn > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sidebar-workspace-btn:hover { background: var(--surface-soft); color: var(--ink); }
 .theme-toggle { flex: none; border: 1px solid var(--line-strong); border-radius: 7px; padding: 4px 10px; background: transparent; color: var(--ink-2); font-size: 13px; }
 .theme-toggle:hover { background: var(--surface-soft); color: var(--ink); }
 

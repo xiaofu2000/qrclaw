@@ -10,6 +10,7 @@ import { MemoryWorkspace } from '../features/memory/MemoryPanel'
 import { AgentCompanion } from '../components/AgentCompanion'
 import { AgentAvatar } from '../components/AgentAvatar'
 import { InboxView } from '../features/inbox/InboxView'
+import { SettingsView } from '../features/settings/SettingsView'
 import { ArrowUpRight, Code2, ListTodo, BookOpen } from 'lucide-react'
 
 type ThemeMode = 'system' | 'light' | 'dark'
@@ -26,13 +27,16 @@ function loadTheme(): ThemeMode {
 /** 组合工作区视图，业务数据与任务状态仍由现有 ViewModel 提供。 */
 export function App() {
   const api = useMemo(() => createApiClient(), [])
-  const chat = useChatWorkspace(api)
+  const [workspaceId, setWorkspaceId] = useState('default')
+  const [workspaceRevision, setWorkspaceRevision] = useState(0)
+  const chat = useChatWorkspace(api, workspaceRevision)
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [inspectorOpen, setInspectorOpen] = useState(false)
   const [memoryOpen, setMemoryOpen] = useState(() => window.location.hash.startsWith('#/memory'))
   const [narrow, setNarrow] = useState(() => window.matchMedia('(max-width: 760px)').matches)
   const [wide, setWide] = useState(() => window.matchMedia('(min-width: 1101px)').matches)
   const [inboxOpen, setInboxOpen] = useState(() => window.location.hash.startsWith('#/inbox'))
+  const [settingsOpen, setSettingsOpen] = useState(() => window.location.hash.startsWith('#/settings'))
   const [theme, setTheme] = useState<ThemeMode>(loadTheme)
   useEffect(() => {
     // 只挂载一个动画实例：桌面在侧栏顶部，手机在顶栏；宽屏常驻属性栏，窄屏改为抽屉。
@@ -48,6 +52,7 @@ export function App() {
     function navigate() {
       setMemoryOpen(window.location.hash.startsWith('#/memory'))
       setInboxOpen(window.location.hash.startsWith('#/inbox'))
+      setSettingsOpen(window.location.hash.startsWith('#/settings'))
     }
     window.addEventListener('hashchange', navigate)
     return () => window.removeEventListener('hashchange', navigate)
@@ -58,7 +63,7 @@ export function App() {
     try { localStorage.setItem('qrclaw.theme', theme) } catch { /* 无法保存时本次页面仍按所选主题显示。 */ }
   }, [theme])
   /** 切回聊天保留 ViewModel 中的草稿和正在执行的任务。 */
-  function showChat() { window.location.hash = ''; setMemoryOpen(false); setInboxOpen(false) }
+  function showChat() { window.location.hash = ''; setMemoryOpen(false); setInboxOpen(false); setSettingsOpen(false) }
   useEffect(() => {
     function closePanels(event: KeyboardEvent) {
       if (event.key === 'Escape') { setSidebarOpen(false); setInspectorOpen(false) }
@@ -66,7 +71,7 @@ export function App() {
     window.addEventListener('keydown', closePanels)
     return () => window.removeEventListener('keydown', closePanels)
   }, [])
-  const chatView = !memoryOpen && !inboxOpen
+  const chatView = !memoryOpen && !inboxOpen && !settingsOpen
   const drawerInspector = inspectorOpen && chatView && !wide
   useEffect(() => {
     const overlay = drawerInspector ? 'run-inspector'
@@ -97,6 +102,17 @@ export function App() {
       previous?.focus()
     }
   }, [sidebarOpen, drawerInspector])
+  useEffect(() => {
+    if (typeof api.listWorkspaces !== 'function') return
+    let cancelled = false
+    void api.listWorkspaces().then(res => {
+      if (!cancelled && res?.active_workspace) {
+        api.setWorkspace?.(res.active_workspace)
+        setWorkspaceId(res.active_workspace)
+      }
+    }).catch(() => { /* 离线或旧接口未就绪时保留默认工作空间显示。 */ })
+    return () => { cancelled = true }
+  }, [api])
   const title = chat.conversations.find(item => item.id === chat.activeId)?.title ?? '新对话'
   const empty = !chat.timeline.length && !chat.running && !chat.loading
   const companion = !empty || !chatView ? <AgentCompanion activity={chat.activity} sessionId={chat.activeId} compact /> : null
@@ -110,17 +126,19 @@ export function App() {
   /** 打开记忆库；传入页面名时同时选中那一页（地址为 #/memory/页面名，刷新后仍停在这页）。 */
   function openMemory(page?: string) {
     window.location.hash = page ? `/memory/${encodeURIComponent(page)}` : '/memory'
-    setMemoryOpen(true); setInboxOpen(false); setSidebarOpen(false); setInspectorOpen(false)
+    setMemoryOpen(true); setInboxOpen(false); setSettingsOpen(false); setSidebarOpen(false); setInspectorOpen(false)
   }
   const memoryFocus = memoryOpen && window.location.hash.startsWith('#/memory/') ? decodeURIComponent(window.location.hash.slice('#/memory/'.length)) : undefined
-  function openInbox() { window.location.hash = '/inbox'; setInboxOpen(true); setMemoryOpen(false); setSidebarOpen(false); setInspectorOpen(false) }
+  function openInbox() { window.location.hash = '/inbox'; setInboxOpen(true); setMemoryOpen(false); setSettingsOpen(false); setSidebarOpen(false); setInspectorOpen(false) }
+  function openSettings() { window.location.hash = '/settings'; setSettingsOpen(true); setMemoryOpen(false); setInboxOpen(false); setSidebarOpen(false); setInspectorOpen(false) }
 
   return (
-    <div className="app-shell" data-view={memoryOpen ? 'memory' : inboxOpen ? 'inbox' : 'chat'}>
+    <div className="app-shell" data-view={settingsOpen ? 'settings' : memoryOpen ? 'memory' : inboxOpen ? 'inbox' : 'chat'}>
       {(sidebarOpen || drawerInspector) && <button className="panel-backdrop" aria-label="关闭面板" onClick={() => { setSidebarOpen(false); setInspectorOpen(false) }} />}
         <Sidebar conversations={chat.conversations} activeId={chat.activeId} runningIds={chat.runningIds} unreadIds={chat.unreadIds} mutatingIds={chat.mutatingIds}
           open={sidebarOpen} creating={chat.creating || chat.loading && !chat.activeId} activity={narrow ? null : chat.activity}
-          inboxOpen={inboxOpen} inboxCount={inboxCount} onOpenInbox={openInbox}
+          inboxOpen={inboxOpen} settingsOpen={settingsOpen} workspaceId={workspaceId} inboxCount={inboxCount}
+          onOpenInbox={openInbox} onOpenSettings={openSettings}
           theme={theme} onCycleTheme={() => setTheme(current => THEME_ORDER[(THEME_ORDER.indexOf(current) + 1) % THEME_ORDER.length])}
           onOpenChat={() => { showChat(); setSidebarOpen(false) }} onClose={() => setSidebarOpen(false)}
           memoryOpen={memoryOpen} onOpenMemory={() => openMemory()}
@@ -129,16 +147,19 @@ export function App() {
           onRenameConversation={(id, title) => void chat.renameConversation(id, title)}
           onDeleteConversation={id => void chat.deleteConversation(id)} />
       <div className="work-surface">
-        <Topbar title={title} memoryOpen={memoryOpen} inboxOpen={inboxOpen} companion={narrow ? companion : null}
+        <Topbar title={title} memoryOpen={memoryOpen} inboxOpen={inboxOpen} settingsOpen={settingsOpen} companion={narrow ? companion : null}
           sidebarOpen={sidebarOpen} onToggleSidebar={() => { setSidebarOpen(value => !value); setInspectorOpen(false) }}
           inspectorOpen={inspectorOpen} onToggleInspector={() => { setInspectorOpen(value => !value); setSidebarOpen(false) }} />
       <div className={`workspace ${chatView && (wide || inspectorOpen) ? 'with-inspector' : ''}`}>
         <div className={`chat-column ${empty && chatView ? 'is-empty' : ''}`}>
           {empty && chatView && <AgentCompanion activity={chat.activity} sessionId={chat.activeId} compact={false} textOnly={!narrow} />}
-          <MemoryWorkspace api={api} visible={memoryOpen} activityKey={chat.runningIds.size} focusPage={memoryFocus}
+          <MemoryWorkspace key={workspaceRevision} api={api} visible={memoryOpen} activityKey={chat.runningIds.size} focusPage={memoryFocus}
             onOpenSession={id => { showChat(); void chat.loadConversation(id) }} />
           {inboxOpen && <InboxView conversations={chat.conversations} activeId={chat.activeId} runningIds={chat.runningIds} unreadIds={chat.unreadIds}
             onOpen={id => { showChat(); void chat.loadConversation(id) }} />}
+          <SettingsView api={api} visible={settingsOpen}
+            onWorkspaceSynced={id => setWorkspaceId(id)}
+            onWorkspaceSwitched={id => { setWorkspaceId(id); setWorkspaceRevision(rev => rev + 1) }} />
           <main className="chat-content" id="conversation" hidden={!chatView}>
           <ChatPanel sessionId={chat.activeId} title={title} messageCount={chat.session?.message_count ?? 0}
             timeline={chat.timeline} streaming={chat.streaming} running={chat.running} queued={chat.queued}

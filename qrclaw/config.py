@@ -30,7 +30,7 @@ class _Section(BaseModel):
 
 class AgentSettings(_Section):
     name: str = "QRClaw"
-    max_iterations: int = 100
+    max_iterations: int = Field(default=100, gt=0)
     plan_enabled: bool = False
     # 本地服务同时执行的对话数上限，超出的请求排队显示「等待执行」。
     max_concurrent_runs: int = Field(default=4, ge=1)
@@ -43,7 +43,15 @@ class LLMSettings(_Section):
     base_url: str = ""
     api_base: str = ""
     proxy_url: str = ""
-    max_tokens: int = 485000
+    max_tokens: int = Field(default=485000, gt=0)
+
+    @field_validator("model")
+    @classmethod
+    def _non_empty_model(cls, value: str) -> str:
+        cleaned = value.strip()
+        if not cleaned:
+            raise ValueError("模型名称不能为空")
+        return cleaned
 
 
 class SearchSettings(_Section):
@@ -205,3 +213,101 @@ LOG_CONSOLE_LEVEL = settings.log.console_level
 
 MCP_ENABLED = settings.mcp.active
 MCP_SERVERS = settings.mcp.servers
+
+_SYNC_MODULES = (
+    "qrclaw.providers.litellm_provider",
+    "qrclaw.providers",
+    "qrclaw.prompt_builder",
+    "qrclaw.memory.token_utils",
+    "qrclaw.memory.context.runtime.manager",
+    "qrclaw.memory.compression.compressor",
+    "qrclaw.graph.runner",
+    "qrclaw.graph.nodes.react_loop",
+    "qrclaw.graph.nodes.plan_executor",
+    "qrclaw.server.session_service",
+    "qrclaw.web_search.providers.tavily",
+    "qrclaw.web_search.runtime",
+    "qrclaw.cli.display",
+)
+
+
+def active_env_overrides(env: Mapping[str, str] | None = None) -> list[str]:
+    """返回当前正受环境变量覆盖的配置字段列表（如 'llm.model'）。"""
+    source = os.environ if env is None else env
+    active: list[str] = []
+    for name, (section, key) in ENV_OVERRIDES.items():
+        if name in source:
+            field_path = f"{section}.{key}"
+            if field_path not in active:
+                active.append(field_path)
+    return active
+
+
+def reload_settings(file_data: Mapping[str, Any] | None = None, env: Mapping[str, str] | None = None) -> Settings:
+    """重新加载配置文件与环境变量，原地更新 settings、兼容常量、LLM 渠道与系统提示缓存。"""
+    import sys
+    import threading
+
+    old_max_concurrent = settings.agent.max_concurrent_runs
+    new_settings = load_settings(file_data=file_data, env=env)
+
+    # 原地更新 settings 各配置段，保证 `from qrclaw.config import settings` 的模块同步看到新值
+    for section_name in ("agent", "llm", "search", "log", "heartbeat", "compress", "memory", "mcp"):
+        setattr(settings, section_name, getattr(new_settings, section_name))
+
+    max_tokens = settings.llm.max_tokens
+    threshold_ratio = settings.compress.threshold_ratio
+    updated_consts: dict[str, Any] = {
+        "AGENT_NAME": settings.agent.name,
+        "MAX_ITERATIONS": settings.agent.max_iterations,
+        "PLAN_ENABLED": settings.agent.plan_enabled,
+        "MAX_CONCURRENT_RUNS": settings.agent.max_concurrent_runs,
+        "LLM_PROVIDER": settings.llm.provider,
+        "LITELLM_API_KEY": settings.llm.api_key,
+        "LITELLM_MODEL": settings.llm.model,
+        "LITELLM_BASE_URL": settings.llm.base_url,
+        "LITELLM_API_BASE": settings.llm.api_base,
+        "LITELLM_PROXY_URL": settings.llm.proxy_url,
+        "_MODEL_MAX_TOKENS": max_tokens,
+        "COMPRESS_THRESHOLD_RATIO": threshold_ratio,
+        "COMPRESS_THRESHOLD": int(max_tokens * threshold_ratio),
+        "COMPRESS_SUMMARY_TARGET_TOKENS": int(max_tokens * 0.10),
+        "COMPRESS_RECENT_MAX_TOKENS": settings.compress.recent_budget(max_tokens),
+        "TAVILY_API_KEY": settings.search.tavily_api_key,
+        "HEARTBEAT_ENABLED": settings.heartbeat.enabled,
+        "HEARTBEAT_INTERVAL": settings.heartbeat.interval,
+        "LOG_LEVEL": settings.log.level,
+        "LOG_MAX_DAYS": settings.log.max_days,
+        "LOG_TO_FILE": settings.log.to_file,
+        "LOG_TO_CONSOLE": settings.log.to_console,
+        "LOG_CONSOLE_LEVEL": settings.log.console_level,
+        "MCP_ENABLED": settings.mcp.active,
+        "MCP_SERVERS": settings.mcp.servers,
+    }
+    globals().update(updated_consts)
+
+    for module_name in _SYNC_MODULES:
+        module = sys.modules.get(module_name)
+        if module is None:
+            continue
+        for const_name, const_value in updated_consts.items():
+            if hasattr(module, const_name):
+                setattr(module, const_name, const_value)
+
+    routes_mod = sys.modules.get("qrclaw.server.routes")
+    if routes_mod is not None and settings.agent.max_concurrent_runs != old_max_concurrent:
+        routes_mod.MAX_CONCURRENT_RUNS = settings.agent.max_concurrent_runs
+        routes_mod._run_slots = threading.BoundedSemaphore(settings.agent.max_concurrent_runs)
+
+    providers_mod = sys.modules.get("qrclaw.providers")
+    if providers_mod is not None:
+        prov = getattr(providers_mod, "provider", None)
+        if prov is not None and hasattr(prov, "reload"):
+            prov.reload()
+
+    cache_mod = sys.modules.get("qrclaw.memory.context.prompt.cache")
+    if cache_mod is not None and hasattr(cache_mod, "invalidate_all_prompt_caches"):
+        cache_mod.invalidate_all_prompt_caches()
+
+    return settings
+

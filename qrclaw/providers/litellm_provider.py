@@ -315,3 +315,14 @@ class LiteLLMProvider(LLMProvider):
         if self._base_url:
             kwargs["api_base"] = self._base_url
         return kwargs
+
+    def reload(self) -> None:
+        """从最新运行配置热刷新 API Key、Base URL、代理与模型名称，无需重启服务。"""
+        from qrclaw import config
+
+        self._api_key = config.settings.llm.api_key
+        self._base_url = config.settings.llm.base_url or config.settings.llm.api_base or None
+        self._proxy_url = config.settings.llm.proxy_url or None
+        self._model = _infer_provider(config.settings.llm.model, self._base_url)
+        logger.info(f"LiteLLM 渠道已热更新: model={self._model}")
+
