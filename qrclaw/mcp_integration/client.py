@@ -113,6 +113,7 @@ class MCPManager:
         self._tools: dict[str, _MCPTool] = {}
         self._search_server = FastMCP("QRClaw MCP")
         self._tool_schemas: list[dict[str, Any]] = []
+        self._server_statuses: list[dict[str, Any]] = []
 
     # ------------------------------------------------------------------
     # Connection lifecycle
@@ -140,10 +141,24 @@ class MCPManager:
         The catalog stays local; only search/call entry points reach the LLM.
         """
         self._servers_config = servers_config
+        self._server_statuses = []
 
         for idx, cfg in enumerate(servers_config):
             label = cfg.get("label", f"server-{idx}")
             transport = cfg.get("transport", "stdio").lower()
+            raw_desc = str(cfg.get("description") or "").strip()
+
+            if cfg.get("enabled") is False:
+                self._server_statuses.append({
+                    "label": label,
+                    "transport": transport,
+                    "status": "disabled",
+                    "error": None,
+                    "description": raw_desc,
+                    "tool_count": 0,
+                    "tools": [],
+                })
+                continue
 
             try:
                 if label in self._connections:
@@ -154,6 +169,15 @@ class MCPManager:
                     conn = await self._connect_sse(label, cfg)
                 else:
                     logger.warning("未知 MCP 传输方式 '%s'，跳过服务 %s", transport, label)
+                    self._server_statuses.append({
+                        "label": label,
+                        "transport": transport,
+                        "status": "failed",
+                        "error": f"未知 MCP 传输方式: {transport}",
+                        "description": raw_desc,
+                        "tool_count": 0,
+                        "tools": [],
+                    })
                     continue
 
                 self._connections[label] = conn
@@ -200,8 +224,33 @@ class MCPManager:
                         len(catalog) - len(conn.tools),
                     )
 
-            except Exception:
+                self._server_statuses.append({
+                    "label": label,
+                    "transport": transport,
+                    "status": "disabled" if (include_set is not None and not include_set) else "connected",
+                    "error": None,
+                    "description": " ".join(conn.instructions.split())[:300],
+                    "tool_count": len(conn.tools),
+                    "tools": [
+                        {
+                            "name": t.name,
+                            "description": " ".join(t.description.split())[:200],
+                        }
+                        for t in conn.tools
+                    ],
+                })
+
+            except Exception as exc:
                 logger.exception("连接 MCP 服务 '%s' 失败", label)
+                self._server_statuses.append({
+                    "label": label,
+                    "transport": transport,
+                    "status": "failed",
+                    "error": str(exc) or type(exc).__name__,
+                    "description": raw_desc,
+                    "tool_count": 0,
+                    "tools": [],
+                })
 
         if self._tools:
             self._search_server.add_transform(BM25SearchTransform(max_results=5))
@@ -380,6 +429,7 @@ class MCPManager:
         self._connections.clear()
         self._tools.clear()
         self._tool_schemas.clear()
+        self._server_statuses.clear()
         self._search_server = FastMCP("QRClaw MCP")
 
     # ------------------------------------------------------------------
@@ -401,3 +451,14 @@ class MCPManager:
         if name in {"search_tools", "call_tool"}:
             return bool(self._tool_schemas)
         return name in self._tools or sum(tool.name == name for tool in self._tools.values()) == 1
+
+    def get_status_snapshot(self) -> list[dict[str, Any]]:
+        """返回各配置 MCP 服务的连接状态、错误信息与已发现工具摘要副本。"""
+        return [
+            {
+                **item,
+                "tools": [dict(t) for t in item.get("tools", [])],
+            }
+            for item in self._server_statuses
+        ]
+

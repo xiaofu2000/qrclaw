@@ -52,66 +52,228 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return response.json() as Promise<T>
 }
 
-const wikiRequest = <T>(path: string, init?: RequestInit) => request<T>(`/v1/wiki${path}`, init)
 const sessionPath = (sessionId: string) => `/v1/sessions/${encodeURIComponent(sessionId)}`
 const jsonBody = (method: string, body: unknown): RequestInit => ({ method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
 
 /** 客户端已缓存的同一历史版本的长度；带上后服务端只返回新增的消息和事件。 */
 export type SessionCursor = { historyVersion: number; messages: number; events: number }
 
+export type McpServerConfig = {
+  label?: string
+  transport?: 'stdio' | 'sse' | string
+  command?: string
+  args?: string[]
+  url?: string
+  description?: string
+  enabled?: boolean
+  env?: Record<string, string>
+  headers?: Record<string, string>
+  include_tools?: string[]
+  exclude_tools?: string[]
+}
+
+export type SystemConfigResponse = {
+  has_api_key: boolean
+  api_key_masked: string
+  env_overrides_active: string[]
+  llm: {
+    provider: string
+    model: string
+    base_url: string
+    api_base: string
+    proxy_url: string
+    max_tokens: number
+    has_api_key: boolean
+    api_key_masked: string
+  }
+  agent: {
+    name: string
+    max_iterations: number
+    plan_enabled: boolean
+    max_concurrent_runs: number
+  }
+  compress: {
+    threshold_ratio: number
+    recent_max_tokens: number | null
+  }
+  memory: {
+    init_threshold: number
+    update_interval: number
+    min_turns: number
+    idle_seconds: number
+    cooldown_seconds: number
+  }
+  search: {
+    has_tavily_api_key: boolean
+    tavily_api_key_masked: string
+  }
+  heartbeat: {
+    enabled: boolean
+    interval: number
+  }
+  mcp: {
+    enabled: boolean | null
+    active: boolean
+    servers: McpServerConfig[]
+  }
+}
+
+export type SystemConfigPatch = {
+  clear_api_key?: boolean
+  clear_tavily_api_key?: boolean
+  llm?: Partial<{
+    provider: string
+    api_key: string | null
+    clear_api_key: boolean
+    model: string
+    base_url: string
+    api_base: string
+    proxy_url: string
+    max_tokens: number
+  }>
+  agent?: Partial<{
+    name: string
+    max_iterations: number
+    plan_enabled: boolean
+    max_concurrent_runs: number
+  }>
+  compress?: Partial<{
+    threshold_ratio: number
+    recent_max_tokens: number | null
+  }>
+  memory?: Partial<{
+    init_threshold: number
+    update_interval: number
+    min_turns: number
+    idle_seconds: number
+    cooldown_seconds: number
+  }>
+  search?: Partial<{
+    tavily_api_key: string | null
+    clear_tavily_api_key: boolean
+  }>
+  heartbeat?: Partial<{
+    enabled: boolean
+    interval: number
+  }>
+  mcp?: Partial<{
+    enabled: boolean | null
+    servers: McpServerConfig[]
+  }>
+}
+
+export type McpToolBrief = { name: string; description: string }
+
+export type McpServerStatus = {
+  label: string
+  transport: string
+  status: 'connected' | 'failed' | 'disabled' | 'not_connected'
+  error: string | null
+  description?: string
+  tool_count: number
+  tools: McpToolBrief[]
+}
+
+export type McpStatusResponse = {
+  enabled: boolean
+  configured_enabled: boolean | null
+  status: 'connected' | 'not_connected' | 'failed' | 'disabled'
+  error: string | null
+  total_servers: number
+  connected_servers: number
+  total_tools: number
+  servers: McpServerStatus[]
+}
+
+export type WorkspaceInfo = {
+  agent_id: string
+  is_active: boolean
+  path: string
+  session_count: number
+  wiki_page_count: number
+  skill_count: number
+  sandbox_enabled: boolean
+  has_active_runs?: boolean
+}
+
+export type WorkspaceListResponse = {
+  active_workspace: string
+  workspaces: WorkspaceInfo[]
+}
+
+export type SkillInfo = {
+  name: string
+  description: string
+  version: string
+}
+
 export function createApiClient() {
+  let workspaceId = ''
+
+  /** 当显式指定了工作空间时，自动在请求头携带 X-QRClaw-Workspace；未指定时保持原始参数不变。 */
+  function withWorkspace(init?: RequestInit): RequestInit | undefined {
+    if (!workspaceId) return init
+    const headers = { ...(init?.headers as Record<string, string> | undefined), 'X-QRClaw-Workspace': workspaceId }
+    return { ...init, headers }
+  }
+
+  const scopedRequest = <T>(path: string, init?: RequestInit) => request<T>(path, withWorkspace(init))
+  const scopedWikiRequest = <T>(path: string, init?: RequestInit) => scopedRequest<T>(`/v1/wiki${path}`, init)
+
   return {
     /** 分页读取记忆摘要，网络取消不重复提交写入。 */
     listWikiPages(query: string, offset = 0, signal?: AbortSignal) {
-      return wikiRequest<WikiPageList>(`/pages?q=${encodeURIComponent(query)}&offset=${offset}&limit=20`, { signal })
+      return scopedWikiRequest<WikiPageList>(`/pages?q=${encodeURIComponent(query)}&offset=${offset}&limit=20`, { signal })
     },
     /** 读取指定页面及其来源，切换选择时允许取消旧请求。 */
     getWikiPage(name: string, signal?: AbortSignal) {
-      return wikiRequest<WikiDetail>(`/pages/${encodeURIComponent(name)}`, { signal })
+      return scopedWikiRequest<WikiDetail>(`/pages/${encodeURIComponent(name)}`, { signal })
     },
     /** 使用用户打开草稿时的版本保存，只发送持久化字段。 */
     editWikiPage(name: string, draft: WikiDraft) {
       const { content, description, tags, related, revision } = draft
-      return wikiRequest<WikiDetail>(`/pages/${encodeURIComponent(name)}`, jsonBody('PATCH', { content, description, tags, related, revision }))
+      return scopedWikiRequest<WikiDetail>(`/pages/${encodeURIComponent(name)}`, jsonBody('PATCH', { content, description, tags, related, revision }))
     },
     /** 按版本删除页面，后台已更新时返回冲突。 */
     deleteWikiPage(name: string, revision: number) {
-      return wikiRequest<{ deleted: boolean }>(`/pages/${encodeURIComponent(name)}?revision=${revision}`, { method: 'DELETE' })
+      return scopedWikiRequest<{ deleted: boolean }>(`/pages/${encodeURIComponent(name)}?revision=${revision}`, { method: 'DELETE' })
     },
     /** 查询提取与整理进度。 */
-    getWikiStatus(signal?: AbortSignal) { return wikiRequest<WikiStatus>('/status', { signal }) },
+    getWikiStatus(signal?: AbortSignal) { return scopedWikiRequest<WikiStatus>('/status', { signal }) },
     /** 执行不调用模型的规则检查。 */
-    lintWiki() { return wikiRequest<WikiLintReport>('/lint', { method: 'POST' }) },
+    lintWiki() { return scopedWikiRequest<WikiLintReport>('/lint', { method: 'POST' }) },
     /** 排队重新整理，断线不会重发。 */
     repairWikiPage(name: string) {
-      return wikiRequest<WikiDetail>(`/pages/${encodeURIComponent(name)}/repair`, { method: 'POST' })
+      return scopedWikiRequest<WikiDetail>(`/pages/${encodeURIComponent(name)}/repair`, { method: 'POST' })
     },
-    health() { return request<{ status: string }>('/health') },
-    listSessions() { return request<SessionSummary[]>('/v1/sessions') },
+    health() { return scopedRequest<{ status: string }>('/health') },
+    listSessions() { return scopedRequest<SessionSummary[]>('/v1/sessions') },
     createSession(sessionId?: string) {
-      return request<SessionDetail>('/v1/sessions', jsonBody('POST', sessionId ? { session_id: sessionId } : {}))
+      return scopedRequest<SessionDetail>('/v1/sessions', jsonBody('POST', sessionId ? { session_id: sessionId } : {}))
     },
     /** 读取会话；传入已缓存的游标时只取新增部分，历史版本不同由服务端返回完整内容。 */
     getSession(sessionId: string, cursor?: SessionCursor) {
       const query = cursor ? `?history_version=${cursor.historyVersion}&messages_from=${cursor.messages}&events_from=${cursor.events}` : ''
-      return request<SessionDetail>(`${sessionPath(sessionId)}${query}`)
+      return scopedRequest<SessionDetail>(`${sessionPath(sessionId)}${query}`)
     },
     async deleteSession(sessionId: string) {
-      await request<{ deleted: boolean }>(sessionPath(sessionId), { method: 'DELETE' })
+      await scopedRequest<{ deleted: boolean }>(sessionPath(sessionId), { method: 'DELETE' })
     },
     /** 保存自定义会话标题。 */
     renameSession(sessionId: string, title: string) {
-      return request<SessionDetail>(sessionPath(sessionId), jsonBody('PATCH', { title }))
+      return scopedRequest<SessionDetail>(sessionPath(sessionId), jsonBody('PATCH', { title }))
     },
     /** 删除最后一条用户消息及其所属轮次。 */
     deleteLatestUserMessage(sessionId: string, messageId: string) {
-      return request<SessionDetail>(`${sessionPath(sessionId)}/messages/${encodeURIComponent(messageId)}`, { method: 'DELETE' })
+      return scopedRequest<SessionDetail>(`${sessionPath(sessionId)}/messages/${encodeURIComponent(messageId)}`, { method: 'DELETE' })
     },
     /** 提交一次流式聊天；连接中断只报错，不重发可能已经执行的任务。 */
     async chatStream(sessionId: string, content: string, onDelta: (delta: string) => void, onReady?: () => void, editMessageId?: string, planEnabled = false) {
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+      if (workspaceId) headers['X-QRClaw-Workspace'] = workspaceId
       const response = await fetch(`${baseUrl}/v1/chat/completions`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({ model: 'qrclaw-agent', session_id: sessionId,
           messages: [{ role: 'user', content }], stream: true, plan_enabled: planEnabled,
           ...(editMessageId ? { edit_message_id: editMessageId } : {}) }),
@@ -132,12 +294,54 @@ export function createApiClient() {
     /** 从指定事件序号之后续接会话过程流。 */
     async streamEvents(sessionId: string, after: number, onEvent: (index: number, event: SessionEvent) => void,
       signal?: AbortSignal, onLiveText?: (text: string) => void) {
-      const response = await fetch(`${baseUrl}${sessionPath(sessionId)}/events/stream?after=${after}`, { signal })
+      const response = await fetch(`${baseUrl}${sessionPath(sessionId)}/events/stream?after=${after}`, withWorkspace({ signal }))
       if (!response.ok) throw new Error(await responseError(response))
       await readSse(response, message => {
         if (message.event === 'progress' && message.id) onEvent(Number(message.id), JSON.parse(message.data))
         if (message.event === 'live_text' && message.data) onLiveText?.(JSON.parse(message.data).text ?? '')
       })
+    },
+    getWorkspace() { return workspaceId || 'default' },
+    setWorkspace(agentId: string) { workspaceId = agentId.trim() },
+    getSystemConfig(signal?: AbortSignal) {
+      return scopedRequest<SystemConfigResponse>('/v1/system/config', { signal })
+    },
+    updateSystemConfig(patch: SystemConfigPatch) {
+      return scopedRequest<SystemConfigResponse>('/v1/system/config', jsonBody('PATCH', patch))
+    },
+    getMcpStatus(signal?: AbortSignal) {
+      return scopedRequest<McpStatusResponse>('/v1/system/mcp', { signal })
+    },
+    reconnectMcp() {
+      return scopedRequest<McpStatusResponse>('/v1/system/mcp/reconnect', { method: 'POST' })
+    },
+    listWorkspaces(signal?: AbortSignal) {
+      return scopedRequest<WorkspaceListResponse>('/v1/system/workspaces', { signal })
+    },
+    async createWorkspace(agentId: string, switchImmediate = false) {
+      const created = await scopedRequest<WorkspaceInfo & { active_workspace: string }>(
+        '/v1/system/workspaces',
+        jsonBody('POST', { agent_id: agentId, switch: switchImmediate }),
+      )
+      if (switchImmediate && created.active_workspace) workspaceId = created.active_workspace
+      return created
+    },
+    async switchWorkspace(agentId: string) {
+      const switched = await scopedRequest<WorkspaceInfo & { active_workspace: string }>(
+        '/v1/system/workspaces/switch',
+        jsonBody('POST', { agent_id: agentId }),
+      )
+      workspaceId = switched.active_workspace || agentId.trim()
+      return switched
+    },
+    deleteWorkspace(agentId: string) {
+      return scopedRequest<{ deleted: boolean; agent_id: string; active_workspace: string }>(
+        `/v1/system/workspaces/${encodeURIComponent(agentId)}`,
+        { method: 'DELETE' },
+      )
+    },
+    listSkills(signal?: AbortSignal) {
+      return scopedRequest<SkillInfo[]>('/v1/system/skills', { signal })
     },
   }
 }

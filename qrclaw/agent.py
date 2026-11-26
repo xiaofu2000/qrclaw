@@ -98,6 +98,7 @@ _mcp_stop = None
 _mcp_thread = None
 _mcp_lock = threading.Lock()
 _mcp_failed = False  # 启动失败后本进程不再重试，避免每条消息都等待超时
+_mcp_last_error: str | None = None
 _mcp_atexit_registered = False
 
 
@@ -124,7 +125,7 @@ def _init_mcp() -> bool:
 
 def _start_mcp(servers: list) -> bool:
     """在后台线程的事件循环里连接全部服务，连接保持到 _cleanup_mcp。调用方持有 _mcp_lock。"""
-    global _mcp_manager, _mcp_loop, _mcp_stop, _mcp_thread, _mcp_failed, _mcp_atexit_registered
+    global _mcp_manager, _mcp_loop, _mcp_stop, _mcp_thread, _mcp_failed, _mcp_last_error, _mcp_atexit_registered
 
     try:
         from concurrent.futures import Future
@@ -168,6 +169,7 @@ def _start_mcp(servers: list) -> bool:
             raise
 
         _mcp_manager, _mcp_loop, _mcp_stop, _mcp_thread = manager, loop, stop, thread
+        _mcp_last_error = None
         if not _mcp_atexit_registered:
             # 解释器退出时守护线程会被直接终止，先关闭连接，stdio 子进程才不会遗留。
             atexit.register(_cleanup_mcp)
@@ -176,16 +178,18 @@ def _start_mcp(servers: list) -> bool:
         return True
     except Exception as e:
         _mcp_failed = True
+        _mcp_last_error = str(e) or type(e).__name__
         logger.error("MCP 初始化失败，本进程不再重试（重启后重新连接）: %s", e, exc_info=True)
         return False
 
 
 def _cleanup_mcp():
     """关闭常驻 MCP 连接并注销工具；服务退出或进程结束时调用，之后可重新初始化。"""
-    global _mcp_manager, _mcp_loop, _mcp_stop, _mcp_thread, _mcp_failed
+    global _mcp_manager, _mcp_loop, _mcp_stop, _mcp_thread, _mcp_failed, _mcp_last_error
 
     with _mcp_lock:
         _mcp_failed = False
+        _mcp_last_error = None
         if _mcp_thread is None:
             return
         try:
@@ -200,6 +204,102 @@ def _cleanup_mcp():
         finally:
             if not _mcp_thread.is_alive():
                 _mcp_manager = _mcp_loop = _mcp_stop = _mcp_thread = None
+
+
+def get_mcp_status() -> dict:
+    """获取当前 MCP 服务与工具目录的连接状态快照（不主动阻塞启动连接）。"""
+    from qrclaw import config
+
+    servers_cfg = list(config.MCP_SERVERS or [])
+    active = bool(config.MCP_ENABLED and servers_cfg)
+    configured_enabled = config.settings.mcp.enabled
+
+    with _mcp_lock:
+        alive = _mcp_thread is not None and _mcp_thread.is_alive() and _mcp_manager is not None
+        if alive:
+            snapshot = _mcp_manager.get_status_snapshot()
+            total_tools = len(_mcp_manager.tool_names)
+            connected_count = sum(1 for item in snapshot if item["status"] == "connected")
+            failed_count = sum(1 for item in snapshot if item["status"] == "failed")
+            if connected_count > 0:
+                overall = "connected"
+            elif failed_count > 0:
+                overall = "failed"
+            else:
+                overall = "disabled"
+            return {
+                "enabled": active,
+                "configured_enabled": configured_enabled,
+                "status": overall,
+                "error": None if connected_count > 0 else next((s["error"] for s in snapshot if s.get("error")), None),
+                "total_servers": len(snapshot),
+                "connected_servers": connected_count,
+                "total_tools": total_tools,
+                "servers": snapshot,
+            }
+
+        failed = _mcp_failed
+        last_error = _mcp_last_error
+
+    if not active:
+        server_items = [
+            {
+                "label": cfg.get("label", f"server-{idx}"),
+                "transport": str(cfg.get("transport", "stdio")).lower(),
+                "status": "disabled",
+                "error": None,
+                "description": str(cfg.get("description") or "").strip(),
+                "tool_count": 0,
+                "tools": [],
+            }
+            for idx, cfg in enumerate(servers_cfg)
+        ]
+        return {
+            "enabled": False,
+            "configured_enabled": configured_enabled,
+            "status": "disabled",
+            "error": None,
+            "total_servers": len(server_items),
+            "connected_servers": 0,
+            "total_tools": 0,
+            "servers": server_items,
+        }
+
+    item_status = "failed" if failed else "not_connected"
+    server_items = [
+        {
+            "label": cfg.get("label", f"server-{idx}"),
+            "transport": str(cfg.get("transport", "stdio")).lower(),
+            "status": "disabled" if cfg.get("enabled") is False else item_status,
+            "error": last_error if failed and cfg.get("enabled") is not False else None,
+            "description": str(cfg.get("description") or "").strip(),
+            "tool_count": 0,
+            "tools": [],
+        }
+        for idx, cfg in enumerate(servers_cfg)
+    ]
+    return {
+        "enabled": True,
+        "configured_enabled": configured_enabled,
+        "status": item_status,
+        "error": last_error if failed else None,
+        "total_servers": len(server_items),
+        "connected_servers": 0,
+        "total_tools": 0,
+        "servers": server_items,
+    }
+
+
+def reconnect_mcp() -> dict:
+    """安全断开旧 MCP 连接，重置失败标记，并用最新配置重新连接后返回状态。"""
+    from qrclaw import config
+    from qrclaw.memory.context.prompt.cache import invalidate_all_prompt_caches
+
+    _cleanup_mcp()
+    if config.MCP_ENABLED and config.MCP_SERVERS:
+        _init_mcp()
+    invalidate_all_prompt_caches()
+    return get_mcp_status()
 
 
 

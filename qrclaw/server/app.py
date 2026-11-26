@@ -15,7 +15,8 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from qrclaw.workspace import Workspace
-from .routes import build_router
+from .system_routes import build_system_router
+from .workspace_hub import WorkspaceDispatchMiddleware, WorkspaceHub
 
 
 LOCAL_HOSTNAMES = frozenset({"127.0.0.1", "localhost", "::1"})
@@ -31,29 +32,26 @@ def _hostname(value: str) -> str:
 
 def create_app(workspace: Workspace | None = None) -> FastAPI:
     workspace = workspace or Workspace(agent_id="default")
+    hub = WorkspaceHub(initial_workspace=workspace)
 
     @asynccontextmanager
     async def lifespan(app):
-        """恢复持久化的记忆批次，退出时取消尚未到期的闲置计时并关闭常驻 MCP 连接。"""
-        from qrclaw.agent import _cleanup_mcp, _runner
-        from qrclaw.server.session_service import SessionService
-        SessionService(workspace).recover_session_changes()
-        _runner.react_loop.resume_memory_extractions(workspace)
-        from qrclaw.memory.wiki import WikiMemory
-        wiki = WikiMemory.for_workspace(workspace.memory_dir)
-        wiki.rebuild_index()
-        wiki.repair_worker.closed = False
-        wiki.repair_worker.resume()
+        """恢复已加载工作空间的持久化记忆批次，退出时统一停止后台线程并关闭常驻 MCP 连接。"""
+        from qrclaw.agent import _cleanup_mcp
+        hub.startup()
         try:
             yield
         finally:
-            _runner.react_loop.stop_memory_extractions(workspace)
-            wiki.repair_worker.close()
+            hub.shutdown()
             # MCP 连接随服务常驻，服务退出时断开；等待线程结束不阻塞事件循环。
             await asyncio.to_thread(_cleanup_mcp)
 
     app = FastAPI(title="QRClaw Local API", version="0.1.0", lifespan=lifespan)
+    app.state.workspace_hub = hub
     static_dir = Path(__file__).with_name("static")
+
+    # 内层工作空间分发中间件：在通过外层本机鉴权与 CORS 后，将会话/对话/记忆请求路由到目标 Workspace
+    app.add_middleware(WorkspaceDispatchMiddleware, hub=hub)
 
     @app.middleware("http")
     async def local_access(request: Request, call_next):
@@ -97,7 +95,7 @@ def create_app(workspace: Workspace | None = None) -> FastAPI:
     def index():
         return FileResponse(static_dir / "index.html")
 
-    app.include_router(build_router(workspace))
+    app.include_router(build_system_router(hub))
 
     return app
 
