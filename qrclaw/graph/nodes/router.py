@@ -16,6 +16,7 @@ from __future__ import annotations
 from typing import Literal
 from pydantic import BaseModel, Field
 
+from qrclaw.cancellation import TaskCancelledError, check_cancelled
 from qrclaw.prompts import ROUTE_INSTRUCTION
 from qrclaw.providers.litellm_provider import LiteLLMProvider
 from qrclaw.llm_service import get_llm_service
@@ -78,6 +79,7 @@ class RouteResult:
 class RouterNode:
 
     def run(self, user_input: str) -> RouteResult:
+        check_cancelled()
         logger.info(f"Router 判断路由: {user_input[:60]}...")
         ctx = get_context_manager()
         messages = ctx.build_messages("router", route_instruction=ROUTE_INSTRUCTION)
@@ -123,7 +125,10 @@ class RouterNode:
             logger.info("路由结果: direct")
             return RouteResult(route="direct")
 
+        except TaskCancelledError:
+            raise
         except Exception as e:
+            check_cancelled()
             logger.warning(f"Router 解析失败: {e}，降级为 direct")
             return RouteResult(route="direct")
 
@@ -152,6 +157,9 @@ def _query_wiki_context(goal: str, messages: list[dict]) -> str:
             user_input=goal, plan_goal=goal, messages=messages,
         ).injected_context
 
+    except TaskCancelledError:
+        raise
     except Exception as e:
+        check_cancelled()
         logger.warning(f"Wiki 查询失败: {e}")
         return ""

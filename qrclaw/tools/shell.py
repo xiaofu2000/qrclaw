@@ -7,7 +7,10 @@ Shell 命令执行工具
 """
 import os
 import subprocess
+import time
+from contextlib import nullcontext
 from pydantic import BaseModel, Field
+from qrclaw.cancellation import TaskCancelledError, check_cancelled, get_cancel_token, terminate_process_tree
 from qrclaw.tools.registry import register
 from qrclaw.logger import get_logger
 
@@ -96,36 +99,75 @@ def _exec_in_sandbox(command: str, cwd: str, timeout: int = 1800) -> str:
 
 
 def _exec_direct(command: str, cwd: str, timeout: int = 1800) -> str:
-    """直接在主机执行命令"""
+    """直接在主机执行命令，支持通过 CancelToken 立即终止进程组。"""
+    check_cancelled()
+    token = get_cancel_token()
+    proc: subprocess.Popen | None = None
     try:
-        result = subprocess.run(
+        proc = subprocess.Popen(
             command,
             shell=True,
-            capture_output=True,
-            timeout=timeout,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
             cwd=cwd,
+            start_new_session=(os.name != "nt"),
         )
+        deadline = time.monotonic() + timeout
+        tracker = token.track_process(proc) if token is not None else nullcontext(proc)
+        with tracker:
+            while True:
+                check_cancelled()
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    terminate_process_tree(proc)
+                    try:
+                        proc.communicate(timeout=0.2)
+                    except Exception:
+                        pass
+                    error_msg = "错误：命令执行超时（30分钟）"
+                    logger.warning(f"命令超时: {command[:100]}")
+                    return error_msg
+                try:
+                    stdout_bytes, stderr_bytes = proc.communicate(timeout=min(0.2, remaining))
+                    break
+                except subprocess.TimeoutExpired:
+                    check_cancelled()
+                    continue
+
+        check_cancelled()
 
         encoding = "gbk" if os.name == "nt" else "utf-8"
-        stdout = result.stdout.decode(encoding, errors="replace").strip()
-        stderr = result.stderr.decode(encoding, errors="replace").strip()
+        stdout = (stdout_bytes or b"").decode(encoding, errors="replace").strip()
+        stderr = (stderr_bytes or b"").decode(encoding, errors="replace").strip()
 
         output = stdout
         if stderr:
             output += f"\n[stderr] {stderr}"
 
-        if result.returncode == 0:
+        if proc.returncode == 0:
             logger.info(f"命令执行成功: {command[:100]}")
         else:
-            logger.warning(f"命令执行失败 (exit code {result.returncode}): {command[:100]}")
+            logger.warning(f"命令执行失败 (exit code {proc.returncode}): {command[:100]}")
 
         return output or "(无输出)"
 
+    except TaskCancelledError:
+        if proc is not None and proc.poll() is None:
+            terminate_process_tree(proc)
+            try:
+                proc.communicate(timeout=0.2)
+            except Exception:
+                pass
+        raise
     except subprocess.TimeoutExpired:
+        if proc is not None and proc.poll() is None:
+            terminate_process_tree(proc)
         error_msg = "错误：命令执行超时（30分钟）"
         logger.warning(f"命令超时: {command[:100]}")
         return error_msg
     except Exception as e:
+        if proc is not None and proc.poll() is None:
+            terminate_process_tree(proc)
         error_msg = f"错误：{e}"
         logger.error(f"命令执行失败: {command[:100]}, 错误: {e}", exc_info=True)
         return error_msg

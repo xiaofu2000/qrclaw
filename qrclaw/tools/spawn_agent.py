@@ -15,10 +15,20 @@ spawn_agent 工具
 
 重要：子 agent 不允许再派生子 agent，防止无限嵌套。
 """
+from pathlib import Path
 import threading
+import time
 from rich.console import Console
 from rich.panel import Panel
 from pydantic import BaseModel, Field
+from qrclaw.cancellation import (
+    TaskCancelledError,
+    bind_cancel_token,
+    check_cancelled,
+    get_cancel_token,
+    register_sub_agent_token,
+    unregister_sub_agent_token,
+)
 from qrclaw.tools.registry import register
 from qrclaw.logger import get_logger
 
@@ -48,6 +58,48 @@ def get_task_pool_lock() -> threading.Lock:
     return _task_pool_lock
 
 
+def cancel_tasks_for_session(sessions_dir: Path, parent_id: str, join_timeout: float = 0.5) -> bool:
+    """取消指定父会话所有正在运行的后台子任务，并清理残留运行状态。"""
+    from qrclaw.subagent_progress import record_sub_agent_end, sub_agent_snapshot
+
+    if not parent_id:
+        return False
+    workspace_key = str(Path(sessions_dir).resolve())
+    running_items: list[tuple[tuple[str, str, str], dict]] = []
+    with _task_pool_lock:
+        for key, item in list(_task_pool.items()):
+            if key[0] == workspace_key and key[1] == parent_id and item.get("status") == "running":
+                running_items.append((key, item))
+
+    if not running_items:
+        return False
+
+    for _, item in running_items:
+        token = item.get("token")
+        if token is not None:
+            token.cancel()
+
+    deadline = time.monotonic() + max(0.0, join_timeout)
+    for _, item in running_items:
+        thread = item.get("thread")
+        if thread is not None and thread.is_alive():
+            remaining = deadline - time.monotonic()
+            if remaining > 0:
+                thread.join(timeout=remaining)
+
+    for key, item in running_items:
+        child_id = item.get("child_id")
+        if child_id and sub_agent_snapshot(child_id, sessions_dir) is not None:
+            record_sub_agent_end(sessions_dir, parent_id, child_id, "interrupted")
+        with _task_pool_lock:
+            current = _task_pool.get(key)
+            if current is item and current.get("status") == "running":
+                current["status"] = "cancelled"
+                current["result"] = "任务已由用户停止"
+
+    return True
+
+
 class SpawnAgentArgs(BaseModel):
     agent_id: str = Field(description="子 agent 的 ID，例如 'coder'、'reviewer'")
     task: str = Field(description="交给子 agent 的任务描述，要清晰具体")
@@ -59,6 +111,7 @@ class SpawnAgentArgs(BaseModel):
 )
 def spawn_agent(agent_id: str, task: str) -> str:
     """在后台线程启动子 agent"""
+    check_cancelled()
     from qrclaw.agent import get_session, get_workspace, run_sub_agent, is_sub_agent
     from qrclaw.subagent_progress import prepare_sub_agent, record_sub_agent_end, sub_agent_snapshot
     from qrclaw.workspace import Workspace, is_valid_agent_id
@@ -88,20 +141,29 @@ def spawn_agent(agent_id: str, task: str) -> str:
     
     logger.info(f"启动子 agent: {agent_id}, 共享工作空间: {parent_workspace.root}, 沙箱: {sandbox_enabled}")
     child_id = prepare_sub_agent(parent_session, parent_workspace, agent_id, task) if parent_session else None
+    sub_token, owner_token = register_sub_agent_token(
+        parent_workspace.sessions_dir,
+        parent_id,
+        get_cancel_token(),
+    )
 
     def _run():
         try:
-            # 执行子 agent（共享父 agent 的工作空间）
-            kwargs = {"sandbox_policy_agent_id": policy_agent_id}
-            if child_id:
-                kwargs.update(child_session_id=child_id, parent_session_id=parent_id)
-            result, _ = run_sub_agent(task, parent_workspace, agent_id, **kwargs)
-            if child_id and sub_agent_snapshot(child_id):
+            with bind_cancel_token(sub_token):
+                check_cancelled()
+                # 执行子 agent（共享父 agent 的工作空间）
+                kwargs = {"sandbox_policy_agent_id": policy_agent_id}
+                if child_id:
+                    kwargs.update(child_session_id=child_id, parent_session_id=parent_id)
+                result, _ = run_sub_agent(task, parent_workspace, agent_id, **kwargs)
+                check_cancelled()
+            if child_id and sub_agent_snapshot(child_id, parent_workspace.sessions_dir):
                 record_sub_agent_end(parent_workspace.sessions_dir, parent_id, child_id, "completed")
             
             with _task_pool_lock:
-                _task_pool[pool_key]["status"] = "done"
-                _task_pool[pool_key]["result"] = result
+                if pool_key in _task_pool:
+                    _task_pool[pool_key]["status"] = "done"
+                    _task_pool[pool_key]["result"] = result
             
             logger.info(f"子 agent {agent_id} 完成")
             
@@ -114,16 +176,28 @@ def spawn_agent(agent_id: str, task: str) -> str:
                     expand=False,
                 ))
                 _console.print()
-                
+
+        except TaskCancelledError:
+            logger.info(f"子 agent {agent_id} 已停止")
+            if child_id and sub_agent_snapshot(child_id, parent_workspace.sessions_dir):
+                record_sub_agent_end(parent_workspace.sessions_dir, parent_id, child_id, "interrupted")
+            with _task_pool_lock:
+                if pool_key in _task_pool:
+                    _task_pool[pool_key]["status"] = "cancelled"
+                    _task_pool[pool_key]["result"] = "任务已由用户停止"
+
         except Exception as e:
             logger.error(f"子 agent {agent_id} 出错: {e}", exc_info=True)
-            if child_id and sub_agent_snapshot(child_id):
+            if child_id and sub_agent_snapshot(child_id, parent_workspace.sessions_dir):
                 record_sub_agent_end(parent_workspace.sessions_dir, parent_id, child_id, "failed")
             with _task_pool_lock:
-                _task_pool[pool_key]["status"] = "error"
-                _task_pool[pool_key]["result"] = f"执行出错: {e}"
+                if pool_key in _task_pool:
+                    _task_pool[pool_key]["status"] = "error"
+                    _task_pool[pool_key]["result"] = f"执行出错: {e}"
             if _console:
                 _console.print(f"\n[bold red]子 agent '{agent_id}' 执行出错: {e}[/bold red]\n")
+        finally:
+            unregister_sub_agent_token(parent_workspace.sessions_dir, parent_id, sub_token, owner_token)
             
     thread = threading.Thread(target=_run, name=f"sub-agent-{agent_id}", daemon=True)
 
@@ -133,11 +207,14 @@ def spawn_agent(agent_id: str, task: str) -> str:
             "result": None,
             "thread": thread,
             "sandbox_enabled": sandbox_enabled,
+            "token": sub_token,
+            "child_id": child_id,
         }
 
     try:
         thread.start()
     except Exception:
+        unregister_sub_agent_token(parent_workspace.sessions_dir, parent_id, sub_token, owner_token)
         with _task_pool_lock:
             _task_pool.pop(pool_key, None)
         if child_id:

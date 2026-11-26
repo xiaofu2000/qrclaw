@@ -11,6 +11,14 @@ import atexit
 import json
 from typing import Callable
 from rich.console import Console
+from qrclaw.cancellation import (
+    TaskCancelledError,
+    bind_cancel_token,
+    check_cancelled,
+    get_cancel_token,
+    register_sub_agent_token,
+    unregister_sub_agent_token,
+)
 from qrclaw.providers.base import LLMResponse
 from qrclaw.memory.context.session import Session, status_event
 from qrclaw.workspace import Workspace
@@ -234,6 +242,8 @@ def run(
         if memory_integration:
             memory_integration.extractor.collect(session.messages)
 
+        check_cancelled()
+
         from qrclaw.memory.context.runtime.manager import init_context_manager
         init_context_manager(session, workspace, is_sub_agent=is_sub_agent())
         if not is_sub_agent():
@@ -298,34 +308,53 @@ def run_sub_agent(
         saved_ctx = None
 
     state = "failed"
+    sub_token, owner_token = register_sub_agent_token(
+        workspace.sessions_dir,
+        parent_session_id or "",
+        get_cancel_token(),
+    )
     try:
-        if is_sandbox_enabled(policy_id):
-            create_sandbox(agent_id=runtime_id, workspace=workspace.root, config=get_sandbox_config(policy_id) or SandboxConfig(enabled=True))
-        sub_console = console or RichConsole(file=StringIO(), highlight=False)
-        session_id = child_session_id or f"sub-{agent_id}-{run_id}"
-        sub_session = Session(
-            sessions_dir=sub_workspace.sessions_dir,
-            session_id=session_id,
-            resume=False,
-        )
-        result = run(
-            task, sub_session, sub_console, sub_workspace, auto_confirm=True,
-            on_delta=(lambda delta: append_sub_agent_text(session_id, delta)) if child_session_id else None,
-        )
-        result = result or "子 agent 未返回结果"
-        if result.startswith("错误："):
-            raise RuntimeError(result)
-        state = "completed"
-        logger.info(f"子 agent {agent_id} 执行完毕，结果长度: {len(result)} 字符")
+        with bind_cancel_token(sub_token):
+            check_cancelled()
+            if is_sandbox_enabled(policy_id):
+                create_sandbox(agent_id=runtime_id, workspace=workspace.root, config=get_sandbox_config(policy_id) or SandboxConfig(enabled=True))
+            sub_console = console or RichConsole(file=StringIO(), highlight=False)
+            session_id = child_session_id or f"sub-{agent_id}-{run_id}"
+            sub_session = Session(
+                sessions_dir=sub_workspace.sessions_dir,
+                session_id=session_id,
+                resume=False,
+            )
+            result = run(
+                task, sub_session, sub_console, sub_workspace, auto_confirm=True,
+                on_delta=(lambda delta: append_sub_agent_text(session_id, delta)) if child_session_id else None,
+            )
+            result = result or "子 agent 未返回结果"
+            if result.startswith("错误："):
+                raise RuntimeError(result)
+            state = "completed"
+            logger.info(f"子 agent {agent_id} 执行完毕，结果长度: {len(result)} 字符")
+    except TaskCancelledError as exc:
+        state = "interrupted"
+        if child_session_id:
+            try:
+                child_file = Session(workspace.sessions_dir, child_session_id)
+                if child_file._path.exists():
+                    child_file.add_event(status_event("run_cancelled", str(exc)))
+            except Exception as save_exc:
+                logger.warning("子 Agent 取消事件保存失败: %s", save_exc)
+        raise
     except Exception as exc:
         if child_session_id:
             try:
-                Session(workspace.sessions_dir, child_session_id).add_event(
-                    status_event("run_failed", str(exc)))
+                child_file = Session(workspace.sessions_dir, child_session_id)
+                if child_file._path.exists():
+                    child_file.add_event(status_event("run_failed", str(exc)))
             except Exception as save_exc:
                 logger.warning("子 Agent 失败事件保存失败: %s", save_exc)
         raise
     finally:
+        unregister_sub_agent_token(workspace.sessions_dir, parent_session_id or "", sub_token, owner_token)
         if sandbox_manager.has_sandbox(runtime_id):
             try:
                 if not destroy_sandbox(runtime_id):
@@ -339,7 +368,9 @@ def run_sub_agent(
         if child_session_id:
             try:
                 if parent_session_id:
-                    record_sub_agent_end(workspace.sessions_dir, parent_session_id, child_session_id, state)
+                    from qrclaw.subagent_progress import sub_agent_snapshot
+                    if sub_agent_snapshot(child_session_id, workspace.sessions_dir) is not None:
+                        record_sub_agent_end(workspace.sessions_dir, parent_session_id, child_session_id, state)
             finally:
                 end_sub_agent(child_session_id)
 

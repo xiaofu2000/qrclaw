@@ -19,6 +19,7 @@ import queue
 from rich.console import Console
 from rich.panel import Panel
 from rich.text import Text
+from qrclaw.cancellation import TaskCancelledError, bind_cancel_token, check_cancelled, get_cancel_token
 from qrclaw.memory.context.session import Session
 from qrclaw.memory.context.plan.step_result import StepResult
 from qrclaw.memory.context.session.events import SessionEvent, status_event
@@ -59,6 +60,11 @@ class PlanExecutorNode:
 
         rounds = 0
         while ps.remaining:
+            try:
+                check_cancelled()
+            except TaskCancelledError:
+                ctx.clear_plan()
+                raise
             if rounds >= MAX_ITERATIONS:
                 return fail(f"重规划轮次达到上限 {MAX_ITERATIONS}")
             rounds += 1
@@ -75,13 +81,19 @@ class PlanExecutorNode:
                     console.print(f"[yellow]→ {step.description} (串行)[/yellow]")
                     child_id = prepare_sub_agent(session, workspace, f"step-{step.id}", step.description)
                     try:
+                        check_cancelled()
                         result = self._run_serial(step, ps.goal, ps.past_steps, workspace, run_sub_agent_fn,
                                                   console, child_id, session.session_id)
+                        check_cancelled()
+                    except TaskCancelledError:
+                        if sub_agent_snapshot(child_id, workspace.sessions_dir):
+                            record_sub_agent_end(workspace.sessions_dir, session.session_id, child_id, "interrupted")
+                        raise
                     except Exception:
-                        if sub_agent_snapshot(child_id):
+                        if sub_agent_snapshot(child_id, workspace.sessions_dir):
                             record_sub_agent_end(workspace.sessions_dir, session.session_id, child_id, "failed")
                         raise
-                    if sub_agent_snapshot(child_id):
+                    if sub_agent_snapshot(child_id, workspace.sessions_dir):
                         record_sub_agent_end(workspace.sessions_dir, session.session_id, child_id, "completed")
                     session.add_event(status_event("step_completed", step.description))
                     ctx.add_step_result(StepResult(
@@ -101,6 +113,9 @@ class PlanExecutorNode:
                             description=step.description,
                             output=results.get(step.id, ""),
                         ))
+            except TaskCancelledError:
+                ctx.clear_plan()
+                raise
             except Exception as e:
                 if is_serial:
                     session.add_event(status_event("step_failed", step.description))
@@ -112,10 +127,18 @@ class PlanExecutorNode:
 
             # 不管 remaining 是否为空，都让 Replanner 评估一次
             # 避免最后一层并行完成后跳过 Replanner 直接交给主 agent
+            try:
+                check_cancelled()
+            except TaskCancelledError:
+                ctx.clear_plan()
+                raise
             console.print("\n[dim]🔄 重新评估剩余计划...[/dim]")
             session.add_event(status_event("replanning", "正在评估剩余计划"))
             try:
                 new_remaining = self.replanner.run()
+            except TaskCancelledError:
+                ctx.clear_plan()
+                raise
             except Exception as e:
                 return fail(f"重规划失败：{e}")
 
@@ -187,8 +210,10 @@ class PlanExecutorNode:
         """先按计划顺序登记卡片，再并行执行子任务。"""
         results: dict[int, str] = {}
         errors: list[str] = []
+        cancelled_steps: list[str] = []
         lock = threading.Lock()
         notify_queue: queue.Queue = queue.Queue()
+        parent_token = get_cancel_token()
 
         # 构建前置步骤上下文（用 past_steps 里的真实结果）
         prior_context = ""
@@ -202,7 +227,13 @@ class PlanExecutorNode:
         child_ids: dict[str, str] = {}
         try:
             for step in layer:
+                check_cancelled()
                 child_ids[step.id] = prepare_sub_agent(session, workspace, f"step-{step.id}", step.description)
+        except TaskCancelledError:
+            for child_id in child_ids.values():
+                if sub_agent_snapshot(child_id, workspace.sessions_dir):
+                    record_sub_agent_end(workspace.sessions_dir, session.session_id, child_id, "interrupted")
+            raise
         except Exception:
             for child_id in child_ids.values():
                 record_sub_agent_end(workspace.sessions_dir, session.session_id, child_id, "failed")
@@ -217,28 +248,36 @@ class PlanExecutorNode:
                 f"{prior_context}\n\n"
                 f"【要求】完成上述步骤。完成后返回简洁的纯文本结果摘要，不要主动写 Markdown 文档或 .md 文件；如果用户明确要求文档，再按需求输出。包括：做了什么、发现了什么、产出了哪些文件。"
             )
-            try:
-                result, _ = run_sub_agent_fn(
-                    task, workspace, f"step-{step.id}",
-                    console=None,
-                    sandbox_policy_agent_id=workspace.sandbox_policy_agent_id,
-                    child_session_id=child_id,
-                    parent_session_id=session.session_id,
-                )
-                if sub_agent_snapshot(child_id):
-                    record_sub_agent_end(workspace.sessions_dir, session.session_id, child_id, "completed")
-                with lock:
-                    results[step.id] = result
-                session.add_event(status_event("step_completed", step.description))
-                notify_queue.put(("ok", step.id, step.description, result))
-            except Exception as e:
-                if sub_agent_snapshot(child_id):
-                    record_sub_agent_end(workspace.sessions_dir, session.session_id, child_id, "failed")
-                logger.error(f"Step {step.id} 执行失败: {e}", exc_info=True)
-                with lock:
-                    errors.append(f"Step {step.id}: {e}")
-                session.add_event(status_event("step_failed", step.description))
-                notify_queue.put(("err", step.id, step.description, str(e)))
+            with bind_cancel_token(parent_token):
+                try:
+                    check_cancelled()
+                    result, _ = run_sub_agent_fn(
+                        task, workspace, f"step-{step.id}",
+                        console=None,
+                        sandbox_policy_agent_id=workspace.sandbox_policy_agent_id,
+                        child_session_id=child_id,
+                        parent_session_id=session.session_id,
+                    )
+                    check_cancelled()
+                    if sub_agent_snapshot(child_id, workspace.sessions_dir):
+                        record_sub_agent_end(workspace.sessions_dir, session.session_id, child_id, "completed")
+                    with lock:
+                        results[step.id] = result
+                    session.add_event(status_event("step_completed", step.description))
+                    notify_queue.put(("ok", step.id, step.description, result))
+                except TaskCancelledError:
+                    if sub_agent_snapshot(child_id, workspace.sessions_dir):
+                        record_sub_agent_end(workspace.sessions_dir, session.session_id, child_id, "interrupted")
+                    with lock:
+                        cancelled_steps.append(str(step.id))
+                except Exception as e:
+                    if sub_agent_snapshot(child_id, workspace.sessions_dir):
+                        record_sub_agent_end(workspace.sessions_dir, session.session_id, child_id, "failed")
+                    logger.error(f"Step {step.id} 执行失败: {e}", exc_info=True)
+                    with lock:
+                        errors.append(f"Step {step.id}: {e}")
+                    session.add_event(status_event("step_failed", step.description))
+                    notify_queue.put(("err", step.id, step.description, str(e)))
 
         threads = [
             threading.Thread(target=_run, args=(step,), name=f"plan-step-{step.id}", daemon=True)
@@ -257,6 +296,12 @@ class PlanExecutorNode:
             raise
         for t in threads:
             t.join()
+
+        if cancelled_steps or (parent_token is not None and parent_token.is_cancelled()):
+            for cid in child_ids.values():
+                if sub_agent_snapshot(cid, workspace.sessions_dir):
+                    record_sub_agent_end(workspace.sessions_dir, session.session_id, cid, "interrupted")
+            raise TaskCancelledError()
 
         # 打印结果
         while not notify_queue.empty():

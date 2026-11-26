@@ -76,12 +76,32 @@ def end_sub_agent(child_id: str) -> None:
 
 
 def record_sub_agent_end(sessions_dir: Path, parent_id: str, child_id: str, state: str) -> None:
-    """将完成或失败状态写回父会话，刷新后仍能还原卡片。"""
+    """将完成、失败或中断状态写回父会话，刷新后仍能还原卡片。"""
+    title = (
+        "子 Agent 完成" if state == "completed"
+        else "子 Agent 已停止" if state == "interrupted"
+        else "子 Agent 失败"
+    )
     try:
         parent = Session(sessions_dir, session_id=parent_id)
-        parent.add_event(SessionEvent(
-            kind="subagent", title="子 Agent 完成" if state == "completed" else "子 Agent 失败",
-            meta={"child_session_id": child_id, "state": state},
-        ))
+        if parent._path.exists():
+            parent.add_event(SessionEvent(
+                kind="subagent", title=title,
+                meta={"child_session_id": child_id, "state": state},
+            ))
     finally:
         end_sub_agent(child_id)
+
+
+def cancel_sub_agents_for_parent(sessions_dir: Path, parent_id: str) -> list[str]:
+    """清理指定父会话下所有尚未收尾的活跃子任务快照，标记为 interrupted。"""
+    resolved = sessions_dir.resolve()
+    with _lock:
+        pending_ids = [
+            child_id
+            for child_id, item in _active.items()
+            if item["parent_id"] == parent_id and item["sessions_dir"] == resolved
+        ]
+    for child_id in pending_ids:
+        record_sub_agent_end(sessions_dir, parent_id, child_id, "interrupted")
+    return pending_ids

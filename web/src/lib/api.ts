@@ -107,6 +107,12 @@ export function createApiClient() {
     deleteLatestUserMessage(sessionId: string, messageId: string) {
       return request<SessionDetail>(`${sessionPath(sessionId)}/messages/${encodeURIComponent(messageId)}`, { method: 'DELETE' })
     },
+    /** 停止当前会话正在排队或运行的任务及关联子任务。 */
+    cancelSession(sessionId: string) {
+      return request<{ cancelled: boolean; session_id: string; run_status: SessionSummary['run_status'] }>(
+        `${sessionPath(sessionId)}/cancel`, { method: 'POST' },
+      )
+    },
     /** 提交一次流式聊天；连接中断只报错，不重发可能已经执行的任务。 */
     async chatStream(sessionId: string, content: string, onDelta: (delta: string) => void, onReady?: () => void, editMessageId?: string, planEnabled = false) {
       const response = await fetch(`${baseUrl}/v1/chat/completions`, {

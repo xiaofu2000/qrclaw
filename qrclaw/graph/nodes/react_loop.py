@@ -11,6 +11,7 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.text import Text
 from rich.markdown import Markdown
+from qrclaw.cancellation import TaskCancelledError, check_cancelled
 from qrclaw.config import MAX_ITERATIONS, _MODEL_MAX_TOKENS, COMPRESS_THRESHOLD
 from qrclaw.tools.registry import get_schemas, get_schemas_for_sub_agent
 from qrclaw.tools.call_context import collect_tool_detail, current_call_id, tool_call
@@ -64,6 +65,7 @@ def run_react_loop(
     llm = llm_service or get_llm_service()
 
     for iteration in range(max_iterations):
+        check_cancelled()
         logger.debug(f"run_react_loop 第 {iteration + 1} 轮")
 
         with _console.status("[bold yellow]思考中...[/bold yellow]", spinner="dots") if not silent else _noop_ctx():
@@ -72,9 +74,14 @@ def run_react_loop(
                 if on_delta is not None:
                     chat_kwargs["on_delta"] = on_delta
                 response = llm.chat(messages, **chat_kwargs)
+            except TaskCancelledError:
+                logger.info("LLM 调用已由用户停止")
+                raise
             except Exception as e:
                 logger.error(f"LLM 调用失败: {e}", exc_info=True)
                 raise
+
+        check_cancelled()
 
         # 更新 token 使用量（每次 LLM 调用后都更新）
         if session:
@@ -107,7 +114,18 @@ def run_react_loop(
 
         assistant_msg_saved = False
 
-        for tc in response.tool_calls:
+        for tc_idx, tc in enumerate(response.tool_calls):
+            try:
+                check_cancelled()
+            except TaskCancelledError:
+                if assistant_msg_saved:
+                    for rem in response.tool_calls[tc_idx:]:
+                        cancelled_msg = tool_result_to_message(rem.id, "任务已由用户停止")
+                        messages.append(cancelled_msg)
+                        if on_tool_result:
+                            on_tool_result(cancelled_msg)
+                raise
+
             name = tc.name
             arguments = tc.arguments
             logger.info(f"工具调用: {name}")
@@ -140,6 +158,13 @@ def run_react_loop(
                         result = on_tool_call(name, arguments)
                     else:
                         result = ToolRunner().run(name, arguments)
+            except TaskCancelledError:
+                for rem in response.tool_calls[tc_idx:]:
+                    cancelled_msg = tool_result_to_message(rem.id, "任务已由用户停止")
+                    messages.append(cancelled_msg)
+                    if on_tool_result:
+                        on_tool_result(cancelled_msg)
+                raise
             except Exception as e:
                 result = f"工具执行失败: {str(e)}"
                 logger.error(f"工具执行失败: {name}, 错误: {e}", exc_info=True)
@@ -158,6 +183,16 @@ def run_react_loop(
             messages.append(tool_msg)
             if on_tool_result:
                 on_tool_result(tool_msg)
+
+            try:
+                check_cancelled()
+            except TaskCancelledError:
+                for rem in response.tool_calls[tc_idx + 1:]:
+                    cancelled_msg = tool_result_to_message(rem.id, "任务已由用户停止")
+                    messages.append(cancelled_msg)
+                    if on_tool_result:
+                        on_tool_result(cancelled_msg)
+                raise
 
     logger.warning("run_react_loop 达到最大迭代次数")
     return "错误：达到最大迭代次数"
@@ -240,6 +275,10 @@ class ReactLoopNode:
             with collect_tool_detail() as detail:
                 try:
                     result = tool_runner.run(name, arguments)
+                except TaskCancelledError:
+                    session.add_event(SessionEvent(kind="tool_status", title="工具已停止", content=name,
+                                                   meta={"state": "cancelled", **base}))
+                    raise
                 except Exception:
                     session.add_event(SessionEvent(kind="tool_status", title="工具失败", content=name,
                                                    meta={"state": "failed", **base}))

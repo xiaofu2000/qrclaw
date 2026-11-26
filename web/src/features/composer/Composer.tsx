@@ -1,10 +1,12 @@
 import { useLayoutEffect, useRef } from 'react'
-import { ArrowUp, LoaderCircle } from 'lucide-react'
+import { ArrowUp, LoaderCircle, Square } from 'lucide-react'
 
 type ComposerProps = {
   value: string
   onChange: (value: string) => void
   onSend: (content: string) => void | Promise<void>
+  onStop?: () => void
+  stopping?: boolean
   disabled: boolean
   loading: boolean
   running: boolean
@@ -15,7 +17,7 @@ type ComposerProps = {
 }
 
 /** 输入从单行开始增高，发送同排，执行模式和上下文位于下方工具行。 */
-export function Composer({ value, onChange, onSend, disabled, loading, running, planEnabled, onTogglePlan,
+export function Composer({ value, onChange, onSend, onStop, stopping = false, disabled, loading, running, planEnabled, onTogglePlan,
   contextUsage, compressionNotice }: ComposerProps) {
   const inputRef = useRef<HTMLTextAreaElement>(null)
   useLayoutEffect(() => {
@@ -47,6 +49,12 @@ export function Composer({ value, onChange, onSend, disabled, loading, running, 
               submit()
             }
           }} />
+        {running && onStop && (
+          <button className="stop-button" type="button" onClick={onStop} disabled={stopping}
+            aria-label={stopping ? '正在停止' : '停止任务'} title={stopping ? '正在停止当前任务' : '停止当前任务'}>
+            {stopping ? <LoaderCircle size={18} className="spin" /> : <Square size={16} fill="currentColor" />}
+          </button>
+        )}
         <button className="send-button" type="submit" disabled={disabled || !value.trim()} aria-label={running ? '任务处理中' : '发送消息'} title={running ? '等待当前任务完成' : '发送消息'}>
           {running ? <LoaderCircle size={20} className="spin" /> : <ArrowUp size={20} />}
         </button>
@@ -61,7 +69,7 @@ export function Composer({ value, onChange, onSend, disabled, loading, running, 
           <span>上下文 <strong>{contextUsage.percent}%</strong></span>
           <meter min={0} max={100} value={contextUsage.percent} aria-label="上下文占用比例" />
         </div>}
-        <span className="composer-hint">{running ? '任务处理中，可以先切换到其他会话' : 'Enter 发送 · Shift+Enter 换行'}</span>
+        <span className="composer-hint">{running ? (stopping ? '正在停止当前任务…' : onStop ? '任务处理中，可随时停止或切换到其他会话' : '任务处理中，可以先切换到其他会话') : 'Enter 发送 · Shift+Enter 换行'}</span>
       </div>
     </form>
   )

@@ -19,10 +19,11 @@ STATUS_TITLES = {
     "replanning": "重规划中",
     "replanned": "重规划完成",
     "run_failed": "执行失败",
+    "run_cancelled": "任务已停止",
 }
 _CODES_BY_TITLE = {title: code for code, title in STATUS_TITLES.items()}
 # 推送给页面的步骤进度；规划失败原因可能含内部细节，不推送。
-STREAMED_STATUS_CODES = frozenset({"step_running", "step_completed", "step_failed", "run_failed"})
+STREAMED_STATUS_CODES = frozenset({"step_running", "step_completed", "step_failed", "run_failed", "run_cancelled"})
 
 
 def status_code(event: dict) -> str | None:
