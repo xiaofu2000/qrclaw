@@ -5,6 +5,7 @@ from . import filesystem
 from . import shell
 from . import web
 from . import wiki_tools
+from . import dream_tools
 from . import skills
 from . import spawn_agent
 from . import wait_agents

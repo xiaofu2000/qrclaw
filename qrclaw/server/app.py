@@ -36,7 +36,7 @@ def create_app(workspace: Workspace | None = None) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(app):
-        """恢复已加载工作空间的持久化记忆批次，退出时统一停止后台线程并关闭常驻 MCP 连接。"""
+        """恢复已加载工作空间的持久化记忆批次与做梦状态，退出时统一停止后台线程并关闭常驻 MCP 连接。"""
         from qrclaw.agent import _cleanup_mcp
         hub.startup()
         try:

@@ -54,6 +54,8 @@ class SessionService:
             deleted = delete_session(session_id, self.workspace.sessions_dir, before_delete=before_delete)
         if deleted:
             self.recover_session_changes(session_id)
+            from qrclaw.memory.wiki import WikiMemory
+            WikiMemory.for_workspace(self.workspace.memory_dir).provenance.compact(self.workspace.sessions_dir)
         return deleted
 
     def rewrite_latest_user_turn(self, session: Session, message_id: str, content: str | None) -> None:

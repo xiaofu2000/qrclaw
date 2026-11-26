@@ -106,13 +106,14 @@ class WorkspaceHub:
         _runner.react_loop.resume_memory_extractions(ws)
         wiki = WikiMemory.for_workspace(ws.memory_dir)
         wiki.rebuild_index()
+        wiki.dream_worker.recover_interrupted()
         wiki.repair_worker.closed = False
         wiki.repair_worker.resume()
         runtime.recovered = True
         logger.info("工作空间运行时已就绪: %s (%s)", ws.agent_id, ws.root)
 
     def _stop_runtime(self, runtime: _WorkspaceRuntime, *, clear_wiki_cache: bool = False) -> None:
-        """停止工作空间的后台记忆提取与 Wiki 修复线程。"""
+        """停止工作空间的后台记忆提取、Wiki 修复与记忆做梦线程。"""
         from qrclaw.agent import _runner
         from qrclaw.memory import wiki as wiki_pkg
         from qrclaw.memory.wiki import WikiMemory
@@ -127,8 +128,9 @@ class WorkspaceHub:
             try:
                 wiki = WikiMemory.for_workspace(ws.memory_dir)
                 wiki.repair_worker.close()
+                wiki.dream_worker.close()
             except Exception as exc:
-                logger.warning("关闭 Wiki 修复线程失败 (%s): %s", ws.agent_id, exc)
+                logger.warning("关闭 Wiki 后台线程失败 (%s): %s", ws.agent_id, exc)
             runtime.recovered = False
 
         if clear_wiki_cache:
@@ -138,6 +140,10 @@ class WorkspaceHub:
             if cached is not None:
                 try:
                     cached.repair_worker.close()
+                except Exception:
+                    pass
+                try:
+                    cached.dream_worker.close()
                 except Exception:
                     pass
             _ = wiki_pkg
@@ -200,10 +206,18 @@ class WorkspaceHub:
             return runtime.workspace
 
     def has_active_runs(self, agent_id: str) -> bool:
-        """检查指定工作空间是否仍有排队中、运行中或后台子 Agent 任务。"""
+        """检查指定工作空间是否仍有排队中、运行中、后台子 Agent 或记忆做梦任务。"""
         with self._lock:
             runtime = self._runtimes.get(agent_id)
-        if runtime is None or runtime.list_sessions_endpoint is None:
+        if runtime is None:
+            return False
+        try:
+            from qrclaw.memory.wiki import WikiMemory
+            if WikiMemory.for_workspace(runtime.workspace.memory_dir).dream_worker.active_count() > 0:
+                return True
+        except Exception as exc:
+            logger.warning("检查工作空间做梦状态失败 (%s): %s", agent_id, exc)
+        if runtime.list_sessions_endpoint is None:
             return False
         try:
             summaries = runtime.list_sessions_endpoint()

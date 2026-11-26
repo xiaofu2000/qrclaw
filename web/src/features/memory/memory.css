@@ -96,9 +96,10 @@
 .memory-workspace .memory-link { display: inline; padding: 0; border: 0; background: transparent; color: var(--accent); text-decoration: underline; text-underline-offset: 3px; }
 .memory-body a { color: var(--accent); text-underline-offset: 3px; }
 .memory-body h1, .memory-body h2, .memory-body h3 { text-wrap: balance; }
-.memory-relations, .memory-sources, .memory-repair { margin-top: 30px; padding-top: 24px; border-top: 1px solid var(--line); font-size: 12px; line-height: 1.75; }
-.memory-relations h3, .memory-sources h3, .memory-repair h3 { display: flex; align-items: center; gap: 8px; margin: 0 0 13px; font-size: 13px; font-weight: 650; }
-.memory-sources h3 > span { color: var(--muted); font-size: 11px; font-weight: 400; }
+.memory-relations, .memory-sources, .memory-history, .memory-repair { margin-top: 30px; padding-top: 24px; border-top: 1px solid var(--line); font-size: 12px; line-height: 1.75; }
+.memory-relations h3, .memory-sources h3, .memory-history h3, .memory-repair h3 { display: flex; align-items: center; gap: 8px; margin: 0 0 13px; font-size: 13px; font-weight: 650; }
+.memory-history > details > summary > h3 { margin: 0; }
+.memory-sources h3 > span, .memory-history h3 > span { color: var(--muted); font-size: 11px; font-weight: 400; }
 .memory-relations h3 > svg { color: var(--muted); }
 .memory-relation-links { display: flex; flex-wrap: wrap; gap: 8px 16px; }
 .memory-muted { color: var(--muted); }
@@ -134,6 +135,58 @@
 .memory-lint-content { padding-bottom: 12px; }
 .memory-lint-content > div { display: flex; flex-wrap: wrap; gap: 4px 12px; padding: 8px 0; border-top: 1px solid var(--line); overflow-wrap: anywhere; }
 .memory-lint-content > p { display: flex; align-items: center; gap: 8px; color: var(--success); margin: 0; }
+.memory-history-body { display: grid; gap: 12px; padding-top: 12px; }
+.memory-history-item, .memory-store-version-item { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 16px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-soft); }
+.memory-history-item p, .memory-store-version-item p { margin: 2px 0; }
+.memory-history-preview { padding: 12px; border: 1px solid var(--line-strong); border-radius: 10px; background: var(--surface-soft); }
+.memory-history-preview-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
+.memory-history-preview-head > button { padding: 4px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); color: var(--ink); font-size: 11px; }
+.memory-history-preview pre, .memory-diff-pre, .memory-transcript-tool pre { margin: 8px 0 0; padding: 12px; border-radius: 8px; background: var(--surface); border: 1px solid var(--line); white-space: pre-wrap; overflow-wrap: anywhere; font-family: inherit; font-size: 12px; line-height: 1.7; max-height: 320px; overflow-y: auto; }
+.memory-modal-backdrop { position: fixed; inset: 0; z-index: 40; display: flex; align-items: center; justify-content: center; padding: 20px; background: rgba(0, 0, 0, .42); }
+.memory-modal { display: flex; flex-direction: column; gap: 16px; width: min(1040px, 100%); max-height: min(88vh, 860px); padding: 20px 24px; border: 1px solid var(--line-strong); border-radius: 16px; background: var(--surface); color: var(--ink); overflow-y: auto; box-shadow: 0 20px 48px rgba(0, 0, 0, .2); }
+.memory-modal-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding-bottom: 12px; border-bottom: 1px solid var(--line); }
+.memory-modal-header h2 { display: flex; align-items: center; gap: 8px; margin: 0 0 4px; font-size: 18px; font-weight: 650; }
+.memory-modal-header p { margin: 0; font-size: 12px; }
+.memory-modal-header > button { display: inline-flex; align-items: center; gap: 5px; padding: 6px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--ink); font-size: 12px; }
+.memory-dream-create { display: grid; gap: 12px; padding: 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--canvas); font-size: 12px; }
+.memory-dream-create > label { display: grid; gap: 6px; font-weight: 550; }
+.memory-dream-instructions { width: 100%; padding: 8px 10px; border: 1px solid var(--line-strong); border-radius: 8px; background: var(--surface); color: var(--ink); font-size: 12px; line-height: 1.6; resize: vertical; }
+.memory-dream-session-list { display: grid; gap: 6px; max-height: 160px; margin-top: 8px; padding: 8px; overflow-y: auto; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
+.memory-dream-session-item, .memory-checkbox-label { display: flex; align-items: flex-start; gap: 8px; font-size: 12px; font-weight: 400; cursor: pointer; }
+.memory-dream-session-item small { display: block; color: var(--muted); font-size: 11px; }
+.memory-dream-selector { display: flex; flex-wrap: wrap; gap: 8px; }
+.memory-dream-chip { display: grid; gap: 2px; padding: 7px 11px; border: 1px solid var(--line); border-radius: 9px; background: var(--surface); color: var(--ink); text-align: left; font-size: 12px; }
+.memory-dream-chip.selected { border-color: var(--accent); background: var(--accent-soft); }
+.memory-dream-chip small { color: var(--muted); font-size: 11px; }
+.memory-dream-workspace { display: grid; gap: 14px; }
+.memory-dream-status-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-soft); font-size: 12px; }
+.memory-dream-metrics { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; }
+.memory-dream-apply-confirm { margin: 0; border: 1px solid var(--accent); background: var(--accent-soft); }
+.memory-warning-text { color: var(--warning); }
+.memory-dream-concurrent { display: grid; gap: 8px; margin-bottom: 12px; }
+.memory-dream-tabs { display: flex; gap: 8px; border-bottom: 1px solid var(--line); padding-bottom: 8px; }
+.memory-dream-tabs > button { padding: 6px 12px; border: 1px solid transparent; border-radius: 8px; background: transparent; color: var(--muted); font-size: 12px; }
+.memory-dream-tabs > button.active { border-color: var(--line-strong); background: var(--surface-soft); color: var(--ink); font-weight: 600; }
+.memory-dream-diff-grid { display: grid; grid-template-columns: 280px minmax(0, 1fr); gap: 16px; min-height: 260px; }
+.memory-dream-page-list { display: flex; flex-direction: column; gap: 6px; max-height: 380px; overflow-y: auto; padding-right: 4px; }
+.memory-dream-page-item { display: grid; gap: 4px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: var(--ink); text-align: left; font-size: 12px; }
+.memory-dream-page-item.selected { border-color: var(--accent); background: var(--accent-soft); }
+.memory-dream-page-item > span { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.memory-dream-page-detail { min-width: 0; padding: 12px 16px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface-soft); font-size: 12px; }
+.memory-dream-page-detail h3 { margin: 0 0 6px; font-size: 15px; }
+.memory-dream-page-detail h4 { margin: 14px 0 6px; font-size: 12px; }
+.memory-badge { display: inline-block; padding: 1px 6px; border-radius: 999px; font-size: 10px; background: var(--surface-soft); color: var(--muted); }
+.memory-badge.added { color: var(--success); }
+.memory-badge.modified { color: var(--warning); }
+.memory-dream-removed-group { margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--line); font-size: 11px; color: var(--muted); }
+.memory-dream-removed-group h4 { margin: 0 0 6px; font-size: 11px; }
+.memory-dream-removed-item { display: flex; justify-content: space-between; padding: 4px 0; }
+.memory-dream-transcript, .memory-store-version-list { display: grid; gap: 10px; max-height: 400px; overflow-y: auto; }
+.memory-transcript-step { padding: 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-soft); font-size: 12px; }
+.memory-transcript-head { display: flex; justify-content: space-between; gap: 12px; margin-bottom: 6px; }
+.memory-transcript-head small { color: var(--muted); }
+.memory-transcript-tool { margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--line); }
+.memory-dream-running-hint { margin: 0; color: var(--accent); }
 @media (min-width: 1500px) {
   .memory-detail { padding-right: 52px; padding-left: 52px; }
   .memory-detail-header { flex-direction: row; align-items: flex-start; justify-content: space-between; }

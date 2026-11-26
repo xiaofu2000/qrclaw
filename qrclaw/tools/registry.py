@@ -14,6 +14,7 @@ _tools: dict = {}
 class AgentType:
     MAIN    = "main"       # 主 Agent，完整工具集
     SUB     = "sub"        # 子 Agent，执行类工具
+    DREAM   = "dream"      # 记忆整理（做梦）专用 Agent，仅限副本与记录读写
 
 
 # ── 各 Agent 默认工具白名单（工具名列表，None 表示继承全量）──────────────────
@@ -24,6 +25,11 @@ _AGENT_TOOL_WHITELIST: dict[str, list[str] | None] = {
         "read_file", "write_file", "str_replace", "list_directory",
         "grep_code", "run_shell", "web_search", "web_fetch",
         "use_skill",
+    ],
+    AgentType.DREAM: [
+        "memory_view", "memory_create", "memory_str_replace",
+        "memory_insert", "memory_delete", "memory_rename",
+        "transcript_list", "transcript_read",
     ],
 }
 

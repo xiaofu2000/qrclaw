@@ -1,5 +1,9 @@
 import type { SessionDetail, SessionEvent, SessionSummary } from './types'
-import type { WikiDetail, WikiDraft, WikiLintReport, WikiPageList, WikiStatus } from '../features/memory/types'
+import type {
+  WikiDetail, WikiDraft, WikiDream, WikiDreamApplyPreview, WikiDreamList,
+  WikiDreamPageDetail, WikiDreamPageList, WikiDreamTranscript, WikiHistoryDetail,
+  WikiHistoryList, WikiLintReport, WikiPageList, WikiStatus, WikiStoreVersionList,
+} from '../features/memory/types'
 
 const baseUrl = import.meta.env.VITE_QRCLAW_API_BASE_URL ?? (import.meta.env.DEV ? '/api' : '')
 
@@ -245,6 +249,64 @@ export function createApiClient() {
     /** 排队重新整理，断线不会重发。 */
     repairWikiPage(name: string) {
       return scopedWikiRequest<WikiDetail>(`/pages/${encodeURIComponent(name)}/repair`, { method: 'POST' })
+    },
+    /** 读取单页历史版本列表与指定快照，支持按用户确认语义单页回滚。 */
+    listPageHistory(name: string, signal?: AbortSignal) {
+      return scopedWikiRequest<WikiHistoryList>(`/pages/${encodeURIComponent(name)}/history`, { signal })
+    },
+    getPageHistoryVersion(name: string, revision: number, signal?: AbortSignal) {
+      return scopedWikiRequest<WikiHistoryDetail>(`/pages/${encodeURIComponent(name)}/history/${revision}`, { signal })
+    },
+    restoreWikiPage(name: string, revision: number, currentRevision?: number) {
+      return scopedWikiRequest<WikiDetail>(`/pages/${encodeURIComponent(name)}/restore`, jsonBody('POST', {
+        revision, ...(currentRevision !== undefined ? { current_revision: currentRevision } : {}),
+      }))
+    },
+    /** 整库归档版本查询与整体回退。 */
+    listStoreVersions(signal?: AbortSignal) {
+      return scopedWikiRequest<WikiStoreVersionList>('/store-versions', { signal })
+    },
+    restoreStoreVersion(versionId: string) {
+      return scopedWikiRequest<{ restored_version: string; archived_version: string; page_count: number }>(
+        `/store-versions/${encodeURIComponent(versionId)}/restore`, { method: 'POST' },
+      )
+    },
+    /** 记忆做梦（整理）：创建、查询、新库浏览、过程回看、取消、切换与放弃归档。 */
+    createWikiDream(payload: { session_ids?: string[] | null; instructions?: string } = {}) {
+      return scopedWikiRequest<WikiDream>('/dreams', jsonBody('POST', payload))
+    },
+    listWikiDreams(limit = 20, includeArchived = false, signal?: AbortSignal) {
+      return scopedWikiRequest<WikiDreamList>(`/dreams?limit=${limit}&include_archived=${includeArchived}`, { signal })
+    },
+    getWikiDream(dreamId: string, signal?: AbortSignal) {
+      return scopedWikiRequest<WikiDream>(`/dreams/${encodeURIComponent(dreamId)}`, { signal })
+    },
+    listWikiDreamPages(dreamId: string, query = '', signal?: AbortSignal) {
+      return scopedWikiRequest<WikiDreamPageList>(`/dreams/${encodeURIComponent(dreamId)}/pages?q=${encodeURIComponent(query)}`, { signal })
+    },
+    getWikiDreamPage(dreamId: string, name: string, signal?: AbortSignal) {
+      return scopedWikiRequest<WikiDreamPageDetail>(
+        `/dreams/${encodeURIComponent(dreamId)}/pages/${encodeURIComponent(name)}`, { signal },
+      )
+    },
+    getWikiDreamTranscript(dreamId: string, offset = 0, limit = 50, signal?: AbortSignal) {
+      return scopedWikiRequest<WikiDreamTranscript>(
+        `/dreams/${encodeURIComponent(dreamId)}/transcript?offset=${offset}&limit=${limit}`, { signal },
+      )
+    },
+    cancelWikiDream(dreamId: string) {
+      return scopedWikiRequest<WikiDream>(`/dreams/${encodeURIComponent(dreamId)}/cancel`, { method: 'POST' })
+    },
+    previewApplyWikiDream(dreamId: string, signal?: AbortSignal) {
+      return scopedWikiRequest<WikiDreamApplyPreview>(`/dreams/${encodeURIComponent(dreamId)}/apply-preview`, { signal })
+    },
+    applyWikiDream(dreamId: string, carryOver = true) {
+      return scopedWikiRequest<{ applied: boolean; dream_id: string; archived_version: string; page_count: number }>(
+        `/dreams/${encodeURIComponent(dreamId)}/apply`, jsonBody('POST', { carry_over: carryOver }),
+      )
+    },
+    archiveWikiDream(dreamId: string) {
+      return scopedWikiRequest<WikiDream>(`/dreams/${encodeURIComponent(dreamId)}/archive`, { method: 'POST' })
     },
     health() { return scopedRequest<{ status: string }>('/health') },
     listSessions() { return scopedRequest<SessionSummary[]>('/v1/sessions') },

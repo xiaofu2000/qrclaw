@@ -111,6 +111,8 @@ class MCPManager:
         self._servers_config: list[dict[str, Any]] = []
         self._connections: dict[str, _MCPConnection] = {}
         self._tools: dict[str, _MCPTool] = {}
+        self._proxy_tools: dict[str, _MCPProxyTool] = {}
+        self._search_transform: BM25SearchTransform | None = None
         self._search_server = FastMCP("QRClaw MCP")
         self._tool_schemas: list[dict[str, Any]] = []
         self._server_statuses: list[dict[str, Any]] = []
@@ -214,7 +216,9 @@ class MCPManager:
                         raise ValueError(f"MCP 工具名称重复：{mcp_tool.qualified_name}")
                     conn.tools.append(mcp_tool)
                     self._tools[mcp_tool.qualified_name] = mcp_tool
-                    self._search_server.add_tool(_MCPProxyTool(mcp_tool))
+                    proxy_tool = _MCPProxyTool(mcp_tool)
+                    self._proxy_tools[mcp_tool.qualified_name] = proxy_tool
+                    self._search_server.add_tool(proxy_tool)
                     logger.debug("发现 MCP 工具：%s", mcp_tool.qualified_name)
 
                 if include_set is not None or exclude_set:
@@ -253,7 +257,8 @@ class MCPManager:
                 })
 
         if self._tools:
-            self._search_server.add_transform(BM25SearchTransform(max_results=5))
+            self._search_transform = BM25SearchTransform(max_results=5)
+            self._search_server.add_transform(self._search_transform)
             for tool in await self._search_server.list_tools():
                 if tool.name == "search_tools":
                     tool.description = (
@@ -409,8 +414,72 @@ class MCPManager:
             response_text = json.dumps(structured, ensure_ascii=False)
         if result.is_error:
             response_text = f"错误：MCP 工具执行失败\n{response_text}"
+        elif name == "search_tools" and self._tools and self._search_transform is not None:
+            response_text = await self._augment_search_results(arguments.get("query", ""), response_text)
         logger.debug("MCP 工具 '%s' 返回 %d 个字符", name, len(response_text))
         return response_text
+
+    async def _augment_search_results(self, query: Any, response_text: str) -> str:
+        """当查询含中文或默认英文 BM25 结果不足时，用中英混合打分补充合并（最多 5 条）。"""
+        if not isinstance(query, str) or not query.strip():
+            return response_text
+        from qrclaw.memory.wiki.search_ranker import WeightedField, has_cjk, rank_documents
+
+        try:
+            base_items = json.loads(response_text) if response_text else []
+        except Exception:
+            return response_text
+        if not isinstance(base_items, list):
+            return response_text
+
+        query_has_cjk = has_cjk(query)
+        if not query_has_cjk and len(base_items) >= 5:
+            return response_text
+
+        ranked = rank_documents(
+            query,
+            list(self._tools.values()),
+            lambda t: (
+                WeightedField(f"{t.qualified_name} {t.name}", weight=6.0, exact_boost=12.0),
+                WeightedField(t.description, weight=3.0, exact_boost=5.0),
+                WeightedField(
+                    self._connections[t.server_label].instructions if t.server_label in self._connections else "",
+                    weight=0.8,
+                ),
+            ),
+            limit=5,
+            extra_stop_phrases=("工具", "服务", "功能"),
+            extra_en_stopwords=("tool", "tools", "mcp", "server"),
+        )
+        if not ranked:
+            return response_text
+
+        proxies = [
+            self._proxy_tools[r.item.qualified_name]
+            for r in ranked
+            if r.item.qualified_name in self._proxy_tools
+        ]
+        if not proxies or self._search_transform is None:
+            return response_text
+
+        rendered = await self._search_transform._render_results(proxies)
+        hybrid_items = json.loads(rendered) if isinstance(rendered, str) else list(rendered)
+        if not isinstance(hybrid_items, list):
+            return response_text
+
+        primary = hybrid_items if query_has_cjk else base_items
+        secondary = base_items if query_has_cjk else hybrid_items
+        merged: list[dict[str, Any]] = []
+        seen_names: set[str] = set()
+        for entry in (*primary, *secondary):
+            tname = entry.get("name") if isinstance(entry, dict) else None
+            if not tname or tname in seen_names:
+                continue
+            seen_names.add(tname)
+            merged.append(entry)
+            if len(merged) >= 5:
+                break
+        return json.dumps(merged, ensure_ascii=False)
 
     # ------------------------------------------------------------------
     # Disconnection
@@ -428,6 +497,8 @@ class MCPManager:
 
         self._connections.clear()
         self._tools.clear()
+        self._proxy_tools.clear()
+        self._search_transform = None
         self._tool_schemas.clear()
         self._server_statuses.clear()
         self._search_server = FastMCP("QRClaw MCP")

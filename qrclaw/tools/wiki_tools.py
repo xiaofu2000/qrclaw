@@ -129,26 +129,20 @@ def list_wiki_pages(offset: int = 0, limit: int = 20) -> str:
 
 @register(description="按关键词或完整问题搜索 Wiki 页面，返回候选摘要和正文命中 offset；用 read_wiki_page(name, offset) 读取证据。", args_model=SearchWikiArgs, agents=[AgentType.MAIN])
 def search_wiki(query: str, limit: int = 5) -> str:
-    """合并精确匹配和目录语义选择，只返回候选页面。"""
+    """使用本地中英混合 BM25 检索候选页面与最佳命中片段，不额外发起模型请求。"""
+    from qrclaw.memory.wiki.search_ranker import best_snippet_offset
+
     query = query.strip()
     limit = min(limit, 5)
     if not query or limit < 1:
         return json.dumps({"items": []}, ensure_ascii=False)
 
     wiki = _get_wiki_memory()
-    exact = wiki.search_pages(query)
-    semantic = wiki.select_relevant_pages(query, [], top_k=limit)
-    pages = []
-    for page in (exact[:1] + semantic + exact[1:]):
-        if page and page.name not in {item.name for item in pages}:
-            pages.append(page)
-        if len(pages) >= limit:
-            break
+    pages = wiki.search_pages(query)[:limit]
 
     items = []
     for page in pages:
-        match = re.search(re.escape(query), page.content, re.IGNORECASE)
-        offset = max(0, match.start() - 80) if match else 0
+        offset = best_snippet_offset(page.content, query)
         items.append({**page.to_index_entry(), "snippet": page.content[offset:offset + 160], "offset": offset})
     return json.dumps({"items": items}, ensure_ascii=False)
 
